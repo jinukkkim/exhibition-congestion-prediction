@@ -12,10 +12,13 @@ router = APIRouter()
 def _event_source() -> Generator[str, None, None]:
     pubsub = cache.r.pubsub()
     pubsub.subscribe(UPDATE_CHANNEL)
-    for message in pubsub.listen():
-        if message["type"] != "message":
-            continue
-        yield f"data: {message['data']}\n\n"
+    try:
+        for message in pubsub.listen():
+            if message["type"] != "message":
+                continue
+            yield f"data: {message['data']}\n\n"
+    finally:
+        pubsub.close()
 
 
 @router.get("/congestion/stream")

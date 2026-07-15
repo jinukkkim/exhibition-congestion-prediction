@@ -1,5 +1,6 @@
 import threading
 import time
+from unittest.mock import MagicMock
 
 import fakeredis
 import pytest
@@ -63,3 +64,49 @@ def test_stream_emits_published_message(fake_redis):
     assert not thread.is_alive(), "generator did not yield after publish"
     assert "보통" in result["chunk"]
     assert result["chunk"].startswith("data: ")
+
+
+def test_stream_closes_pubsub_on_teardown(fake_redis, monkeypatch):
+    # Verifies the fix for the leaked-pubsub-connection finding: when the
+    # StreamingResponse consumer stops iterating (client disconnect ->
+    # GeneratorExit thrown into the suspended `yield`), _event_source must
+    # close its pubsub instead of leaking it. Spy on the real fakeredis
+    # PubSub object's close() (wraps=, so it still actually closes) rather
+    # than mocking the whole pubsub away.
+    from app.routes.stream import _event_source
+
+    original_pubsub = fake_redis.pubsub
+    created: dict[str, object] = {}
+
+    def spy_pubsub(*args, **kwargs):
+        ps = original_pubsub(*args, **kwargs)
+        monkeypatch.setattr(ps, "close", MagicMock(wraps=ps.close))
+        created["pubsub"] = ps
+        return ps
+
+    monkeypatch.setattr(fake_redis, "pubsub", spy_pubsub)
+
+    gen = _event_source()
+    result: dict[str, str] = {}
+
+    def consume() -> None:
+        result["chunk"] = next(gen)
+
+    thread = threading.Thread(target=consume, daemon=True)
+    thread.start()
+
+    deadline = time.monotonic() + 2
+    while fake_redis.pubsub_numsub("congestion:updates")[0][1] == 0:
+        if time.monotonic() > deadline:
+            pytest.fail("generator never subscribed to the channel")
+        time.sleep(0.01)
+
+    fake_redis.publish("congestion:updates", '{"congest_level": "보통"}')
+    thread.join(timeout=2)
+    assert not thread.is_alive(), "generator did not yield after publish"
+
+    created["pubsub"].close.assert_not_called()
+
+    gen.close()  # throws GeneratorExit into the suspended yield
+
+    created["pubsub"].close.assert_called_once()
