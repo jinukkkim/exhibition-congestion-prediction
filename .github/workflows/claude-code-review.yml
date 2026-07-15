@@ -1,0 +1,51 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # develop 대상 PR만 자동 리뷰 — develop→main 머지 PR은 이미 리뷰된 코드라 제외
+    # (필요 시 PR에 @claude 멘션으로 수동 리뷰 가능)
+    branches: [develop]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "backend/**/*.py"
+    #   - "frontend/src/**/*.ts"
+    #   - "frontend/src/**/*.tsx"
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          # 추적 코멘트를 액션이 직접 생성 — 인라인 게시가 실패해도 리뷰 결과가 항상 PR에 남음
+          track_progress: true
+          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # 리뷰 게시에 필요한 도구 허용 — 없으면 코멘트 게시가 거부됨
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
+            --append-system-prompt "PR에 게시하는 모든 리뷰 코멘트(요약·인라인 코멘트·지적사항)는 한국어로 작성하세요. 코드 식별자와 기술 용어는 원문 그대로 사용해도 됩니다."
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
