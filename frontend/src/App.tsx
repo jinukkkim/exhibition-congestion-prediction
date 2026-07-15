@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 
 import { fetchCurrent, type CurrentCongestion } from "./api/congestion";
 import { CongestionCard } from "./components/CongestionCard";
+import { useCongestionStream } from "./hooks/useCongestionStream";
 
 export default function App() {
-  const [current, setCurrent] = useState<CurrentCongestion | null>(null);
+  const [initial, setInitial] = useState<CurrentCongestion | null>(null);
 
   useEffect(() => {
-    fetchCurrent().then(setCurrent).catch(() => setCurrent(null));
+    fetchCurrent().then(setInitial).catch(() => setInitial(null));
   }, []);
+
+  const current = useCongestionStream(initial);
 
   return (
     <main className="mx-auto max-w-xl p-6">
