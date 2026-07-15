@@ -32,7 +32,7 @@ export function CongestionCard({
   history = null,
 }: {
   data: CurrentCongestion | null;
-  history?: CongestionHistoryPoint[] | null;
+  history: CongestionHistoryPoint[] | null;
 }) {
   if (!data) {
     return <div className="rounded-lg border p-8">불러오는 중...</div>;
