@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import init_db
+from app.routes.congestion import router as congestion_router
 from app.scheduler import build_scheduler
 
 
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Exhibition Congestion Prediction", lifespan=lifespan)
+app.include_router(congestion_router)
 
 
 @app.get("/health")
