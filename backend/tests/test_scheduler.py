@@ -35,4 +35,34 @@ def test_job_error_listener_logs_failure(caplog):
             callback(event)
 
     assert "collect_congestion" in caplog.text
-    assert "boom" in caplog.text
+    assert "RuntimeError" in caplog.text
+
+
+def test_job_error_listener_does_not_leak_exception_message(caplog):
+    from datetime import datetime, timezone
+
+    from apscheduler.events import JobExecutionEvent, EVENT_JOB_ERROR
+
+    from app.scheduler import build_scheduler
+
+    scheduler = build_scheduler()
+    error_listeners = [
+        callback
+        for callback, mask in scheduler._listeners
+        if mask & EVENT_JOB_ERROR
+    ]
+
+    event = JobExecutionEvent(
+        code=EVENT_JOB_ERROR,
+        job_id="collect_congestion",
+        jobstore="default",
+        scheduled_run_time=datetime.now(timezone.utc),
+        exception=RuntimeError("http://x/SECRET123/json/citydata/1/5/area"),
+    )
+
+    with caplog.at_level("ERROR"):
+        for callback in error_listeners:
+            callback(event)
+
+    assert "collect_congestion" in caplog.text
+    assert "SECRET123" not in caplog.text

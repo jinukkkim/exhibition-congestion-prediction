@@ -43,6 +43,7 @@ def _seed(session_factory, n_days):
 
 
 def test_run_daily_batch_reports_collecting_before_min_days(session_factory):
+    from app.cache import get_prediction
     from app.prediction.batch import run_daily_batch
 
     _seed(session_factory, n_days=5)
@@ -51,6 +52,7 @@ def test_run_daily_batch_reports_collecting_before_min_days(session_factory):
 
     assert result["status"] == "collecting"
     assert result["days_collected"] == 4
+    assert get_prediction() == result
 
 
 def test_run_daily_batch_returns_ready_with_mae_and_curve(session_factory):

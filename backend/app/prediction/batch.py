@@ -15,11 +15,15 @@ def run_daily_batch(session_factory=SessionLocal) -> dict:
         rows = session.query(RawCongestion).order_by(RawCongestion.observed_at).all()
 
     if not rows:
-        return {"status": "collecting", "days_collected": 0}
+        result = {"status": "collecting", "days_collected": 0}
+        set_prediction(result)
+        return result
 
     days_collected = (rows[-1].observed_at - rows[0].observed_at).days
     if days_collected < MIN_DAYS_REQUIRED:
-        return {"status": "collecting", "days_collected": days_collected}
+        result = {"status": "collecting", "days_collected": days_collected}
+        set_prediction(result)
+        return result
 
     split = int(len(rows) * 0.8)
     train_rows, test_rows = rows[:split], rows[split:]

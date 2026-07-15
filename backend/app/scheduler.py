@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 def _log_job_error(event):
-    logger.error("Scheduled job %s failed: %s", event.job_id, event.exception)
+    logger.error(
+        "Scheduled job %s failed: %s",
+        event.job_id,
+        type(event.exception).__name__,
+    )
 
 
 def build_scheduler() -> BackgroundScheduler:
