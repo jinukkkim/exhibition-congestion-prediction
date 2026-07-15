@@ -26,10 +26,20 @@ test("renders current congestion and prediction chart from the API", async ({ pa
     })
   );
 
+  await page.route("**/congestion/history*", (route) =>
+    route.fulfill({
+      json: [
+        { observed_at: "2026-07-15T08:30:00", population_avg: 800 },
+        { observed_at: "2026-07-15T14:30:00", population_avg: 1500 },
+      ],
+    })
+  );
+
   await page.route("**/congestion/stream", (route) => route.abort());
 
   await page.goto("/");
 
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
+  await expect(page.getByTestId("history-sparkline")).toBeVisible();
 });
