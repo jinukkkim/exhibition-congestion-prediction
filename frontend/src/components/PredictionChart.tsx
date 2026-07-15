@@ -18,7 +18,7 @@ export function PredictionChart({ prediction }: { prediction: PredictionResult |
   if (!prediction || prediction.status === "collecting") {
     const days = prediction?.days_collected ?? 0;
     return (
-      <div className="rounded-lg border p-4">
+      <div className="rounded-lg border p-8">
         데이터 수집 중 ({days}/14일) — 예측을 위해 조금 더 기다려주세요.
       </div>
     );
@@ -30,8 +30,8 @@ export function PredictionChart({ prediction }: { prediction: PredictionResult |
   const maxValue = Math.max(...baselineValues, ...modelValues, 1);
 
   return (
-    <div className="rounded-lg border p-4">
-      <p className="mb-2 text-sm text-gray-500">
+    <div className="rounded-lg border p-8">
+      <p className="mb-2 text-xs text-gray-500">
         베이스라인 MAE {prediction.baseline_mae?.toFixed(1)} · 모델 MAE{" "}
         {prediction.model_mae?.toFixed(1)}
       </p>
