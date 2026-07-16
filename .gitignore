@@ -1,0 +1,20 @@
+# Python
+backend/.venv/
+**/__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+
+# Editor / tooling
+.claude/
+.superpowers/
+
+# Local data
+backend/congestion.db
+.env
