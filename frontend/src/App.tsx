@@ -9,6 +9,7 @@ import {
   type PredictionResult,
 } from "./api/congestion";
 import { CongestionCard } from "./components/CongestionCard";
+import { DailyLogTable } from "./components/DailyLogTable";
 import { PredictionChart } from "./components/PredictionChart";
 import { useCongestionStream } from "./hooks/useCongestionStream";
 
@@ -31,6 +32,7 @@ export default function App() {
     <main className="mx-auto max-w-xl space-y-4 p-6">
       <h1 className="text-xl font-semibold">전시 혼잡도 예측</h1>
       <CongestionCard data={current} history={history} />
+      <DailyLogTable />
       <PredictionChart prediction={prediction} />
     </main>
   );
