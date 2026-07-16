@@ -10,6 +10,8 @@ const STATUS_COLOR: Record<string, string> = {
 };
 const FALLBACK_COLOR = "#94a3b8";
 
+const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
+
 type ColumnKey = keyof DailyLogPoint;
 
 const COLUMNS: { key: ColumnKey; label: string }[] = [
@@ -60,20 +62,31 @@ export function DailyLogTable() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    let ignore = false;
     setRows(null);
     setError(false);
     fetchDaily(selectedDate)
-      .then(setRows)
-      .catch(() => setError(true));
+      .then((data) => {
+        if (!ignore) setRows(data);
+      })
+      .catch(() => {
+        if (!ignore) setError(true);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [selectedDate]);
 
   const isToday = selectedDate === todayString();
+  const isEarliest = selectedDate <= EARLIEST_DATE;
+  const displayRows = rows ? [...rows].reverse() : rows;
 
   return (
     <div className="rounded-lg border p-8">
       <div className="mb-4 flex items-center justify-between">
         <button
-          className="text-sm text-gray-500"
+          className="text-sm text-gray-500 disabled:opacity-30"
+          disabled={isEarliest}
           onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
         >
           ← 이전 날짜
@@ -92,7 +105,7 @@ export function DailyLogTable() {
       {!error && rows && rows.length === 0 && (
         <p className="text-sm text-gray-500">데이터 없음</p>
       )}
-      {!error && rows && rows.length > 0 && (
+      {!error && displayRows && displayRows.length > 0 && (
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 bg-white">
@@ -105,7 +118,7 @@ export function DailyLogTable() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {displayRows.map((row) => (
                 <tr key={row.observed_at}>
                   {COLUMNS.map((col) => (
                     <td
