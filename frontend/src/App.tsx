@@ -13,7 +13,7 @@ import { DailyLogTable } from "./components/DailyLogTable";
 import { PredictionChart } from "./components/PredictionChart";
 import { useCongestionStream } from "./hooks/useCongestionStream";
 
-const HISTORY_HOURS = 6;
+const HISTORY_HOURS = 24;
 
 export default function App() {
   const [initial, setInitial] = useState<CurrentCongestion | null>(null);

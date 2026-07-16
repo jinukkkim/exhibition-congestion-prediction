@@ -9,7 +9,7 @@ const STATUS_COLOR: Record<string, string> = {
 const FALLBACK_COLOR = "#94a3b8";
 
 const SPARKLINE_WIDTH = 200;
-const SPARKLINE_HEIGHT = 40;
+const SPARKLINE_HEIGHT = 80;
 
 function sparklinePoints(history: CongestionHistoryPoint[]): string {
   const values = history.map((point) => point.population_avg);
@@ -56,7 +56,7 @@ export function CongestionCard({
         <svg
           data-testid="history-sparkline"
           viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
-          className="mt-4 h-10 w-full"
+          className="mt-4 h-20 w-full"
         >
           <polyline
             points={sparklinePoints(history)}
