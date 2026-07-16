@@ -95,7 +95,7 @@ export function DailyLogTable() {
       {!error && rows && rows.length > 0 && (
         <div className="max-h-96 overflow-x-auto overflow-y-auto">
           <table className="w-full text-left text-xs">
-            <thead>
+            <thead className="sticky top-0 bg-white">
               <tr>
                 {COLUMNS.map((col) => (
                   <th key={col.key} className="whitespace-nowrap px-2 py-1 text-gray-500">
