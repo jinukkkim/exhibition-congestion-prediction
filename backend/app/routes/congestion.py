@@ -55,11 +55,13 @@ def congestion_history(
 
 @router.get("/congestion/daily", response_model=list[DailyLogPoint])
 def congestion_daily(date: str | None = Query(default=None)) -> list[DailyLogPoint]:
-    day_start = (
-        datetime.strptime(date, "%Y-%m-%d")
-        if date
-        else datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    )
+    if date is None:
+        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        try:
+            day_start = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
     day_end = day_start + timedelta(days=1)
 
     with SessionLocal() as session:

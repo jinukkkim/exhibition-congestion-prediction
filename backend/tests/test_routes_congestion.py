@@ -108,6 +108,12 @@ def test_daily_returns_empty_list_when_no_data(client):
     assert response.json() == []
 
 
+def test_daily_returns_400_for_malformed_date(client):
+    test_client, _ = client
+    response = test_client.get("/congestion/daily?date=not-a-date")
+    assert response.status_code == 400
+
+
 def test_daily_returns_only_rows_within_the_given_day(client):
     test_client, session_factory = client
 
