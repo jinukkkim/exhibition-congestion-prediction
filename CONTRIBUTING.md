@@ -25,7 +25,8 @@ Example: `fix(be): close redis pubsub connection on sse generator teardown`
 
 ## Pull requests
 
-- Title follows the commit convention above (used as the squash-merge commit message)
+- Title follows the commit convention above
+- Merge via "Merge commit" (not squash/rebase) — keep each commit as-is in `develop`/`main` history
 - Description: what the PR solves, and `Closes #123` if it closes an issue
 - Include tests for new features / bug fixes
 - Prefer new commits over force-pushing to an open PR
