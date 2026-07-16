@@ -35,6 +35,31 @@ test("renders current congestion and prediction chart from the API", async ({ pa
     })
   );
 
+  await page.route("**/congestion/daily*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          observed_at: "2026-07-16T09:00:00",
+          congest_level: "여유",
+          population_min: 800,
+          population_max: 1000,
+          male_ppltn_rate: 51.8,
+          female_ppltn_rate: 48.2,
+          ppltn_rate_0: null,
+          ppltn_rate_10: null,
+          ppltn_rate_20: null,
+          ppltn_rate_30: null,
+          ppltn_rate_40: null,
+          ppltn_rate_50: null,
+          ppltn_rate_60: null,
+          ppltn_rate_70: null,
+          resnt_ppltn_rate: 45.1,
+          non_resnt_ppltn_rate: 54.9,
+        },
+      ],
+    })
+  );
+
   await page.route("**/congestion/stream", (route) => route.abort());
 
   await page.goto("/");
@@ -42,4 +67,5 @@ test("renders current congestion and prediction chart from the API", async ({ pa
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
   await expect(page.getByTestId("history-sparkline")).toBeVisible();
+  await expect(page.getByText("09:00")).toBeVisible();
 });
