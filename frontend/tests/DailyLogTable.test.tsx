@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DailyLogTable } from "../src/components/DailyLogTable";
 import * as api from "../src/api/congestion";
+
+// No @types/node in this project; declare just enough of the Node global to
+// read/write TZ for the timezone-pinned test below.
+declare const process: { env: Record<string, string | undefined> };
 
 describe("DailyLogTable", () => {
   it("renders rows for the fetched day", async () => {
@@ -63,5 +67,49 @@ describe("DailyLogTable", () => {
     const firstCallDate = fetchDailyMock.mock.calls[0][0];
     const secondCallDate = fetchDailyMock.mock.calls[1][0];
     expect(secondCallDate < firstCallDate).toBe(true);
+  });
+
+  describe("in a UTC+9 (KST) timezone", () => {
+    let originalTz: string | undefined;
+
+    beforeEach(() => {
+      originalTz = process.env.TZ;
+      process.env.TZ = "Asia/Seoul";
+    });
+
+    afterEach(() => {
+      process.env.TZ = originalTz;
+    });
+
+    // Independent oracle for "local calendar date" — deliberately does not
+    // reuse the component's toISOString()-free formatting logic, so this
+    // test fails against the old UTC-based implementation and passes
+    // against the local-date fix.
+    function localDateString(d: Date): string {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    it("navigates by exactly one local calendar day, not a UTC day", async () => {
+      const fetchDailyMock = vi.spyOn(api, "fetchDaily").mockResolvedValue([]);
+
+      const today = new Date();
+      const todayLocal = localDateString(today);
+      const yesterdayLocal = localDateString(new Date(today.getTime() - 24 * 60 * 60 * 1000));
+
+      render(<DailyLogTable />);
+      await waitFor(() => expect(fetchDailyMock).toHaveBeenCalledTimes(1));
+      expect(screen.getByText(todayLocal)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /이전 날짜/ }));
+      await waitFor(() => expect(fetchDailyMock).toHaveBeenCalledTimes(2));
+      expect(screen.getByText(yesterdayLocal)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /다음 날짜/ }));
+      await waitFor(() => expect(fetchDailyMock).toHaveBeenCalledTimes(3));
+      expect(screen.getByText(todayLocal)).toBeInTheDocument();
+    });
   });
 });

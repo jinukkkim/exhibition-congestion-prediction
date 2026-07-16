@@ -31,14 +31,21 @@ const COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "non_resnt_ppltn_rate", label: "비상주인구" },
 ];
 
+function formatDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function todayString(): string {
-  return new Date().toISOString().slice(0, 10);
+  return formatDate(new Date());
 }
 
 function shiftDate(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatDate(d);
 }
 
 function cellValue(row: DailyLogPoint, key: ColumnKey): string {
