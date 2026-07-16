@@ -18,6 +18,18 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
                 congest_level=reading.congest_level,
                 population_min=reading.population_min,
                 population_max=reading.population_max,
+                male_ppltn_rate=reading.male_ppltn_rate,
+                female_ppltn_rate=reading.female_ppltn_rate,
+                ppltn_rate_0=reading.ppltn_rate_0,
+                ppltn_rate_10=reading.ppltn_rate_10,
+                ppltn_rate_20=reading.ppltn_rate_20,
+                ppltn_rate_30=reading.ppltn_rate_30,
+                ppltn_rate_40=reading.ppltn_rate_40,
+                ppltn_rate_50=reading.ppltn_rate_50,
+                ppltn_rate_60=reading.ppltn_rate_60,
+                ppltn_rate_70=reading.ppltn_rate_70,
+                resnt_ppltn_rate=reading.resnt_ppltn_rate,
+                non_resnt_ppltn_rate=reading.non_resnt_ppltn_rate,
             )
         )
         session.commit()

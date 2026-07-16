@@ -59,3 +59,24 @@ def test_collect_once_propagates_api_error(monkeypatch, session_factory):
 
     with session_factory() as session:
         assert session.query(RawCongestion).count() == 0
+
+
+def test_collect_once_stores_population_breakdown_fields(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    fake_reading = CongestionReading(
+        observed_at=datetime(2026, 7, 15, 14, 30),
+        congest_level="보통",
+        population_min=1000,
+        population_max=2000,
+        male_ppltn_rate=51.8,
+        resnt_ppltn_rate=45.1,
+    )
+    monkeypatch.setattr(collector_module, "fetch_congestion", lambda client, area, key: fake_reading)
+
+    collector_module.collect_once(session_factory=session_factory)
+
+    with session_factory() as session:
+        stored = session.query(RawCongestion).one()
+        assert stored.male_ppltn_rate == 51.8
+        assert stored.resnt_ppltn_rate == 45.1
