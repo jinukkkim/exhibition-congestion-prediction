@@ -2,44 +2,57 @@ import { useEffect, useState } from "react";
 
 import {
   fetchCurrent,
-  fetchHistory,
+  fetchDaily,
   fetchPrediction,
-  type CongestionHistoryPoint,
   type CurrentCongestion,
+  type DailyLogPoint,
   type PredictionResult,
 } from "./api/congestion";
 import { CongestionCard } from "./components/CongestionCard";
-import { DailyLogTable } from "./components/DailyLogTable";
+import { DailyLogTable, todayString } from "./components/DailyLogTable";
 import { PredictionChart } from "./components/PredictionChart";
 import { useCongestionStream } from "./hooks/useCongestionStream";
-
-const HISTORY_HOURS = 24;
 
 export default function App() {
   const [initial, setInitial] = useState<CurrentCongestion | null>(null);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
-  const [history, setHistory] = useState<CongestionHistoryPoint[] | null>(null);
+  const [daily, setDaily] = useState<DailyLogPoint[] | null>(null);
 
   useEffect(() => {
     fetchCurrent().then(setInitial).catch(() => setInitial(null));
     fetchPrediction().then(setPrediction).catch(() => setPrediction(null));
-    fetchHistory(HISTORY_HOURS).then(setHistory).catch(() => setHistory(null));
+    fetchDaily(todayString()).then(setDaily).catch(() => setDaily(null));
   }, []);
 
   const current = useCongestionStream(initial);
 
   return (
-    <main className="mx-auto max-w-[1600px] space-y-4 p-6">
-      <h1 className="text-xl font-semibold">전시 혼잡도 예측</h1>
-      <div className="flex gap-4">
-        <div className="w-80 shrink-0 space-y-4">
-          <CongestionCard data={current} history={history} />
+    <div className="min-h-screen bg-canvas">
+      <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
+        <header className="mb-12 flex items-end justify-between gap-6 border-b border-hairline/70 pb-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+              Exhibition · Seoul
+            </p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+              전시 혼잡도 예측
+            </h1>
+          </div>
+          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-soft">
+            <span className="h-2 w-2 rounded-full bg-[#34C759] motion-safe:animate-pulse-live" />
+            Live
+          </span>
+        </header>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <CongestionCard data={current} daily={daily} />
           <PredictionChart prediction={prediction} />
-        </div>
-        <div className="min-w-0 flex-1">
+        </section>
+
+        <section className="mt-6">
           <DailyLogTable />
-        </div>
-      </div>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }

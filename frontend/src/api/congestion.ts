@@ -34,19 +34,6 @@ export async function fetchPrediction(): Promise<PredictionResult> {
   return res.json();
 }
 
-export interface CongestionHistoryPoint {
-  observed_at: string;
-  population_avg: number;
-}
-
-export async function fetchHistory(hours: number): Promise<CongestionHistoryPoint[]> {
-  const res = await fetch(`/congestion/history?hours=${hours}`);
-  if (!res.ok) {
-    throw new Error(`failed to fetch congestion history: ${res.status}`);
-  }
-  return res.json();
-}
-
 export interface DailyLogPoint {
   observed_at: string;
   congest_level: string;
