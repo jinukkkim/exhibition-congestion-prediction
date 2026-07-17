@@ -93,6 +93,26 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("sparkline-line")).toBeInTheDocument();
   });
 
+  it("shows the live endpoint marker even when only one 30-min bucket of data exists", () => {
+    const { container } = render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        // Both readings fall in the same 30-min bucket (10:00–10:30), so
+        // resampling collapses them into a single point.
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 900)]}
+      />
+    );
+
+    // Live marker renders as two circles (soft glow + white ring dot). Before
+    // the fix, a single resampled point left `xy` empty and the marker never
+    // rendered even though the card is open.
+    expect(container.querySelectorAll("circle")).toHaveLength(2);
+  });
+
   it("excludes points before opening time and leaves the chart blank when fewer than 2 remain", () => {
     render(
       <CongestionCard

@@ -155,7 +155,7 @@ export function CongestionCard({
       ? [{ ...points[0], minutes: open }, ...points, { ...points[points.length - 1], minutes: close }]
       : [];
 
-  const xy = points.length > 1 ? toXY(points, open, close) : [];
+  const xy = points.length > 0 ? toXY(points, open, close) : [];
   const displayXY = displayPoints.length > 1 ? toXY(displayPoints, open, close) : [];
   const linePath = displayXY.length > 1 ? smoothPath(displayXY) : "";
   const areaD = displayXY.length > 1 ? areaPath(displayXY, linePath) : "";
