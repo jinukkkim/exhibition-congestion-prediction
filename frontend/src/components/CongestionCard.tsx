@@ -24,14 +24,21 @@ function formatMinutes(minutes: number): string {
   return `${hh}:${mm}`;
 }
 
-// Open/close (09:30, 17:30 or 21:00) are kept as exact bookend ticks (full
-// HH:MM) even though they're not on the hour, since that's where the line
-// actually starts/ends. Everything in between is a clean round hour, shown
-// as a bare hour number ("10", "11") rather than "10:00" — short enough to
-// sit next to most neighbors, but open is always exactly 30min from the
-// next hour, too little gap for any label (measured: labels a fraction of a
-// pixel apart, reads as touching) — so a round hour within MIN_GAP_MINUTES
-// of a bookend is dropped instead of rendered on top of it.
+// A round hour (e.g. close=21:00 on Wed/Sat) gets the bare-number treatment
+// too, same as the in-between ticks — only a genuinely half-hour time (09:30,
+// or close=17:30 on other days) needs the full HH:MM.
+function tickLabel(minutes: number): string {
+  return minutes % 60 === 0 ? String(minutes / 60) : formatMinutes(minutes);
+}
+
+// Open/close are kept as exact bookend ticks even though they're not always
+// on the hour, since that's where the line actually starts/ends. Everything
+// in between is a clean round hour, shown as a bare hour number ("10", "11")
+// rather than "10:00" — short enough to sit next to most neighbors, but open
+// is always exactly 30min from the next hour, too little gap for any label
+// (measured: labels a fraction of a pixel apart, reads as touching) — so a
+// round hour within MIN_GAP_MINUTES of a bookend is dropped instead of
+// rendered on top of it.
 const MIN_GAP_MINUTES = 35;
 
 function hourlyTicks(open: number, close: number): { minutes: number; label: string }[] {
@@ -43,9 +50,9 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
   }
 
   return [
-    { minutes: open, label: formatMinutes(open) },
-    ...ticks.map((minutes) => ({ minutes, label: String(minutes / 60) })),
-    { minutes: close, label: formatMinutes(close) },
+    { minutes: open, label: tickLabel(open) },
+    ...ticks.map((minutes) => ({ minutes, label: tickLabel(minutes) })),
+    { minutes: close, label: tickLabel(close) },
   ];
 }
 
