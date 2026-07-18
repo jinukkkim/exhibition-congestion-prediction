@@ -1,8 +1,9 @@
-"""One-time, idempotent migration: add the raw_response column to an
-existing local congestion.db without losing already-collected rows.
+"""Idempotent migration: add the raw_response column to an existing
+congestion.db without losing already-collected rows.
 
 SQLite only — Base.metadata.create_all() creates missing tables but never
-alters existing ones, so this fills that gap for local dev. Safe to re-run.
+alters existing ones, so this fills that gap. Safe to re-run; deploy.sh
+runs it on every deploy for that reason.
 """
 
 import sqlite3

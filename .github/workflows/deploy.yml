@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,3 +23,7 @@ jobs:
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' < deploy/deploy.sh
+
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
