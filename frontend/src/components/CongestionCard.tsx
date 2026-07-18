@@ -146,19 +146,15 @@ export function CongestionCard({
   const points = resample(rawPoints, open, BUCKET_MINUTES);
   const ticks = hourlyTicks(open, close);
 
-  // Pad both edges with the neighboring real value so the line/area reach the
-  // chart's full width instead of stopping mid-bucket. Hover and the "now"
-  // marker below intentionally keep using `points`/`xy` (real data only), so
-  // these two padding points are never selectable or shown as a dot.
-  const displayPoints: Point[] =
-    points.length > 0
-      ? [{ ...points[0], minutes: open }, ...points, { ...points[points.length - 1], minutes: close }]
-      : [];
-
+  // Line/area are drawn strictly from real data — no anchor points duplicated
+  // out to `open`/`close`. While open, that means the line stops exactly at
+  // `lastPoint` (the live marker's position), not projected forward to
+  // closing time with a value that hasn't happened yet. While closed, it
+  // means the line only spans the actual collected range, not padded flat
+  // to the axis edges.
   const xy = points.length > 0 ? toXY(points, open, close) : [];
-  const displayXY = displayPoints.length > 1 ? toXY(displayPoints, open, close) : [];
-  const linePath = displayXY.length > 1 ? smoothPath(displayXY) : "";
-  const areaD = displayXY.length > 1 ? areaPath(displayXY, linePath) : "";
+  const linePath = xy.length > 1 ? smoothPath(xy) : "";
+  const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = xy[xy.length - 1];
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
@@ -230,7 +226,7 @@ export function CongestionCard({
               viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
               className="w-full overflow-visible"
             >
-              {displayXY.length > 1 && (
+              {xy.length > 0 && (
                 <>
                   <defs>
                     <linearGradient id="sparkline-fill" x1="0" y1="0" x2="0" y2="1">
@@ -244,7 +240,7 @@ export function CongestionCard({
                       </radialGradient>
                     )}
                   </defs>
-                  <path d={areaD} fill="url(#sparkline-fill)" />
+                  {xy.length > 1 && <path d={areaD} fill="url(#sparkline-fill)" />}
                   {isOpen && lastPoint && (
                     <line
                       x1={lastPoint.x}
@@ -256,14 +252,16 @@ export function CongestionCard({
                       strokeDasharray="3 4"
                     />
                   )}
-                  <path
-                    data-testid="sparkline-line"
-                    d={linePath}
-                    fill="none"
-                    stroke={status.core}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                  />
+                  {xy.length > 1 && (
+                    <path
+                      data-testid="sparkline-line"
+                      d={linePath}
+                      fill="none"
+                      stroke={status.core}
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    />
+                  )}
                   {isOpen && lastPoint && (
                     <>
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={14} fill="url(#sparkline-glow)" />
