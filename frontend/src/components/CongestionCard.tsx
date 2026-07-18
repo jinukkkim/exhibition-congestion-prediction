@@ -190,9 +190,10 @@ export function CongestionCard({
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * SPARKLINE_WIDTH;
 
-    let nearest = 0;
+    let nearest: number | null = null;
     let nearestDist = Infinity;
     xy.forEach((p, i) => {
+      if (points[i].isRaw) return; // 09:30/closing-time points don't show hover info
       const dist = Math.abs(p.x - svgX);
       if (dist < nearestDist) {
         nearestDist = dist;
