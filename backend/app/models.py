@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String
+from sqlalchemy import DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -26,6 +26,11 @@ class RawCongestion(Base):
     ppltn_rate_70: Mapped[float | None] = mapped_column(Float, nullable=True)
     resnt_ppltn_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     non_resnt_ppltn_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Full /citydata response body, verbatim — see CongestionReading.raw_response.
+    # deferred: existing read paths (history/daily routes, the daily batch)
+    # select every column and don't use this one, so eagerly loading a ~20KB
+    # blob per row on every query would only add cost with no benefit.
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
 
     @property
     def population_avg(self) -> float:
