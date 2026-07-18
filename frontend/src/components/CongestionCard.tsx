@@ -31,7 +31,7 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
   return ticks.map((minutes) => ({ minutes, label: formatMinutes(minutes) }));
 }
 
-type Point = { minutes: number; value: number };
+type Point = { minutes: number; value: number; isRaw?: boolean };
 
 const BUCKET_MINUTES = 30; // 30 divides both business-hour spans (480min / 690min) evenly, so buckets never fall short
 
@@ -86,18 +86,35 @@ function toXY(points: Point[], open: number, close: number): XY[] {
   }));
 }
 
-// Catmull-Rom -> cubic Bezier, so the line reads as a curve instead of a jagged polyline.
+// Centripetal Catmull-Rom -> cubic Bezier. Unlike the uniform variant (which
+// weights every neighbor equally regardless of how close it is), this
+// parametrizes each segment by sqrt(distance), so a point sitting unusually
+// close to its neighbor (e.g. the 09:30 raw reading, ~15min from the first
+// 30min bucket while every other point is a full bucket apart) contributes
+// proportionally less to the tangent instead of bending the curve.
 function smoothPath(xy: XY[]): string {
+  const dist = (a: XY, b: XY) => Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)) || 1e-6;
   let d = `M ${xy[0].x} ${xy[0].y}`;
   for (let i = 0; i < xy.length - 1; i++) {
     const p0 = xy[i - 1] ?? xy[i];
     const p1 = xy[i];
     const p2 = xy[i + 1];
     const p3 = xy[i + 2] ?? p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    const t0 = 0;
+    const t1 = t0 + dist(p0, p1);
+    const t2 = t1 + dist(p1, p2);
+    const t3 = t2 + dist(p2, p3);
+
+    const m1x = (t2 - t1) * ((p1.x - p0.x) / (t1 - t0) - (p2.x - p0.x) / (t2 - t0) + (p2.x - p1.x) / (t2 - t1));
+    const m1y = (t2 - t1) * ((p1.y - p0.y) / (t1 - t0) - (p2.y - p0.y) / (t2 - t0) + (p2.y - p1.y) / (t2 - t1));
+    const m2x = (t2 - t1) * ((p2.x - p1.x) / (t2 - t1) - (p3.x - p1.x) / (t3 - t1) + (p3.x - p2.x) / (t3 - t2));
+    const m2y = (t2 - t1) * ((p2.y - p1.y) / (t2 - t1) - (p3.y - p1.y) / (t3 - t1) + (p3.y - p2.y) / (t3 - t2));
+
+    const cp1x = p1.x + m1x / 3;
+    const cp1y = p1.y + m1y / 3;
+    const cp2x = p2.x - m2x / 3;
+    const cp2y = p2.y - m2y / 3;
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   return d;
@@ -143,15 +160,25 @@ export function CongestionCard({
       value: (row.population_min + row.population_max) / 2,
     }))
     .filter((p) => p.minutes >= open && p.minutes <= close);
-  const points = resample(rawPoints, open, BUCKET_MINUTES);
+  const resampled = resample(rawPoints, open, BUCKET_MINUTES);
   const ticks = hourlyTicks(open, close);
 
-  // Line/area are drawn strictly from real data — no anchor points duplicated
-  // out to `open`/`close`. While open, that means the line stops exactly at
-  // `lastPoint` (the live marker's position), not projected forward to
-  // closing time with a value that hasn't happened yet. While closed, it
-  // means the line only spans the actual collected range, not padded flat
-  // to the axis edges.
+  // Add one real point at the literal 09:30 reading (not a bucket average)
+  // so the line reaches the opening mark using an actually-observed value.
+  // Symmetric for closing time once business hours are over — while still
+  // open, closing time hasn't happened yet, so no trailing point is added.
+  // These are raw single readings, not bucket averages, so they're flagged
+  // (`isRaw`) to show a single time in the tooltip instead of a range.
+  const leadRaw: Point | null =
+    rawPoints[0] && (resampled.length === 0 || rawPoints[0].minutes < resampled[0].minutes)
+      ? { ...rawPoints[0], isRaw: true }
+      : null;
+  const trailRaw: Point | null =
+    !isOpen && rawPoints.length > 0 && resampled.length > 0 && rawPoints[rawPoints.length - 1].minutes > resampled[resampled.length - 1].minutes
+      ? { ...rawPoints[rawPoints.length - 1], isRaw: true }
+      : null;
+  const points: Point[] = [...(leadRaw ? [leadRaw] : []), ...resampled, ...(trailRaw ? [trailRaw] : [])];
+
   const xy = points.length > 0 ? toXY(points, open, close) : [];
   const linePath = xy.length > 1 ? smoothPath(xy) : "";
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
@@ -240,7 +267,7 @@ export function CongestionCard({
                       </radialGradient>
                     )}
                   </defs>
-                  {xy.length > 1 && <path d={areaD} fill="url(#sparkline-fill)" />}
+                  {areaD && <path d={areaD} fill="url(#sparkline-fill)" />}
                   {isOpen && lastPoint && (
                     <line
                       x1={lastPoint.x}
@@ -252,7 +279,7 @@ export function CongestionCard({
                       strokeDasharray="3 4"
                     />
                   )}
-                  {xy.length > 1 && (
+                  {linePath && (
                     <path
                       data-testid="sparkline-line"
                       d={linePath}
@@ -297,13 +324,17 @@ export function CongestionCard({
               <div
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
-                  // Clamped so the box never overflows the card's clipped edges; the
-                  // guide line/dot on the curve still track the true hover position.
-                  left: `${Math.min(Math.max(((points[hoverIndex].minutes - open) / (close - open)) * 100, 14), 86)}%`,
+                  // Follows the dot's actual (possibly edge-snapped) x position
+                  // rather than the bucket's true center, so it lines up with
+                  // the guide line/dot; clamped so the box never overflows the
+                  // card's clipped edges.
+                  left: `${Math.min(Math.max((xy[hoverIndex].x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
                 <span className="font-mono tabular-nums text-ink-soft">
-                  {bucketRange(points[hoverIndex].minutes, BUCKET_MINUTES)}
+                  {points[hoverIndex].isRaw
+                    ? formatMinutes(points[hoverIndex].minutes)
+                    : bucketRange(points[hoverIndex].minutes, BUCKET_MINUTES)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
                 <span className="font-mono font-semibold tabular-nums text-ink">
