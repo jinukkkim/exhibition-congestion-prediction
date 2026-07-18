@@ -24,11 +24,36 @@ function formatMinutes(minutes: number): string {
   return `${hh}:${mm}`;
 }
 
+// A round hour (e.g. close=21:00 on Wed/Sat) gets the bare-number treatment
+// too, same as the in-between ticks — only a genuinely half-hour time (09:30,
+// or close=17:30 on other days) needs the full HH:MM.
+function tickLabel(minutes: number): string {
+  return minutes % 60 === 0 ? String(minutes / 60) : formatMinutes(minutes);
+}
+
+// Open/close are kept as exact bookend ticks even though they're not always
+// on the hour, since that's where the line actually starts/ends. Everything
+// in between is a clean round hour, shown as a bare hour number ("10", "11")
+// rather than "10:00" — short enough to sit next to most neighbors, but open
+// is always exactly 30min from the next hour, too little gap for any label
+// (measured: labels a fraction of a pixel apart, reads as touching) — so a
+// round hour within MIN_GAP_MINUTES of a bookend is dropped instead of
+// rendered on top of it.
+const MIN_GAP_MINUTES = 35;
+
 function hourlyTicks(open: number, close: number): { minutes: number; label: string }[] {
   const ticks: number[] = [];
-  for (let m = open; m < close; m += 60) ticks.push(m);
-  ticks.push(close);
-  return ticks.map((minutes) => ({ minutes, label: formatMinutes(minutes) }));
+  const firstRoundHour = Math.ceil(open / 60) * 60;
+  for (let m = firstRoundHour; m < close; m += 60) {
+    if (m - open < MIN_GAP_MINUTES || close - m < MIN_GAP_MINUTES) continue;
+    ticks.push(m);
+  }
+
+  return [
+    { minutes: open, label: tickLabel(open) },
+    ...ticks.map((minutes) => ({ minutes, label: tickLabel(minutes) })),
+    { minutes: close, label: tickLabel(close) },
+  ];
 }
 
 type Point = { minutes: number; value: number; isRaw?: boolean };
