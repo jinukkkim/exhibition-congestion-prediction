@@ -24,9 +24,21 @@ function formatMinutes(minutes: number): string {
   return `${hh}:${mm}`;
 }
 
+// Open/close (09:30, 17:30 or 21:00) are kept as exact bookend ticks even
+// though they're not on the hour, since that's where the line actually
+// starts/ends. Everything in between is a clean round hour — except a round
+// hour within MIN_GAP_MINUTES of a bookend, which gets dropped instead of
+// rendered so close it overlaps the bookend's label (e.g. 09:30 and 10:00
+// are only half the normal hour-to-hour spacing apart).
+const MIN_GAP_MINUTES = 40;
+
 function hourlyTicks(open: number, close: number): { minutes: number; label: string }[] {
-  const ticks: number[] = [];
-  for (let m = open; m < close; m += 60) ticks.push(m);
+  const ticks: number[] = [open];
+  const firstRoundHour = Math.ceil(open / 60) * 60;
+  for (let m = firstRoundHour; m < close; m += 60) {
+    if (m - open < MIN_GAP_MINUTES || close - m < MIN_GAP_MINUTES) continue;
+    ticks.push(m);
+  }
   ticks.push(close);
   return ticks.map((minutes) => ({ minutes, label: formatMinutes(minutes) }));
 }
