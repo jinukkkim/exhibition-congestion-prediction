@@ -51,23 +51,6 @@ function resample(points: Point[], open: number, bucketMinutes: number): Point[]
     }));
 }
 
-// A separate, locally-derived label — NOT Seoul's official 혼잡도 (that stays on
-// the hero card/table as-is). Seoul's value is relative to each area's own 28-day
-// baseline plus density/transit corrections, so it can legitimately disagree with
-// our displayed population number. This one is defined purely as a quartile of
-// today's own observed range, so it can never show a "worse" tier for a lower
-// population than some other point on the same chart.
-const PERCEIVED_LEVELS = ["여유", "보통", "약간 붐빔", "붐빔"];
-
-function perceivedLevel(value: number, points: Point[]): string {
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const fraction = (value - min) / (max - min || 1);
-  const idx = Math.min(Math.floor(fraction * PERCEIVED_LEVELS.length), PERCEIVED_LEVELS.length - 1);
-  return PERCEIVED_LEVELS[idx];
-}
-
 function xOf(minutes: number, open: number, close: number): number {
   return ((minutes - open) / (close - open || 1)) * SPARKLINE_WIDTH;
 }
@@ -342,14 +325,6 @@ export function CongestionCard({
                   {Math.round(points[hoverIndex].value).toLocaleString()}
                 </span>
                 <span className="text-ink-soft">명</span>
-                <span className="mx-1 text-ink-soft">·</span>
-                <span className="text-ink-soft">체감</span>{" "}
-                <span
-                  className="font-semibold"
-                  style={{ color: statusOf(perceivedLevel(points[hoverIndex].value, points)).text }}
-                >
-                  {perceivedLevel(points[hoverIndex].value, points)}
-                </span>
               </div>
             )}
             <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">
