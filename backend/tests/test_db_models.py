@@ -77,3 +77,23 @@ def test_raw_congestion_breakdown_fields_are_nullable():
 
         fetched = session.query(RawCongestion).one()
         assert fetched.male_ppltn_rate is None
+
+
+def test_raw_congestion_stores_raw_response():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    with Session() as session:
+        row = RawCongestion(
+            observed_at=datetime(2026, 7, 15, 14, 30),
+            congest_level="보통",
+            population_min=1000,
+            population_max=2000,
+            raw_response='{"CITYDATA": {"AREA_NM": "test"}}',
+        )
+        session.add(row)
+        session.commit()
+
+        fetched = session.query(RawCongestion).one()
+        assert fetched.raw_response == '{"CITYDATA": {"AREA_NM": "test"}}'

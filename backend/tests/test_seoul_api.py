@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import httpx
@@ -55,6 +56,7 @@ def test_fetch_congestion_parses_response():
     assert reading.ppltn_rate_70 == 9.8
     assert reading.resnt_ppltn_rate == 45.1
     assert reading.non_resnt_ppltn_rate == 54.9
+    assert json.loads(reading.raw_response) == FIXTURE
 
 
 def test_fetch_congestion_defaults_new_fields_when_absent():

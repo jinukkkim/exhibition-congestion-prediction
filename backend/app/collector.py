@@ -30,6 +30,7 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
                 ppltn_rate_70=reading.ppltn_rate_70,
                 resnt_ppltn_rate=reading.resnt_ppltn_rate,
                 non_resnt_ppltn_rate=reading.non_resnt_ppltn_rate,
+                raw_response=reading.raw_response,
             )
         )
         session.commit()
