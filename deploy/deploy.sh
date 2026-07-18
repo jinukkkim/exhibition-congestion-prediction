@@ -11,6 +11,7 @@ git checkout -B main origin/main
 
 cd backend
 .venv/bin/pip install -e . --quiet
+.venv/bin/python scripts/migrate_add_raw_response.py
 sudo systemctl restart exhibition-backend.service
 
 cd ../frontend
