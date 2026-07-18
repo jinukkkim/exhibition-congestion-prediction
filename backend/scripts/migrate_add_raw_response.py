@@ -11,6 +11,9 @@ from app.config import settings
 
 
 def main() -> None:
+    if not settings.database_url.startswith("sqlite:///"):
+        raise SystemExit(f"this script only supports sqlite:/// URLs, got: {settings.database_url}")
+
     db_path = settings.database_url.removeprefix("sqlite:///")
     conn = sqlite3.connect(db_path)
     try:
