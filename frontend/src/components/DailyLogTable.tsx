@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchDaily, type DailyLogPoint } from "../api/congestion";
-
-const STATUS_COLOR: Record<string, string> = {
-  여유: "#0ca30c",
-  보통: "#fab219",
-  약간붐빔: "#ec835a",
-  붐빔: "#d03b3b",
-};
-const FALLBACK_COLOR = "#94a3b8";
+import { statusOf } from "../lib/status";
 
 const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
 
@@ -40,7 +33,7 @@ function formatDate(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function todayString(): string {
+export function todayString(): string {
   return formatDate(new Date());
 }
 
@@ -82,18 +75,18 @@ export function DailyLogTable() {
   const displayRows = rows ? [...rows].reverse() : rows;
 
   return (
-    <div className="rounded-lg border p-8">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="overflow-hidden rounded-apple border border-hairline/60 bg-white/70 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
+      <div className="flex items-center justify-between border-b border-hairline/60 px-8 py-6">
         <button
-          className="text-sm text-gray-500 disabled:opacity-30"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
           disabled={isEarliest}
           onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
         >
           ← 이전 날짜
         </button>
-        <span className="text-sm font-semibold">{selectedDate}</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-ink">{selectedDate}</span>
         <button
-          className="text-sm text-gray-500 disabled:opacity-30"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
           disabled={isToday}
           onClick={() => setSelectedDate((d) => shiftDate(d, 1))}
         >
@@ -101,17 +94,20 @@ export function DailyLogTable() {
         </button>
       </div>
 
-      {error && <p className="text-sm text-gray-500">불러오지 못했습니다.</p>}
+      {error && <p className="px-8 py-12 text-center text-sm text-ink-soft">불러오지 못했습니다.</p>}
       {!error && rows && rows.length === 0 && (
-        <p className="text-sm text-gray-500">데이터 없음</p>
+        <p className="px-8 py-12 text-center text-sm text-ink-soft">데이터 없음</p>
       )}
       {!error && displayRows && displayRows.length > 0 && (
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 bg-white">
+        <div className="max-h-[28rem] overflow-auto">
+          <table className="w-full border-collapse text-left text-[13px]">
+            <thead className="sticky top-0 z-10 bg-white/85 backdrop-blur-xl">
               <tr>
                 {COLUMNS.map((col) => (
-                  <th key={col.key} className="whitespace-nowrap px-2 py-1 text-gray-500">
+                  <th
+                    key={col.key}
+                    className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
+                  >
                     {col.label}
                   </th>
                 ))}
@@ -119,14 +115,14 @@ export function DailyLogTable() {
             </thead>
             <tbody>
               {displayRows.map((row) => (
-                <tr key={row.observed_at}>
+                <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
                   {COLUMNS.map((col) => (
                     <td
                       key={col.key}
-                      className="whitespace-nowrap px-2 py-1"
+                      className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
                       style={
                         col.key === "congest_level"
-                          ? { color: STATUS_COLOR[row.congest_level] ?? FALLBACK_COLOR }
+                          ? { color: statusOf(row.congest_level).text, fontWeight: 600 }
                           : undefined
                       }
                     >

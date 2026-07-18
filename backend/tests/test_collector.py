@@ -80,3 +80,22 @@ def test_collect_once_stores_population_breakdown_fields(monkeypatch, session_fa
         stored = session.query(RawCongestion).one()
         assert stored.male_ppltn_rate == 51.8
         assert stored.resnt_ppltn_rate == 45.1
+
+
+def test_collect_once_stores_raw_response(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    fake_reading = CongestionReading(
+        observed_at=datetime(2026, 7, 15, 14, 30),
+        congest_level="보통",
+        population_min=1000,
+        population_max=2000,
+        raw_response='{"CITYDATA": {"AREA_NM": "test"}}',
+    )
+    monkeypatch.setattr(collector_module, "fetch_congestion", lambda client, area, key: fake_reading)
+
+    collector_module.collect_once(session_factory=session_factory)
+
+    with session_factory() as session:
+        stored = session.query(RawCongestion).one()
+        assert stored.raw_response == '{"CITYDATA": {"AREA_NM": "test"}}'

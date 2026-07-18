@@ -24,6 +24,12 @@ class CongestionReading:
     ppltn_rate_70: float | None = None
     resnt_ppltn_rate: float | None = None
     non_resnt_ppltn_rate: float | None = None
+    # Full API response body, verbatim. We only parse the population fields
+    # above today, but /citydata also returns traffic, parking, subway, bus,
+    # weather, and event data we don't use yet — keeping the raw body means
+    # we can parse those out later without having to wait for new data to
+    # accumulate from that point forward.
+    raw_response: str | None = None
 
 
 def _optional_float(live: dict, key: str) -> float | None:
@@ -54,4 +60,5 @@ def fetch_congestion(client: httpx.Client, area_name: str, api_key: str) -> Cong
         ppltn_rate_70=_optional_float(live, "PPLTN_RATE_70"),
         resnt_ppltn_rate=_optional_float(live, "RESNT_PPLTN_RATE"),
         non_resnt_ppltn_rate=_optional_float(live, "NON_RESNT_PPLTN_RATE"),
+        raw_response=response.text,
     )
