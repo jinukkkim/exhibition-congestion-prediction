@@ -25,11 +25,25 @@ Example: `fix(be): close redis pubsub connection on sse generator teardown`
 
 ## Pull requests
 
-- Title follows the commit convention above
+- **Title**: English, follows the commit convention format (`type(scope): subject`)
+- **Description**: Korean, follows the template below
 - Merge via "Merge commit" (not squash/rebase) — keep each commit as-is in `develop`/`main` history
-- Description: written in Korean. State precisely *why* the work was done (the
-  background or decision that prompted it, not just "this PR solves X") and
-  *what* was actually built/changed, including notable reasoning behind
-  non-obvious choices. `Closes #123` if it closes an issue.
 - Include tests for new features / bug fixes
 - Prefer new commits over force-pushing to an open PR
+
+### PR description template
+
+```markdown
+## 설명
+
+<!-- 이 PR이 구현한 기능, 수정 사항 -->
+
+## 구현 내용
+
+<!-- 변경 사항을 세밀하고 정확하게 기술 -->
+
+## 테스트
+
+<!-- tests -->
+
+```
