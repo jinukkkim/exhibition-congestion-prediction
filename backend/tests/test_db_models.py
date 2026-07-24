@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import RawCongestion
+from app.models import RawCongestion, RawMmcaCongestion
 
 
 def test_raw_congestion_round_trip():
@@ -97,3 +97,46 @@ def test_raw_congestion_stores_raw_response():
 
         fetched = session.query(RawCongestion).one()
         assert fetched.raw_response == '{"CITYDATA": {"AREA_NM": "test"}}'
+
+
+def test_raw_mmca_congestion_round_trip():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    with Session() as session:
+        row = RawMmcaCongestion(
+            observed_at=datetime(2026, 7, 25, 14, 30),
+            space_code="MMCA-SPACE-1001",
+            space_nm="1전시실",
+            agnc_nm="국립현대미술관 서울관",
+            congestion_nm="보통",
+            raw_response='{"data": {"congestionNm": "보통"}}',
+        )
+        session.add(row)
+        session.commit()
+
+        fetched = session.query(RawMmcaCongestion).one()
+        assert fetched.space_code == "MMCA-SPACE-1001"
+        assert fetched.congestion_nm == "보통"
+
+
+def test_raw_mmca_congestion_allows_null_congestion():
+    """Fewer than 2 concurrent exhibitions: congestion_nm is legitimately absent."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    with Session() as session:
+        row = RawMmcaCongestion(
+            observed_at=datetime(2026, 7, 24, 14, 30),
+            space_code="MMCA-SPACE-1003",
+            space_nm=None,
+            agnc_nm=None,
+            congestion_nm=None,
+        )
+        session.add(row)
+        session.commit()
+
+        fetched = session.query(RawMmcaCongestion).one()
+        assert fetched.congestion_nm is None
