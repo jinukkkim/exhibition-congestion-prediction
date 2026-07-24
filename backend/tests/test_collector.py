@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import fakeredis
@@ -175,6 +176,37 @@ def test_collect_mmca_once_continues_after_one_room_fails(monkeypatch, session_f
     def fake_fetch(client, space_code, api_key):
         if space_code == "MMCA-SPACE-1001":
             raise httpx.HTTPError("boom")
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 14, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="국립현대미술관 서울관",
+            congestion_nm="여유",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings, "mmca_space_codes", ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+    )
+
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+    )
+
+    assert len(result) == 1
+    assert result[0].space_code == "MMCA-SPACE-1002"
+    with session_factory() as session:
+        assert session.query(RawMmcaCongestion).count() == 1
+
+
+def test_collect_mmca_once_continues_after_one_room_returns_invalid_json(monkeypatch, session_factory):
+    """data.go.kr sometimes returns a non-JSON (e.g. XML error) body with a 200
+    status on key/quota errors. That must not crash the whole collection cycle."""
+    import app.collector as collector_module
+
+    def fake_fetch(client, space_code, api_key):
+        if space_code == "MMCA-SPACE-1001":
+            raise json.JSONDecodeError("bad json", "doc", 0)
         return MmcaCongestionReading(
             observed_at=datetime(2026, 7, 27, 14, 0),
             space_code=space_code,

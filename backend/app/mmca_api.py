@@ -1,9 +1,14 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
 BASE_URL = "https://apis.data.go.kr/1371033/mmcadensity"
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,10 +35,19 @@ def fetch_congestion(client: httpx.Client, space_code: str, api_key: str) -> Mmc
     )
     response.raise_for_status()
     body = response.json()
+
+    result_code = body.get("resultCode")
+    if result_code is not None and result_code != "00":
+        logger.warning(
+            "MMCA API non-normal resultCode for %s: %s %s", space_code, result_code, body.get("resultMsg")
+        )
+
     data = body.get("data") or {}
 
     return MmcaCongestionReading(
-        observed_at=datetime.now(),
+        # Server local time isn't guaranteed to be KST (e.g. a UTC container),
+        # so pin explicitly to Asia/Seoul instead of a naive datetime.now().
+        observed_at=datetime.now(_SEOUL_TZ).replace(tzinfo=None),
         space_code=space_code,
         space_nm=data.get("spaceNm"),
         agnc_nm=data.get("agncNm"),
