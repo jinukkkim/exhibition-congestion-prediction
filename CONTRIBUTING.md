@@ -27,6 +27,9 @@ Example: `fix(be): close redis pubsub connection on sse generator teardown`
 
 - Title follows the commit convention above
 - Merge via "Merge commit" (not squash/rebase) — keep each commit as-is in `develop`/`main` history
-- Description: what the PR solves, and `Closes #123` if it closes an issue
+- Description: written in Korean. State precisely *why* the work was done (the
+  background or decision that prompted it, not just "this PR solves X") and
+  *what* was actually built/changed, including notable reasoning behind
+  non-obvious choices. `Closes #123` if it closes an issue.
 - Include tests for new features / bug fixes
 - Prefer new commits over force-pushing to an open PR

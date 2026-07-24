@@ -35,3 +35,17 @@ class RawCongestion(Base):
     @property
     def population_avg(self) -> float:
         return (self.population_min + self.population_max) / 2
+
+
+class RawMmcaCongestion(Base):
+    __tablename__ = "raw_mmca_congestion"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    space_code: Mapped[str] = mapped_column(String, index=True)
+    space_nm: Mapped[str | None] = mapped_column(String, nullable=True)
+    agnc_nm: Mapped[str | None] = mapped_column(String, nullable=True)
+    congestion_nm: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Full /congestion response body, verbatim — same deferred-load rationale
+    # as RawCongestion.raw_response.
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
