@@ -62,7 +62,7 @@ test("renders current congestion and prediction chart from the API", async ({ pa
 
   await page.route("**/congestion/stream", (route) => route.abort());
 
-  await page.goto("/");
+  await page.goto("/venues/national-museum");
 
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
