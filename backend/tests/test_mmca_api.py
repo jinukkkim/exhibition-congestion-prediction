@@ -1,9 +1,12 @@
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from app.mmca_api import fetch_congestion
+
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 def test_fetch_congestion_parses_response():
@@ -25,7 +28,11 @@ def test_fetch_congestion_parses_response():
         )
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    before = datetime.now()
+    # fetch_congestion pins observed_at to Asia/Seoul wall-clock time regardless
+    # of the host's local timezone (e.g. a UTC CI runner), so the bounds here
+    # must be captured on the same clock or this comparison drifts by the
+    # host/KST offset.
+    before = datetime.now(_SEOUL_TZ).replace(tzinfo=None)
 
     reading = fetch_congestion(client, "MMCA-SPACE-1001", "test-key")
 
@@ -33,7 +40,7 @@ def test_fetch_congestion_parses_response():
     assert reading.congestion_nm == "보통"
     assert reading.agnc_nm == "국립현대미술관 서울관"
     assert reading.space_nm == "1전시실"
-    assert before <= reading.observed_at <= datetime.now()
+    assert before <= reading.observed_at <= datetime.now(_SEOUL_TZ).replace(tzinfo=None)
     assert json.loads(reading.raw_response)["data"]["congestionNm"] == "보통"
 
 
