@@ -4,7 +4,7 @@ def test_build_scheduler_registers_expected_jobs():
     scheduler = build_scheduler()
     job_ids = {job.id for job in scheduler.get_jobs()}
 
-    assert job_ids == {"collect_congestion", "daily_batch"}
+    assert job_ids == {"collect_congestion", "collect_mmca_congestion", "daily_batch"}
 
 
 def test_job_error_listener_logs_failure(caplog):

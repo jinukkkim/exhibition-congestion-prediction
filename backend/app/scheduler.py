@@ -5,7 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from app.collector import collect_once
+from app.collector import collect_mmca_once, collect_once
 from app.prediction.batch import run_daily_batch
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,12 @@ def build_scheduler() -> BackgroundScheduler:
         collect_once,
         trigger=IntervalTrigger(minutes=5),
         id="collect_congestion",
+        misfire_grace_time=60,
+    )
+    scheduler.add_job(
+        collect_mmca_once,
+        trigger=IntervalTrigger(minutes=6),
+        id="collect_mmca_congestion",
         misfire_grace_time=60,
     )
     scheduler.add_job(
