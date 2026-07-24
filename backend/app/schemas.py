@@ -29,3 +29,10 @@ class DailyLogPoint(BaseModel):
     ppltn_rate_70: float | None = None
     resnt_ppltn_rate: float | None = None
     non_resnt_ppltn_rate: float | None = None
+
+
+class MmcaRoomStatus(BaseModel):
+    space_code: str
+    space_nm: str | None
+    congestion_nm: str | None
+    observed_at: str
