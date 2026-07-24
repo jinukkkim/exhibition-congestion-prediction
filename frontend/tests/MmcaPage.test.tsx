@@ -69,4 +69,45 @@ describe("MmcaPage", () => {
 
     expect(fetchMmcaRooms).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps showing stale data when a poll fails after an initial success", async () => {
+    const fetchMmcaRooms = vi
+      .spyOn(api, "fetchMmcaRooms")
+      .mockResolvedValueOnce([makeRoom()])
+      .mockRejectedValueOnce(new Error("network error"));
+
+    render(
+      <MemoryRouter>
+        <MmcaPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(fetchMmcaRooms).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("1전시실")).toBeInTheDocument();
+    expect(screen.queryByText("불러오지 못했습니다.")).not.toBeInTheDocument();
+  });
+
+  it("stops polling and ignores in-flight responses after unmount", async () => {
+    const fetchMmcaRooms = vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <MmcaPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(fetchMmcaRooms).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(fetchMmcaRooms).toHaveBeenCalledTimes(1);
+    expect(consoleError).not.toHaveBeenCalled();
+  });
 });
