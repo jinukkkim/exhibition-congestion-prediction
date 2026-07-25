@@ -36,3 +36,14 @@ class MmcaRoomStatus(BaseModel):
     space_nm: str | None
     congestion_nm: str | None
     observed_at: str
+
+
+class MmcaDailyRoom(BaseModel):
+    space_code: str
+    space_nm: str | None
+    congestion_nm: str | None
+
+
+class MmcaDailyLogPoint(BaseModel):
+    observed_at: str
+    rooms: list[MmcaDailyRoom]
