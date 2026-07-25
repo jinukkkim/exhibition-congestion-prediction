@@ -18,6 +18,10 @@ export default function App() {
           path="/venues/mmca-gwacheon"
           element={<MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />}
         />
+        <Route
+          path="/venues/mmca-deoksugung"
+          element={<MmcaPage venue="deoksugung" title="국립현대미술관 덕수궁관 혼잡도" />}
+        />
       </Routes>
     </BrowserRouter>
   );
