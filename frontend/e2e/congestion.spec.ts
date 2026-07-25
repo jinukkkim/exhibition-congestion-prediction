@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("renders current congestion and prediction chart from the API", async ({ page }) => {
+  // National Museum's congest-level text only renders during business hours
+  // (CongestionCard checks real wall-clock time), so pin the clock inside
+  // the fixtures' business hours to keep this deterministic around the clock.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
   await page.route("**/congestion/current", (route) =>
     route.fulfill({
       json: {
@@ -71,6 +76,10 @@ test("renders current congestion and prediction chart from the API", async ({ pa
 });
 
 test("navigates from the home picker to each venue page", async ({ page }) => {
+  // Same clock pin as above — the final National Museum revisit step
+  // renders the same business-hours-gated congest-level text.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
   await page.route("**/congestion/current", (route) =>
     route.fulfill({
       json: {
