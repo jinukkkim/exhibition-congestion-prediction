@@ -34,7 +34,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage />
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
       </MemoryRouter>
     );
 
@@ -47,7 +47,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage />
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
       </MemoryRouter>
     );
 
@@ -59,7 +59,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage />
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
       </MemoryRouter>
     );
 
@@ -78,7 +78,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage />
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
       </MemoryRouter>
     );
 
@@ -97,7 +97,7 @@ describe("MmcaPage", () => {
 
     const { unmount } = render(
       <MemoryRouter>
-        <MmcaPage />
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
       </MemoryRouter>
     );
 
@@ -109,5 +109,22 @@ describe("MmcaPage", () => {
 
     expect(fetchMmcaRooms).toHaveBeenCalledTimes(1);
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("fetches rooms for the venue prop and shows the title prop as heading", async () => {
+    const fetchMmcaRooms = vi
+      .spyOn(api, "fetchMmcaRooms")
+      .mockResolvedValue([makeRoom({ space_code: "MMCA-SPACE-2001" })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(fetchMmcaRooms).toHaveBeenCalledWith("gwacheon"));
+    expect(
+      screen.getByRole("heading", { name: "국립현대미술관 과천관 혼잡도" })
+    ).toBeInTheDocument();
   });
 });
