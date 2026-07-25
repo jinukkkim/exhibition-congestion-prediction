@@ -845,7 +845,7 @@ describe("HomePage", () => {
     );
     expect(screen.getByRole("link", { name: "국립현대미술관 서울관" })).toHaveAttribute(
       "href",
-      "/venues/mmca"
+      "/venues/mmca-seoul"
     );
     expect(screen.getByRole("link", { name: "국립현대미술관 과천관" })).toHaveAttribute(
       "href",
@@ -873,7 +873,7 @@ export interface Venue {
 
 export const VENUES: Venue[] = [
   { id: "national-museum", name: "국립중앙박물관", path: "/venues/national-museum" },
-  { id: "mmca", name: "국립현대미술관 서울관", path: "/venues/mmca" },
+  { id: "mmca-seoul", name: "국립현대미술관 서울관", path: "/venues/mmca-seoul" },
   { id: "mmca-gwacheon", name: "국립현대미술관 과천관", path: "/venues/mmca-gwacheon" },
 ];
 ```
@@ -894,7 +894,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/venues/national-museum" element={<NationalMuseumPage />} />
         <Route
-          path="/venues/mmca"
+          path="/venues/mmca-seoul"
           element={<MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />}
         />
         <Route

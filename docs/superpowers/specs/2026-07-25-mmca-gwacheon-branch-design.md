@@ -69,7 +69,7 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
 - `frontend/src/api/mmca.ts`: `fetchMmcaRooms(venue: string)`로 시그니처 변경, `/mmca/rooms?venue=${venue}` 호출.
 - `frontend/src/App.tsx`: 라우트 2개가 같은 `MmcaPage`를 다른 prop으로 렌더링.
   ```tsx
-  <Route path="/venues/mmca" element={<MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />} />
+  <Route path="/venues/mmca-seoul" element={<MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />} />
   <Route path="/venues/mmca-gwacheon" element={<MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />} />
   ```
 - `RoomCongestionCard`는 변경 없이 재사용.
