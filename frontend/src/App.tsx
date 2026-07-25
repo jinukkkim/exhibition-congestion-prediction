@@ -10,7 +10,14 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/venues/national-museum" element={<NationalMuseumPage />} />
-        <Route path="/venues/mmca" element={<MmcaPage />} />
+        <Route
+          path="/venues/mmca"
+          element={<MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />}
+        />
+        <Route
+          path="/venues/mmca-gwacheon"
+          element={<MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />}
+        />
       </Routes>
     </BrowserRouter>
   );
