@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
 
+from app.config import settings
 from app.db import SessionLocal
 from app.models import RawMmcaCongestion
 from app.schemas import MmcaRoomStatus
@@ -9,11 +10,16 @@ router = APIRouter()
 
 
 @router.get("/mmca/rooms", response_model=list[MmcaRoomStatus])
-def mmca_rooms() -> list[MmcaRoomStatus]:
+def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
+    codes = settings.mmca_venue_space_codes.get(venue)
+    if codes is None:
+        raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
+
     with SessionLocal() as session:
         latest_ids = [
             row[0]
             for row in session.query(func.max(RawMmcaCongestion.id))
+            .filter(RawMmcaCongestion.space_code.in_(codes))
             .group_by(RawMmcaCongestion.space_code)
             .all()
         ]

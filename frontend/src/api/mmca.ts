@@ -1,3 +1,5 @@
+export type MmcaVenue = "seoul" | "gwacheon" | "deoksugung";
+
 export interface MmcaRoomStatus {
   space_code: string;
   space_nm: string | null;
@@ -5,8 +7,8 @@ export interface MmcaRoomStatus {
   observed_at: string;
 }
 
-export async function fetchMmcaRooms(): Promise<MmcaRoomStatus[]> {
-  const res = await fetch("/mmca/rooms");
+export async function fetchMmcaRooms(venue: MmcaVenue): Promise<MmcaRoomStatus[]> {
+  const res = await fetch(`/mmca/rooms?venue=${venue}`);
   if (!res.ok) {
     throw new Error(`failed to fetch MMCA rooms: ${res.status}`);
   }

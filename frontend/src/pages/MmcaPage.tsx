@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchMmcaRooms, type MmcaRoomStatus } from "../api/mmca";
+import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
 import { RoomCongestionCard } from "../components/RoomCongestionCard";
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function MmcaPage() {
+export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -14,7 +14,7 @@ export function MmcaPage() {
     let ignore = false;
 
     function load() {
-      fetchMmcaRooms()
+      fetchMmcaRooms(venue)
         .then((data) => {
           if (ignore) return;
           setRooms(data);
@@ -31,7 +31,7 @@ export function MmcaPage() {
       ignore = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [venue]);
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -44,7 +44,7 @@ export function MmcaPage() {
             ← 미술관 선택
           </Link>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            국립현대미술관 서울관 혼잡도
+            {title}
           </h1>
         </header>
 
