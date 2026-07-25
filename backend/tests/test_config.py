@@ -24,13 +24,25 @@ def test_settings_reads_mmca_env(monkeypatch):
     settings = Settings()
 
     assert settings.mmca_api_key == "mmca-test-key"
-    assert settings.mmca_space_codes == [
-        "MMCA-SPACE-1001",
-        "MMCA-SPACE-1002",
-        "MMCA-SPACE-1003",
-        "MMCA-SPACE-1004",
-        "MMCA-SPACE-1005",
-        "MMCA-SPACE-1006",
-        "MMCA-SPACE-1007",
-        "MMCA-SPACE-1008",
-    ]
+    assert settings.mmca_venue_space_codes == {
+        "seoul": [
+            "MMCA-SPACE-1001",
+            "MMCA-SPACE-1002",
+            "MMCA-SPACE-1003",
+            "MMCA-SPACE-1004",
+            "MMCA-SPACE-1005",
+            "MMCA-SPACE-1006",
+            "MMCA-SPACE-1007",
+            "MMCA-SPACE-1008",
+        ],
+        "gwacheon": [
+            "MMCA-SPACE-2001",
+            "MMCA-SPACE-2002",
+            "MMCA-SPACE-2003",
+            "MMCA-SPACE-2004",
+            "MMCA-SPACE-2005",
+            "MMCA-SPACE-2006",
+            "MMCA-SPACE-2007",
+            "MMCA-SPACE-2008",
+        ],
+    }
