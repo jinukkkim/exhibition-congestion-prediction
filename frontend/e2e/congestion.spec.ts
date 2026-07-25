@@ -106,7 +106,7 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await expect(page.getByRole("link", { name: "국립현대미술관 덕수궁관" })).toBeVisible();
 
   await page.getByRole("link", { name: "국립현대미술관 서울관" }).click();
-  await expect(page).toHaveURL(/\/venues\/mmca$/);
+  await expect(page).toHaveURL(/\/venues\/mmca-seoul$/);
   await expect(page.getByText("1전시실")).toBeVisible();
 
   await page.getByRole("link", { name: "← 미술관 선택" }).click();

@@ -18,11 +18,15 @@ describe("HomePage", () => {
     );
     expect(screen.getByRole("link", { name: "국립현대미술관 서울관" })).toHaveAttribute(
       "href",
-      "/venues/mmca"
+      "/venues/mmca-seoul"
     );
     expect(screen.getByRole("link", { name: "국립현대미술관 과천관" })).toHaveAttribute(
       "href",
       "/venues/mmca-gwacheon"
+    );
+    expect(screen.getByRole("link", { name: "국립현대미술관 덕수궁관" })).toHaveAttribute(
+      "href",
+      "/venues/mmca-deoksugung"
     );
   });
 });
