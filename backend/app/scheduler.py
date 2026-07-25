@@ -29,7 +29,7 @@ def build_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         collect_mmca_once,
-        trigger=IntervalTrigger(minutes=6),
+        trigger=IntervalTrigger(minutes=12),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
     )

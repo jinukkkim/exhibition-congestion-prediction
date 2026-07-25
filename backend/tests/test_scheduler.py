@@ -66,3 +66,14 @@ def test_job_error_listener_does_not_leak_exception_message(caplog):
 
     assert "collect_congestion" in caplog.text
     assert "SECRET123" not in caplog.text
+
+
+def test_collect_mmca_job_runs_every_12_minutes():
+    from datetime import timedelta
+
+    from app.scheduler import build_scheduler
+
+    scheduler = build_scheduler()
+    job = scheduler.get_job("collect_mmca_congestion")
+
+    assert job.trigger.interval == timedelta(minutes=12)
