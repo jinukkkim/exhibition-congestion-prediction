@@ -45,4 +45,5 @@ def test_settings_reads_mmca_env(monkeypatch):
             "MMCA-SPACE-2007",
             "MMCA-SPACE-2008",
         ],
+        "deoksugung": ["MMCA-SPACE-4001"],
     }

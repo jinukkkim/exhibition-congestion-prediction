@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     mmca_venue_space_codes: dict[str, list[str]] = {
         "seoul": [f"MMCA-SPACE-100{i}" for i in range(1, 9)],
         "gwacheon": [f"MMCA-SPACE-200{i}" for i in range(1, 9)],
+        "deoksugung": ["MMCA-SPACE-4001"],
     }
     database_url: str = "sqlite:///./congestion.db"
     redis_url: str = "redis://localhost:6379/0"
