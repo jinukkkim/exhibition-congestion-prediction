@@ -66,9 +66,15 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     if not _is_seoul_branch_open(now):
         return []
 
+    space_codes = [
+        space_code
+        for codes in settings.mmca_venue_space_codes.values()
+        for space_code in codes
+    ]
+
     readings: list[MmcaCongestionReading] = []
     with httpx.Client() as client:
-        for space_code in settings.mmca_space_codes:
+        for space_code in space_codes:
             try:
                 readings.append(fetch_mmca_congestion(client, space_code, settings.mmca_api_key))
             except (httpx.HTTPError, json.JSONDecodeError):

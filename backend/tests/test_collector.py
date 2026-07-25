@@ -158,7 +158,9 @@ def test_collect_mmca_once_fetches_all_rooms_when_open(monkeypatch, session_fact
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
     monkeypatch.setattr(
-        collector_module.settings, "mmca_space_codes", ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
     )
 
     result = collector_module.collect_mmca_once(
@@ -186,7 +188,9 @@ def test_collect_mmca_once_continues_after_one_room_fails(monkeypatch, session_f
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
     monkeypatch.setattr(
-        collector_module.settings, "mmca_space_codes", ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
     )
 
     result = collector_module.collect_mmca_once(
@@ -217,7 +221,9 @@ def test_collect_mmca_once_continues_after_one_room_returns_invalid_json(monkeyp
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
     monkeypatch.setattr(
-        collector_module.settings, "mmca_space_codes", ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
     )
 
     result = collector_module.collect_mmca_once(
@@ -228,3 +234,36 @@ def test_collect_mmca_once_continues_after_one_room_returns_invalid_json(monkeyp
     assert result[0].space_code == "MMCA-SPACE-1002"
     with session_factory() as session:
         assert session.query(RawMmcaCongestion).count() == 1
+
+
+def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 14, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {
+            "seoul": ["MMCA-SPACE-1001"],
+            "gwacheon": ["MMCA-SPACE-2001"],
+        },
+    )
+
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+    )
+
+    assert len(result) == 2
+    assert set(seen_codes) == {"MMCA-SPACE-1001", "MMCA-SPACE-2001"}
