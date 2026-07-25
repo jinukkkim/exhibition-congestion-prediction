@@ -53,8 +53,16 @@ _SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
 _LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
+# Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
+# is closed on Mondays.
+_VENUE_CLOSED_DAYS: dict[str, set[int]] = {
+    "deoksugung": {0},  # 월요일 휴무
+}
 
-def _is_seoul_branch_open(now: datetime) -> bool:
+
+def _is_venue_open(venue: str, now: datetime) -> bool:
+    if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
+        return False
     close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
     return _SEOUL_BRANCH_OPEN <= now.time() <= close
 
@@ -63,14 +71,15 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    if not _is_seoul_branch_open(now):
-        return []
 
     space_codes = [
         space_code
-        for codes in settings.mmca_venue_space_codes.values()
+        for venue, codes in settings.mmca_venue_space_codes.items()
+        if _is_venue_open(venue, now)
         for space_code in codes
     ]
+    if not space_codes:
+        return []
 
     readings: list[MmcaCongestionReading] = []
     with httpx.Client() as client:
