@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchMmcaRooms, type MmcaRoomStatus } from "../api/mmca";
+import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
 import { RoomCongestionCard } from "../components/RoomCongestionCard";
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function MmcaPage({ venue, title }: { venue: string; title: string }) {
+export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
   const [error, setError] = useState(false);
 
