@@ -77,3 +77,19 @@ def test_collect_mmca_job_runs_every_15_minutes():
     job = scheduler.get_job("collect_mmca_congestion")
 
     assert job.trigger.interval == timedelta(minutes=15)
+
+
+def test_collect_mmca_job_runs_immediately_on_startup():
+    from datetime import datetime, timedelta
+
+    from app.scheduler import build_scheduler
+
+    before = datetime.now().astimezone()
+    scheduler = build_scheduler()
+    job = scheduler.get_job("collect_mmca_congestion")
+
+    # Without an explicit next_run_time, IntervalTrigger waits a full
+    # interval before the first run — this asserts the job is instead
+    # scheduled to run right away (within a few seconds of "now"), not
+    # ~15 minutes out.
+    assert job.next_run_time - before < timedelta(seconds=5)
