@@ -10,7 +10,8 @@ import {
   type PredictionResult,
 } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
-import { DailyLogTable, todayString } from "../components/DailyLogTable";
+import { DailyLogTable } from "../components/DailyLogTable";
+import { todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 

@@ -19,6 +19,7 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 describe("MmcaPage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -126,5 +127,8 @@ describe("MmcaPage", () => {
     expect(
       screen.getByRole("heading", { name: "국립현대미술관 과천관 혼잡도" })
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(vi.mocked(api.fetchMmcaDaily)).toHaveBeenCalledWith("gwacheon", expect.any(String))
+    );
   });
 });
