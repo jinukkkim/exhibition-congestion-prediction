@@ -10,6 +10,13 @@ const CHART_HEIGHT = 200;
 const POLL_INTERVAL_MS = 60_000;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 
+// Deliberately not tied to congestion status (that palette is reserved for
+// the headline word/badge, where color = meaning). The chart itself is a
+// single visual treatment regardless of value — sky blue fading into the
+// app's accent blue.
+const CHART_SKY = "#5AC8FA";
+const CHART_BLUE = "#0071E3";
+
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're
 // pure and value-free so sharing wouldn't add venue-specific conditionals,
@@ -55,30 +62,23 @@ function yOf(tier: number): number {
   return CHART_HEIGHT - 24 - (tier / (TIERS.length - 1)) * (CHART_HEIGHT - 48);
 }
 
-type Segment = { d: string; areaD: string; color: string };
-
-// One segment per hold-then-jump: horizontal at points[i]'s tier from
-// points[i] to points[i+1], then the vertical jump into the next value.
-// Each segment is colored by its OWN tier (points[i]'s status) rather than
-// one color for the whole line — since this is a step chart specifically to
-// be honest that the value actually changed, the color should show that too:
-// a single line color (e.g. today's latest status) would hide that the room
-// was 붐빔 an hour ago. No trailing segment after the last point — nothing
-// to hold it against yet, which is what the live glow marker communicates.
-function buildSegments(points: Point[], open: number, close: number): Segment[] {
-  const segments: Segment[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const x0 = xOf(points[i].minutes, open, close);
-    const x1 = xOf(points[i + 1].minutes, open, close);
-    const y0 = yOf(points[i].tier);
-    const y1 = yOf(points[i + 1].tier);
-    segments.push({
-      d: `M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1}`,
-      areaD: `M ${x0} ${CHART_HEIGHT} L ${x0} ${y0} L ${x1} ${y0} L ${x1} ${CHART_HEIGHT} Z`,
-      color: statusOf(points[i].label).core,
-    });
+// Step path: horizontal hold at each value, vertical jump exactly at the
+// change point. Unlike CongestionCard's smoothed curve, this is honest
+// about categorical data — the value really did jump, not drift.
+function stepPath(points: Point[], open: number, close: number): string {
+  let d = `M ${xOf(points[0].minutes, open, close)} ${yOf(points[0].tier)}`;
+  for (let i = 1; i < points.length; i++) {
+    const x = xOf(points[i].minutes, open, close);
+    const prevY = yOf(points[i - 1].tier);
+    d += ` L ${x} ${prevY} L ${x} ${yOf(points[i].tier)}`;
   }
-  return segments;
+  return d;
+}
+
+function areaPath(points: Point[], open: number, close: number, linePath: string): string {
+  const firstX = xOf(points[0].minutes, open, close);
+  const lastX = xOf(points[points.length - 1].minutes, open, close);
+  return `M ${firstX} ${CHART_HEIGHT} L ${firstX} ${yOf(points[0].tier)} ${linePath.slice(linePath.indexOf("L"))} L ${lastX} ${CHART_HEIGHT} Z`;
 }
 
 export function MmcaRoomChartCard({
@@ -133,9 +133,9 @@ export function MmcaRoomChartCard({
     .filter((p) => p.minutes >= open && p.minutes <= close);
 
   const ticks = hourlyTicks(open, close);
-  const segments = points.length > 1 ? buildSegments(points, open, close) : [];
+  const linePath = points.length > 1 ? stepPath(points, open, close) : "";
+  const areaD = points.length > 1 ? areaPath(points, open, close, linePath) : "";
   const lastPoint = points[points.length - 1];
-  const lastStatus = lastPoint ? statusOf(lastPoint.label) : null;
 
   const title = room?.space_nm ?? spaceCode;
   const currentLabel = room?.congestion_nm;
@@ -210,31 +210,30 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {segments.length > 0 && lastStatus && (
+            {linePath && (
               <>
-                {isOpen && (
-                  <defs>
+                <defs>
+                  <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART_SKY} stopOpacity="0.32" />
+                    <stop offset="100%" stopColor={CHART_BLUE} stopOpacity="0" />
+                  </linearGradient>
+                  {isOpen && (
                     <radialGradient id={`glow-${spaceCode}`}>
-                      <stop offset="0%" stopColor={lastStatus.core} stopOpacity="0.5" />
-                      <stop offset="100%" stopColor={lastStatus.core} stopOpacity="0" />
+                      <stop offset="0%" stopColor={CHART_BLUE} stopOpacity="0.5" />
+                      <stop offset="100%" stopColor={CHART_BLUE} stopOpacity="0" />
                     </radialGradient>
-                  </defs>
-                )}
-                {segments.map((segment, i) => (
-                  <path key={`area-${i}`} d={segment.areaD} fill={segment.color} fillOpacity={0.16} />
-                ))}
-                {segments.map((segment, i) => (
-                  <path
-                    key={`line-${i}`}
-                    data-testid="mmca-room-chart-segment"
-                    d={segment.d}
-                    fill="none"
-                    stroke={segment.color}
-                    strokeWidth={2.5}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
-                ))}
+                  )}
+                </defs>
+                <path d={areaD} fill={`url(#fill-${spaceCode})`} />
+                <path
+                  data-testid="mmca-room-chart-line"
+                  d={linePath}
+                  fill="none"
+                  stroke={CHART_BLUE}
+                  strokeWidth={2.5}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
                 {isOpen && lastPoint && (
                   <>
                     <line
@@ -257,7 +256,7 @@ export function MmcaRoomChartCard({
                       cy={yOf(lastPoint.tier)}
                       r={4.5}
                       fill="#FFFFFF"
-                      stroke={lastStatus.core}
+                      stroke={CHART_BLUE}
                       strokeWidth={2.5}
                     />
                   </>
@@ -277,7 +276,7 @@ export function MmcaRoomChartCard({
                       cy={yOf(hoverPoint.tier)}
                       r={4}
                       fill="#FFFFFF"
-                      stroke={statusOf(hoverPoint.label).core}
+                      stroke={CHART_BLUE}
                       strokeWidth={2}
                     />
                   </>
@@ -303,7 +302,7 @@ export function MmcaRoomChartCard({
             >
               <span className="font-mono tabular-nums text-ink-soft">{formatMinutes(hoverPoint.minutes)}</span>
               <span className="mx-1 text-ink-soft">·</span>
-              <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
+              <span className="font-semibold" style={{ color: CHART_BLUE }}>
                 {hoverPoint.label}
               </span>
             </div>
