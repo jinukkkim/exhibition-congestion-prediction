@@ -302,7 +302,7 @@ export function MmcaRoomChartCard({
             >
               <span className="font-mono tabular-nums text-ink-soft">{formatMinutes(hoverPoint.minutes)}</span>
               <span className="mx-1 text-ink-soft">·</span>
-              <span className="font-semibold" style={{ color: CHART_BLUE }}>
+              <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
                 {hoverPoint.label}
               </span>
             </div>
