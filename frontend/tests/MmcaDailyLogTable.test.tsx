@@ -44,7 +44,7 @@ describe("MmcaDailyLogTable", () => {
 
     render(<MmcaDailyLogTable venue="seoul" />);
 
-    await waitFor(() => expect(screen.getByText(/データなし|데이터 없음/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/데이터 없음/)).toBeInTheDocument());
   });
 
   it("disables the next-day button when viewing today, but never disables the previous-day button", async () => {
