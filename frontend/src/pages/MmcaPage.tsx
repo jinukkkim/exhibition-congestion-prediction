@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
+import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { RoomCongestionCard } from "../components/RoomCongestionCard";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -59,6 +60,10 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
             ))}
           </section>
         )}
+
+        <section className="mt-6">
+          <MmcaDailyLogTable venue={venue} />
+        </section>
       </main>
     </div>
   );

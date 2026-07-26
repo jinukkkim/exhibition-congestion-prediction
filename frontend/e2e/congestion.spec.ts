@@ -107,6 +107,7 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
       ],
     })
   );
+  await page.route("**/mmca/daily*", (route) => route.fulfill({ json: [] }));
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "국립중앙박물관" })).toBeVisible();

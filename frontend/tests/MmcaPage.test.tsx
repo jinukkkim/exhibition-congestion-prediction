@@ -19,6 +19,7 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 describe("MmcaPage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
   });
 
   afterEach(() => {
