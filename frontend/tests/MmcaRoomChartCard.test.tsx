@@ -73,6 +73,11 @@ describe("MmcaRoomChartCard", () => {
     render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
 
     await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    // Step path, never a curve: no Bezier command, and exactly one "L L" hop
+    // (2 L commands) for the 2-point mock data.
+    expect(d).not.toMatch(/C/);
+    expect(d.match(/L/g)).toHaveLength(2);
   });
 
   it("skips points where this room's reading is null", async () => {
@@ -86,6 +91,10 @@ describe("MmcaRoomChartCard", () => {
 
     // The null point must be dropped, not crash the path — 2 valid points remain.
     await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    // 2 valid points → 2 L commands; a spurious 3rd (from the null point
+    // being plotted instead of skipped) would produce 4.
+    expect(d.match(/L/g)).toHaveLength(2);
   });
 
   it("shows the live glow marker only when open", async () => {
@@ -100,6 +109,20 @@ describe("MmcaRoomChartCard", () => {
 
     // Glow renders as two circles (soft glow + white ring dot).
     await waitFor(() => expect(container.querySelectorAll("circle")).toHaveLength(2));
+  });
+
+  it("shows no glow marker outside business hours", async () => {
+    vi.setSystemTime(new Date("2026-07-16T20:00:00")); // Thu closes at 18:00
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+      dailyPoint("2026-07-15T14:15:00", { "MMCA-SPACE-2001": "붐빔" }),
+    ]);
+
+    const { container } = render(
+      <MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />
+    );
+
+    await waitFor(() => expect(container.querySelectorAll("circle")).toHaveLength(0));
   });
 
   it("fetches with the venue prop and today's date", async () => {

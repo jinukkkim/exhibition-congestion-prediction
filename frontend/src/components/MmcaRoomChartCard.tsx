@@ -10,9 +10,11 @@ const CHART_HEIGHT = 200;
 const POLL_INTERVAL_MS = 60_000;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 
-// Same tick-generation math as CongestionCard's hourlyTicks, duplicated
-// rather than shared: the values (open/close) differ per venue and the
-// two call sites have no other coupling — see design doc §3.2.
+// Several helpers here (tick math, xOf, chart dimensions, most of the JSX
+// shell) are duplicated from CongestionCard.tsx rather than shared — they're
+// pure and value-free so sharing wouldn't add venue-specific conditionals,
+// but extracting them touches a file this task didn't otherwise need to
+// touch. Revisit if a third consumer appears.
 const MIN_GAP_MINUTES = 35;
 
 function minutesOfDay(isoString: string): number {
