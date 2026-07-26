@@ -81,14 +81,61 @@ function areaPath(points: Point[], open: number, close: number, linePath: string
   return `M ${firstX} ${CHART_HEIGHT} L ${firstX} ${yOf(points[0].tier)} ${linePath.slice(linePath.indexOf("L"))} L ${lastX} ${CHART_HEIGHT} Z`;
 }
 
+type XY = { x: number; y: number };
+
+function toXY(points: Point[], open: number, close: number): XY[] {
+  return points.map((p) => ({ x: xOf(p.minutes, open, close), y: yOf(p.tier) }));
+}
+
+// Centripetal Catmull-Rom -> cubic Bezier, ported from CongestionCard.tsx.
+// Experimental "curve" comparison variant for 1전시실 only (see `curve` prop
+// below) — the step chart remains the default everywhere else, since the
+// whole reason for choosing steps was that a curve implies gradual change
+// between categorical tiers that never actually happened.
+function smoothPath(xy: XY[]): string {
+  const dist = (a: XY, b: XY) => Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)) || 1e-6;
+  let d = `M ${xy[0].x} ${xy[0].y}`;
+  for (let i = 0; i < xy.length - 1; i++) {
+    const p0 = xy[i - 1] ?? xy[i];
+    const p1 = xy[i];
+    const p2 = xy[i + 1];
+    const p3 = xy[i + 2] ?? p2;
+
+    const t0 = 0;
+    const t1 = t0 + dist(p0, p1);
+    const t2 = t1 + dist(p1, p2);
+    const t3 = t2 + dist(p2, p3);
+
+    const m1x = (t2 - t1) * ((p1.x - p0.x) / (t1 - t0) - (p2.x - p0.x) / (t2 - t0) + (p2.x - p1.x) / (t2 - t1));
+    const m1y = (t2 - t1) * ((p1.y - p0.y) / (t1 - t0) - (p2.y - p0.y) / (t2 - t0) + (p2.y - p1.y) / (t2 - t1));
+    const m2x = (t2 - t1) * ((p2.x - p1.x) / (t2 - t1) - (p3.x - p1.x) / (t3 - t1) + (p3.x - p2.x) / (t3 - t2));
+    const m2y = (t2 - t1) * ((p2.y - p1.y) / (t2 - t1) - (p3.y - p1.y) / (t3 - t1) + (p3.y - p2.y) / (t3 - t2));
+
+    const cp1x = p1.x + m1x / 3;
+    const cp1y = p1.y + m1y / 3;
+    const cp2x = p2.x - m2x / 3;
+    const cp2y = p2.y - m2y / 3;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
+function curveAreaPath(xy: XY[], linePath: string): string {
+  const first = xy[0];
+  const last = xy[xy.length - 1];
+  return `M ${first.x} ${CHART_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${CHART_HEIGHT} Z`;
+}
+
 export function MmcaRoomChartCard({
   venue,
   spaceCode,
   room,
+  curve = false,
 }: {
   venue: MmcaVenue;
   spaceCode: string;
   room: MmcaRoomStatus | undefined;
+  curve?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
@@ -133,8 +180,9 @@ export function MmcaRoomChartCard({
     .filter((p) => p.minutes >= open && p.minutes <= close);
 
   const ticks = hourlyTicks(open, close);
-  const linePath = points.length > 1 ? stepPath(points, open, close) : "";
-  const areaD = points.length > 1 ? areaPath(points, open, close, linePath) : "";
+  const xy = toXY(points, open, close);
+  const linePath = points.length > 1 ? (curve ? smoothPath(xy) : stepPath(points, open, close)) : "";
+  const areaD = points.length > 1 ? (curve ? curveAreaPath(xy, linePath) : areaPath(points, open, close, linePath)) : "";
   const lastPoint = points[points.length - 1];
 
   const title = room?.space_nm ?? spaceCode;

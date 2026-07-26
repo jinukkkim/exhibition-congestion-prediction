@@ -84,6 +84,19 @@ describe("MmcaRoomChartCard", () => {
     expect(line.getAttribute("stroke")).toBe("#0071E3");
   });
 
+  it("draws a smoothed curve instead of a step when curve is true", async () => {
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "붐빔" }),
+    ]);
+
+    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} curve />);
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d).toMatch(/C/);
+  });
+
   it("skips points where this room's reading is null", async () => {
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
       dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),

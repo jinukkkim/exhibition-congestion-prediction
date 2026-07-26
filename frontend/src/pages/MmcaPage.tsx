@@ -70,6 +70,9 @@ export function MmcaPage({
                 venue={venue}
                 spaceCode={spaceCode}
                 room={rooms.find((r) => r.space_code === spaceCode)}
+                // Temporary A/B comparison: 1전시실 as a smooth curve, the
+                // rest stay step charts — see MmcaRoomChartCard's `curve` doc.
+                curve={spaceCode === "MMCA-SPACE-2001"}
               />
             ))}
           </section>
