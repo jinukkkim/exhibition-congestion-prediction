@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 test("renders current congestion and prediction chart from the API", async ({ page }) => {
+  // National Museum's congest-level text only renders during business hours
+  // (CongestionCard checks real wall-clock time), so pin the clock inside
+  // the fixtures' business hours to keep this deterministic around the clock.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
   await page.route("**/congestion/current", (route) =>
     route.fulfill({
       json: {
@@ -62,10 +67,76 @@ test("renders current congestion and prediction chart from the API", async ({ pa
 
   await page.route("**/congestion/stream", (route) => route.abort());
 
-  await page.goto("/");
+  await page.goto("/venues/national-museum");
 
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
   await expect(page.getByTestId("history-sparkline")).toBeVisible();
   await expect(page.getByText("09:00")).toBeVisible();
+});
+
+test("navigates from the home picker to each venue page", async ({ page }) => {
+  // Same clock pin as above — the final National Museum revisit step
+  // renders the same business-hours-gated congest-level text.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  await page.route("**/congestion/current", (route) =>
+    route.fulfill({
+      json: {
+        observed_at: "2026-07-15T14:30:00",
+        congest_level: "보통",
+        population_avg: 1500,
+      },
+    })
+  );
+  await page.route("**/congestion/prediction", (route) =>
+    route.fulfill({ json: { status: "collecting", days_collected: 0 } })
+  );
+  await page.route("**/congestion/history*", (route) => route.fulfill({ json: [] }));
+  await page.route("**/congestion/daily*", (route) => route.fulfill({ json: [] }));
+  await page.route("**/congestion/stream", (route) => route.abort());
+  await page.route("**/mmca/rooms*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          space_code: "MMCA-SPACE-1001",
+          space_nm: "1전시실",
+          congestion_nm: "여유",
+          observed_at: "2026-07-24T10:00:00",
+        },
+      ],
+    })
+  );
+  await page.route("**/mmca/daily*", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "국립중앙박물관" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "국립현대미술관 서울관" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "국립현대미술관 과천관" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "국립현대미술관 덕수궁관" })).toBeVisible();
+
+  await page.getByRole("link", { name: "국립현대미술관 서울관" }).click();
+  await expect(page).toHaveURL(/\/venues\/mmca-seoul$/);
+  await expect(page.getByText("1전시실")).toBeVisible();
+
+  await page.getByRole("link", { name: "← 미술관 선택" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.getByRole("link", { name: "국립현대미술관 과천관" }).click();
+  await expect(page).toHaveURL(/\/venues\/mmca-gwacheon$/);
+  await expect(page.getByText("1전시실")).toBeVisible();
+
+  await page.getByRole("link", { name: "← 미술관 선택" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.getByRole("link", { name: "국립현대미술관 덕수궁관" }).click();
+  await expect(page).toHaveURL(/\/venues\/mmca-deoksugung$/);
+  await expect(page.getByText("1전시실")).toBeVisible();
+
+  await page.getByRole("link", { name: "← 미술관 선택" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.getByRole("link", { name: "국립중앙박물관" }).click();
+  await expect(page).toHaveURL(/\/venues\/national-museum$/);
+  await expect(page.getByText("보통")).toBeVisible();
 });

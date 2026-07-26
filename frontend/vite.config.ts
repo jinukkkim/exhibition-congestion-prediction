@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/congestion": "http://localhost:8000",
+      "/mmca": "http://localhost:8000",
     },
   },
   test: {

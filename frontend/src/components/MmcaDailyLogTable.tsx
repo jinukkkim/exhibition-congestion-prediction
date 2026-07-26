@@ -1,48 +1,19 @@
 import { useEffect, useState } from "react";
 
+import { fetchMmcaDaily, type MmcaDailyLogPoint, type MmcaVenue } from "../api/mmca";
 import { shiftDate, todayString } from "../lib/date";
-import { fetchDaily, type DailyLogPoint } from "../api/congestion";
 import { statusOf } from "../lib/status";
 
-const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
-
-type ColumnKey = keyof DailyLogPoint;
-
-const COLUMNS: { key: ColumnKey; label: string }[] = [
-  { key: "observed_at", label: "시각" },
-  { key: "congest_level", label: "혼잡도" },
-  { key: "population_min", label: "최소 인구" },
-  { key: "population_max", label: "최대 인구" },
-  { key: "male_ppltn_rate", label: "남성 비율" },
-  { key: "female_ppltn_rate", label: "여성 비율" },
-  { key: "ppltn_rate_0", label: "10대 미만" },
-  { key: "ppltn_rate_10", label: "10대" },
-  { key: "ppltn_rate_20", label: "20대" },
-  { key: "ppltn_rate_30", label: "30대" },
-  { key: "ppltn_rate_40", label: "40대" },
-  { key: "ppltn_rate_50", label: "50대" },
-  { key: "ppltn_rate_60", label: "60대" },
-  { key: "ppltn_rate_70", label: "70대 이상" },
-  { key: "resnt_ppltn_rate", label: "상주인구" },
-  { key: "non_resnt_ppltn_rate", label: "비상주인구" },
-];
-
-function cellValue(row: DailyLogPoint, key: ColumnKey): string {
-  if (key === "observed_at") return row.observed_at.slice(11, 16);
-  const value = row[key];
-  return value === null || value === undefined ? "" : String(value);
-}
-
-export function DailyLogTable() {
+export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
   const [selectedDate, setSelectedDate] = useState(todayString());
-  const [rows, setRows] = useState<DailyLogPoint[] | null>(null);
+  const [rows, setRows] = useState<MmcaDailyLogPoint[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let ignore = false;
     setRows(null);
     setError(false);
-    fetchDaily(selectedDate)
+    fetchMmcaDaily(venue, selectedDate)
       .then((data) => {
         if (!ignore) setRows(data);
       })
@@ -52,18 +23,17 @@ export function DailyLogTable() {
     return () => {
       ignore = true;
     };
-  }, [selectedDate]);
+  }, [venue, selectedDate]);
 
   const isToday = selectedDate === todayString();
-  const isEarliest = selectedDate <= EARLIEST_DATE;
   const displayRows = rows ? [...rows].reverse() : rows;
+  const columns = rows && rows.length > 0 ? rows[0].rooms : [];
 
   return (
     <div className="overflow-hidden rounded-apple border border-hairline/60 bg-white/70 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
       <div className="flex items-center justify-between border-b border-hairline/60 px-8 py-6">
         <button
-          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-          disabled={isEarliest}
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
           onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
         >
           ← 이전 날짜
@@ -87,12 +57,15 @@ export function DailyLogTable() {
           <table className="w-full border-collapse text-left text-[13px]">
             <thead className="sticky top-0 z-10 bg-white/85 backdrop-blur-xl">
               <tr>
-                {COLUMNS.map((col) => (
+                <th className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                  시각
+                </th>
+                {columns.map((room) => (
                   <th
-                    key={col.key}
+                    key={room.space_code}
                     className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
                   >
-                    {col.label}
+                    {room.space_nm ?? room.space_code}
                   </th>
                 ))}
               </tr>
@@ -100,17 +73,16 @@ export function DailyLogTable() {
             <tbody>
               {displayRows.map((row) => (
                 <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
-                  {COLUMNS.map((col) => (
+                  <td className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink">
+                    {row.observed_at.slice(11, 16)}
+                  </td>
+                  {row.rooms.map((room) => (
                     <td
-                      key={col.key}
+                      key={room.space_code}
                       className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
-                      style={
-                        col.key === "congest_level"
-                          ? { color: statusOf(row.congest_level).text, fontWeight: 600 }
-                          : undefined
-                      }
+                      style={{ color: statusOf(room.congestion_nm ?? "").text, fontWeight: 600 }}
                     >
-                      {cellValue(row, col.key)}
+                      {room.congestion_nm ?? "-"}
                     </td>
                   ))}
                 </tr>
