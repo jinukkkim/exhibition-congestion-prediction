@@ -127,5 +127,8 @@ describe("MmcaPage", () => {
     expect(
       screen.getByRole("heading", { name: "국립현대미술관 과천관 혼잡도" })
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(vi.mocked(api.fetchMmcaDaily)).toHaveBeenCalledWith("gwacheon", expect.any(String))
+    );
   });
 });
