@@ -1,23 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
+import {
+  fetchMmcaDaily,
+  fetchMmcaRooms,
+  type MmcaDailyLogPoint,
+  type MmcaRoomStatus,
+  type MmcaVenue,
+} from "../api/mmca";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
-import { RoomCongestionCard } from "../components/RoomCongestionCard";
+import { todayString } from "../lib/date";
+import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function MmcaPage({
-  venue,
-  title,
-  heroSpaceCodes = [],
-}: {
-  venue: MmcaVenue;
-  title: string;
-  heroSpaceCodes?: string[];
-}) {
+export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
+  const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -43,6 +43,33 @@ export function MmcaPage({
     };
   }, [venue]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    function load() {
+      fetchMmcaDaily(venue, todayString())
+        .then((data) => {
+          if (!ignore) setDaily(data);
+        })
+        .catch(() => {
+          // Silently retry — keep showing whatever we already have rather
+          // than blanking every card on one failed poll.
+        });
+    }
+
+    load();
+    const timer = setInterval(load, POLL_INTERVAL_MS);
+    return () => {
+      ignore = true;
+      clearInterval(timer);
+    };
+  }, [venue]);
+
+  const now = new Date();
+  const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
@@ -62,28 +89,20 @@ export function MmcaPage({
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
-        {rooms && heroSpaceCodes.length > 0 && (
-          <section className="mb-6 grid gap-6 lg:grid-cols-2">
-            {heroSpaceCodes.map((spaceCode) => (
+        {rooms && (
+          <section className={`grid gap-6${rooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
+            {rooms.map((room) => (
               <MmcaRoomChartCard
-                key={spaceCode}
-                venue={venue}
-                spaceCode={spaceCode}
-                room={rooms.find((r) => r.space_code === spaceCode)}
-                // Temporary A/B comparison: 1전시실 as a smooth curve, the
-                // rest stay step charts — see MmcaRoomChartCard's `curve` doc.
-                curve={spaceCode === "MMCA-SPACE-2001"}
+                key={room.space_code}
+                spaceCode={room.space_code}
+                room={room}
+                daily={daily}
+                open={open}
+                close={close}
+                nowMinutes={nowMinutes}
+                isOpen={isOpen}
               />
             ))}
-          </section>
-        )}
-        {rooms && (
-          <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {rooms
-              .filter((room) => !heroSpaceCodes.includes(room.space_code))
-              .map((room) => (
-                <RoomCongestionCard key={room.space_code} room={room} />
-              ))}
           </section>
         )}
 
