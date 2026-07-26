@@ -34,7 +34,11 @@ def build_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         collect_mmca_once,
-        trigger=IntervalTrigger(minutes=15),
+        # MMCA's API has no timestamp of its own (observed_at is our poll
+        # time), so an IntervalTrigger free-running from server start would
+        # drift off the clock grid after every restart. Cron-align to
+        # :00/:15/:30/:45 instead.
+        trigger=CronTrigger(minute="0,15,30,45"),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
         next_run_time=datetime.now(),

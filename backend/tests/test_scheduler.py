@@ -68,15 +68,24 @@ def test_job_error_listener_does_not_leak_exception_message(caplog):
     assert "SECRET123" not in caplog.text
 
 
-def test_collect_mmca_job_runs_every_15_minutes():
-    from datetime import timedelta
+def test_collect_mmca_job_is_cron_aligned_to_the_quarter_hour():
+    from datetime import datetime
 
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
     job = scheduler.get_job("collect_mmca_congestion")
 
-    assert job.trigger.interval == timedelta(minutes=15)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "0,15,30,45"
+
+    # Regardless of when the scheduler starts, the *second* fire (the first
+    # one after the immediate startup poll) must land exactly on :00/:15/:30/:45.
+    second_fire = job.trigger.get_next_fire_time(
+        None, datetime(2026, 7, 26, 15, 37, 0).astimezone()
+    )
+    assert second_fire.minute in (0, 15, 30, 45)
+    assert second_fire.second == 0
 
 
 def test_collect_mmca_job_runs_immediately_on_startup():
