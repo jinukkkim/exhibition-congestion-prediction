@@ -27,15 +27,16 @@ def build_scheduler() -> BackgroundScheduler:
         trigger=IntervalTrigger(minutes=5),
         id="collect_congestion",
         misfire_grace_time=60,
+        # Without this, APScheduler's IntervalTrigger waits a full interval
+        # before its first run, leaving a data gap after every restart.
+        # Poll once immediately, then fall back to the interval.
+        next_run_time=datetime.now(),
     )
     scheduler.add_job(
         collect_mmca_once,
         trigger=IntervalTrigger(minutes=15),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
-        # Without this, APScheduler's IntervalTrigger waits a full interval
-        # before its first run, leaving a 15-minute data gap after every
-        # restart. Poll once immediately, then fall back to the interval.
         next_run_time=datetime.now(),
     )
     scheduler.add_job(

@@ -93,3 +93,15 @@ def test_collect_mmca_job_runs_immediately_on_startup():
     # scheduled to run right away (within a few seconds of "now"), not
     # ~15 minutes out.
     assert job.next_run_time - before < timedelta(seconds=5)
+
+
+def test_collect_congestion_job_runs_immediately_on_startup():
+    from datetime import datetime, timedelta
+
+    from app.scheduler import build_scheduler
+
+    before = datetime.now().astimezone()
+    scheduler = build_scheduler()
+    job = scheduler.get_job("collect_congestion")
+
+    assert job.next_run_time - before < timedelta(seconds=5)
