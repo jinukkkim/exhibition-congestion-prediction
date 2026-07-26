@@ -1,8 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
-import * as api from "../src/api/mmca";
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../src/api/mmca";
 
 function dailyPoint(observedAt: string, byCode: Record<string, string | null>): MmcaDailyLogPoint {
@@ -26,127 +25,124 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   };
 }
 
+const OPEN = 10 * 60;
+const CLOSE = 18 * 60;
+const WITHIN_HOURS = 14 * 60 + 30; // 14:30
+
 describe("MmcaRoomChartCard", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date("2026-07-15T14:30:00")); // Wed, within 10:00-21:00
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  it("renders the room name and current status headline", async () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
+  it("renders the room name and current status headline when open", () => {
+    render(
+      <MmcaRoomChartCard
+        spaceCode="MMCA-SPACE-2001"
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpen
+      />
+    );
 
     expect(screen.getByText("1전시실")).toBeInTheDocument();
     expect(screen.getByText("약간 붐빔")).toBeInTheDocument();
   });
 
-  it("shows '영업 시간이 아닙니다' outside business hours", async () => {
-    vi.setSystemTime(new Date("2026-07-16T20:00:00")); // Thu closes at 18:00
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
+  it("shows '영업 시간이 아닙니다' when isOpen is false", () => {
+    render(
+      <MmcaRoomChartCard
+        spaceCode="MMCA-SPACE-2001"
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={20 * 60}
+        isOpen={false}
+      />
+    );
 
     expect(screen.getByText("영업 시간이 아닙니다")).toBeInTheDocument();
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
   });
 
   it("shows '정보 없음' when open but no current room status yet", () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={undefined} />);
+    render(
+      <MmcaRoomChartCard
+        spaceCode="MMCA-SPACE-2001"
+        room={undefined}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpen
+      />
+    );
 
     expect(screen.getByText("정보 없음")).toBeInTheDocument();
   });
 
-  it("draws a step line through today's readings for just this room, colored blue regardless of tier", async () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
-      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유", "MMCA-SPACE-2008": "보통" }),
-      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "붐빔", "MMCA-SPACE-2008": "여유" }),
-    ]);
+  it("draws a smoothed curve through today's readings for just this room", () => {
+    render(
+      <MmcaRoomChartCard
+        spaceCode="MMCA-SPACE-2001"
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유", "MMCA-SPACE-2008": "보통" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "붐빔", "MMCA-SPACE-2008": "여유" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpen
+      />
+    );
 
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
-
-    await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
     const line = screen.getByTestId("mmca-room-chart-line");
     const d = line.getAttribute("d") ?? "";
-    // Step path, never a curve: no Bezier command, and exactly one "L L" hop
-    // (2 L commands) for the 2-point mock data.
-    expect(d).not.toMatch(/C/);
-    expect(d.match(/L/g)).toHaveLength(2);
-    // Color is fixed (the app's accent blue), not derived from 붐빔's status
-    // color — the chart is deliberately not tier-colored.
+    expect(d).toMatch(/C/);
     expect(line.getAttribute("stroke")).toBe("#0071E3");
   });
 
-  it("draws a smoothed curve instead of a step when curve is true", async () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
-      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "붐빔" }),
-    ]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} curve />);
-
-    await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d).toMatch(/C/);
-  });
-
-  it("skips points where this room's reading is null", async () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
-      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": null }),
-      dailyPoint("2026-07-15T10:30:00", { "MMCA-SPACE-2001": "보통" }),
-    ]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
-
-    // The null point must be dropped, not crash the path — 2 valid points remain.
-    await waitFor(() => expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument());
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    // 2 valid points → 2 L commands; a spurious 3rd (from the null point
-    // being plotted instead of skipped) would produce 4.
-    expect(d.match(/L/g)).toHaveLength(2);
-  });
-
-  it("shows the live glow marker only when open", async () => {
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
-      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-      dailyPoint("2026-07-15T14:15:00", { "MMCA-SPACE-2001": "붐빔" }),
-    ]);
-
-    const { container } = render(
-      <MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />
+  it("skips points where this room's reading is null", () => {
+    render(
+      <MmcaRoomChartCard
+        spaceCode="MMCA-SPACE-2001"
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": null }),
+          dailyPoint("2026-07-15T10:30:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpen
+      />
     );
 
+    // 2 valid points (null dropped) → exactly one Bezier "C" segment; a
+    // spurious 3rd point would produce two.
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d.match(/C/g)).toHaveLength(1);
+  });
+
+  it("shows the live glow marker only when isOpen is true", () => {
+    const props = {
+      spaceCode: "MMCA-SPACE-2001",
+      room: makeRoom(),
+      daily: [
+        dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+        dailyPoint("2026-07-15T14:15:00", { "MMCA-SPACE-2001": "붐빔" }),
+      ],
+      open: OPEN,
+      close: CLOSE,
+      nowMinutes: WITHIN_HOURS,
+    };
+
+    const { container, rerender } = render(<MmcaRoomChartCard {...props} isOpen />);
     // Glow renders as two circles (soft glow + white ring dot).
-    await waitFor(() => expect(container.querySelectorAll("circle")).toHaveLength(2));
-  });
+    expect(container.querySelectorAll("circle")).toHaveLength(2);
 
-  it("shows no glow marker outside business hours", async () => {
-    vi.setSystemTime(new Date("2026-07-16T20:00:00")); // Thu closes at 18:00
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
-      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-      dailyPoint("2026-07-15T14:15:00", { "MMCA-SPACE-2001": "붐빔" }),
-    ]);
-
-    const { container } = render(
-      <MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />
-    );
-
-    await waitFor(() => expect(container.querySelectorAll("circle")).toHaveLength(0));
-  });
-
-  it("fetches with the venue prop and today's date", async () => {
-    const fetchMmcaDailyMock = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
-
-    render(<MmcaRoomChartCard venue="gwacheon" spaceCode="MMCA-SPACE-2001" room={makeRoom()} />);
-
-    await waitFor(() => expect(fetchMmcaDailyMock).toHaveBeenCalledWith("gwacheon", "2026-07-15"));
+    rerender(<MmcaRoomChartCard {...props} isOpen={false} />);
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
 });

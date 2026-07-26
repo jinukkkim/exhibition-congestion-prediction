@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useRef, useState, type MouseEvent } from "react";
 
-import { fetchMmcaDaily, type MmcaDailyLogPoint, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
-import { todayString } from "../lib/date";
-import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
+import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
-const POLL_INTERVAL_MS = 60_000;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 
 // Deliberately not tied to congestion status (that palette is reserved for
@@ -53,6 +50,7 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 }
 
 type Point = { minutes: number; tier: number; label: string };
+type XY = { x: number; y: number };
 
 function xOf(minutes: number, open: number, close: number): number {
   return ((minutes - open) / (close - open || 1)) * CHART_WIDTH;
@@ -62,36 +60,11 @@ function yOf(tier: number): number {
   return CHART_HEIGHT - 24 - (tier / (TIERS.length - 1)) * (CHART_HEIGHT - 48);
 }
 
-// Step path: horizontal hold at each value, vertical jump exactly at the
-// change point. Unlike CongestionCard's smoothed curve, this is honest
-// about categorical data — the value really did jump, not drift.
-function stepPath(points: Point[], open: number, close: number): string {
-  let d = `M ${xOf(points[0].minutes, open, close)} ${yOf(points[0].tier)}`;
-  for (let i = 1; i < points.length; i++) {
-    const x = xOf(points[i].minutes, open, close);
-    const prevY = yOf(points[i - 1].tier);
-    d += ` L ${x} ${prevY} L ${x} ${yOf(points[i].tier)}`;
-  }
-  return d;
-}
-
-function areaPath(points: Point[], open: number, close: number, linePath: string): string {
-  const firstX = xOf(points[0].minutes, open, close);
-  const lastX = xOf(points[points.length - 1].minutes, open, close);
-  return `M ${firstX} ${CHART_HEIGHT} L ${firstX} ${yOf(points[0].tier)} ${linePath.slice(linePath.indexOf("L"))} L ${lastX} ${CHART_HEIGHT} Z`;
-}
-
-type XY = { x: number; y: number };
-
 function toXY(points: Point[], open: number, close: number): XY[] {
   return points.map((p) => ({ x: xOf(p.minutes, open, close), y: yOf(p.tier) }));
 }
 
 // Centripetal Catmull-Rom -> cubic Bezier, ported from CongestionCard.tsx.
-// Experimental "curve" comparison variant for 1전시실 only (see `curve` prop
-// below) — the step chart remains the default everywhere else, since the
-// whole reason for choosing steps was that a curve implies gradual change
-// between categorical tiers that never actually happened.
 function smoothPath(xy: XY[]): string {
   const dist = (a: XY, b: XY) => Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)) || 1e-6;
   let d = `M ${xy[0].x} ${xy[0].y}`;
@@ -120,54 +93,31 @@ function smoothPath(xy: XY[]): string {
   return d;
 }
 
-function curveAreaPath(xy: XY[], linePath: string): string {
+function areaPath(xy: XY[], linePath: string): string {
   const first = xy[0];
   const last = xy[xy.length - 1];
   return `M ${first.x} ${CHART_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${CHART_HEIGHT} Z`;
 }
 
 export function MmcaRoomChartCard({
-  venue,
   spaceCode,
   room,
-  curve = false,
+  daily,
+  open,
+  close,
+  nowMinutes,
+  isOpen,
 }: {
-  venue: MmcaVenue;
   spaceCode: string;
   room: MmcaRoomStatus | undefined;
-  curve?: boolean;
+  daily: MmcaDailyLogPoint[] | null;
+  open: number;
+  close: number;
+  nowMinutes: number;
+  isOpen: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-
-    function load() {
-      fetchMmcaDaily(venue, todayString())
-        .then((data) => {
-          if (!ignore) setDaily(data);
-        })
-        .catch(() => {
-          // Silently retry, matching MmcaDailyLogTable — keep whatever we
-          // already have rather than blanking the card.
-        });
-    }
-
-    load();
-    const timer = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      ignore = true;
-      clearInterval(timer);
-    };
-  }, [venue, spaceCode]);
-
-  const now = new Date();
-  const { open, close } = mmcaBusinessHours(now);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = nowMinutes >= open && nowMinutes <= close;
-  const openBadge = isOpen ? "실시간" : nowMinutes < open ? "영업 전" : "영업 종료";
 
   const points: Point[] = (daily ?? [])
     .flatMap((row): Point[] => {
@@ -181,13 +131,14 @@ export function MmcaRoomChartCard({
 
   const ticks = hourlyTicks(open, close);
   const xy = toXY(points, open, close);
-  const linePath = points.length > 1 ? (curve ? smoothPath(xy) : stepPath(points, open, close)) : "";
-  const areaD = points.length > 1 ? (curve ? curveAreaPath(xy, linePath) : areaPath(points, open, close, linePath)) : "";
+  const linePath = points.length > 1 ? smoothPath(xy) : "";
+  const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
   const title = room?.space_nm ?? spaceCode;
   const currentLabel = room?.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
+  const openBadge = isOpen ? "실시간" : nowMinutes < open ? "영업 전" : "영업 종료";
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
     const svg = svgRef.current;
