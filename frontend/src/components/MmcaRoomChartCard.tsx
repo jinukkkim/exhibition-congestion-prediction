@@ -55,23 +55,30 @@ function yOf(tier: number): number {
   return CHART_HEIGHT - 24 - (tier / (TIERS.length - 1)) * (CHART_HEIGHT - 48);
 }
 
-// Step path: horizontal hold at each value, vertical jump exactly at the
-// change point. Unlike CongestionCard's smoothed curve, this is honest
-// about categorical data — the value really did jump, not drift.
-function stepPath(points: Point[], open: number, close: number): string {
-  let d = `M ${xOf(points[0].minutes, open, close)} ${yOf(points[0].tier)}`;
-  for (let i = 1; i < points.length; i++) {
-    const x = xOf(points[i].minutes, open, close);
-    const prevY = yOf(points[i - 1].tier);
-    d += ` L ${x} ${prevY} L ${x} ${yOf(points[i].tier)}`;
-  }
-  return d;
-}
+type Segment = { d: string; areaD: string; color: string };
 
-function areaPath(points: Point[], open: number, close: number, linePath: string): string {
-  const firstX = xOf(points[0].minutes, open, close);
-  const lastX = xOf(points[points.length - 1].minutes, open, close);
-  return `M ${firstX} ${CHART_HEIGHT} L ${firstX} ${yOf(points[0].tier)} ${linePath.slice(linePath.indexOf("L"))} L ${lastX} ${CHART_HEIGHT} Z`;
+// One segment per hold-then-jump: horizontal at points[i]'s tier from
+// points[i] to points[i+1], then the vertical jump into the next value.
+// Each segment is colored by its OWN tier (points[i]'s status) rather than
+// one color for the whole line — since this is a step chart specifically to
+// be honest that the value actually changed, the color should show that too:
+// a single line color (e.g. today's latest status) would hide that the room
+// was 붐빔 an hour ago. No trailing segment after the last point — nothing
+// to hold it against yet, which is what the live glow marker communicates.
+function buildSegments(points: Point[], open: number, close: number): Segment[] {
+  const segments: Segment[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const x0 = xOf(points[i].minutes, open, close);
+    const x1 = xOf(points[i + 1].minutes, open, close);
+    const y0 = yOf(points[i].tier);
+    const y1 = yOf(points[i + 1].tier);
+    segments.push({
+      d: `M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1}`,
+      areaD: `M ${x0} ${CHART_HEIGHT} L ${x0} ${y0} L ${x1} ${y0} L ${x1} ${CHART_HEIGHT} Z`,
+      color: statusOf(points[i].label).core,
+    });
+  }
+  return segments;
 }
 
 export function MmcaRoomChartCard({
@@ -126,8 +133,7 @@ export function MmcaRoomChartCard({
     .filter((p) => p.minutes >= open && p.minutes <= close);
 
   const ticks = hourlyTicks(open, close);
-  const linePath = points.length > 1 ? stepPath(points, open, close) : "";
-  const areaD = points.length > 1 ? areaPath(points, open, close, linePath) : "";
+  const segments = points.length > 1 ? buildSegments(points, open, close) : [];
   const lastPoint = points[points.length - 1];
   const lastStatus = lastPoint ? statusOf(lastPoint.label) : null;
 
@@ -204,30 +210,31 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {linePath && lastStatus && (
+            {segments.length > 0 && lastStatus && (
               <>
-                <defs>
-                  <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={lastStatus.core} stopOpacity="0.22" />
-                    <stop offset="100%" stopColor={lastStatus.core} stopOpacity="0" />
-                  </linearGradient>
-                  {isOpen && (
+                {isOpen && (
+                  <defs>
                     <radialGradient id={`glow-${spaceCode}`}>
                       <stop offset="0%" stopColor={lastStatus.core} stopOpacity="0.5" />
                       <stop offset="100%" stopColor={lastStatus.core} stopOpacity="0" />
                     </radialGradient>
-                  )}
-                </defs>
-                <path d={areaD} fill={`url(#fill-${spaceCode})`} />
-                <path
-                  data-testid="mmca-room-chart-line"
-                  d={linePath}
-                  fill="none"
-                  stroke={lastStatus.core}
-                  strokeWidth={2.5}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
+                  </defs>
+                )}
+                {segments.map((segment, i) => (
+                  <path key={`area-${i}`} d={segment.areaD} fill={segment.color} fillOpacity={0.16} />
+                ))}
+                {segments.map((segment, i) => (
+                  <path
+                    key={`line-${i}`}
+                    data-testid="mmca-room-chart-segment"
+                    d={segment.d}
+                    fill="none"
+                    stroke={segment.color}
+                    strokeWidth={2.5}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                ))}
                 {isOpen && lastPoint && (
                   <>
                     <line
