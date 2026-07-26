@@ -16,7 +16,13 @@ export default function App() {
         />
         <Route
           path="/venues/mmca-gwacheon"
-          element={<MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />}
+          element={
+            <MmcaPage
+              venue="gwacheon"
+              title="국립현대미술관 과천관 혼잡도"
+              heroSpaceCodes={["MMCA-SPACE-2001", "MMCA-SPACE-2008"]}
+            />
+          }
         />
         <Route
           path="/venues/mmca-deoksugung"

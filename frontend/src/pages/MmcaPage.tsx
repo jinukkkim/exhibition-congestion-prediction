@@ -3,11 +3,20 @@ import { Link } from "react-router-dom";
 
 import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
+import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { RoomCongestionCard } from "../components/RoomCongestionCard";
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
+export function MmcaPage({
+  venue,
+  title,
+  heroSpaceCodes = [],
+}: {
+  venue: MmcaVenue;
+  title: string;
+  heroSpaceCodes?: string[];
+}) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -53,11 +62,25 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
+        {rooms && heroSpaceCodes.length > 0 && (
+          <section className="mb-6 grid gap-6 lg:grid-cols-2">
+            {heroSpaceCodes.map((spaceCode) => (
+              <MmcaRoomChartCard
+                key={spaceCode}
+                venue={venue}
+                spaceCode={spaceCode}
+                room={rooms.find((r) => r.space_code === spaceCode)}
+              />
+            ))}
+          </section>
+        )}
         {rooms && (
           <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {rooms.map((room) => (
-              <RoomCongestionCard key={room.space_code} room={room} />
-            ))}
+            {rooms
+              .filter((room) => !heroSpaceCodes.includes(room.space_code))
+              .map((room) => (
+                <RoomCongestionCard key={room.space_code} room={room} />
+              ))}
           </section>
         )}
 

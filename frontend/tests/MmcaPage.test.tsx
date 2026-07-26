@@ -131,4 +131,27 @@ describe("MmcaPage", () => {
       expect(vi.mocked(api.fetchMmcaDaily)).toHaveBeenCalledWith("gwacheon", expect.any(String))
     );
   });
+
+  it("renders hero chart cards for heroSpaceCodes and excludes them from the small-card grid", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-2001", space_nm: "1전시실" }),
+      makeRoom({ space_code: "MMCA-SPACE-2002", space_nm: "2전시실" }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage
+          venue="gwacheon"
+          title="국립현대미술관 과천관 혼잡도"
+          heroSpaceCodes={["MMCA-SPACE-2001"]}
+        />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    // 1전시실 shows up once (in the hero card), not a second time in the small grid.
+    expect(screen.getAllByText("1전시실")).toHaveLength(1);
+    // 2전시실 wasn't in heroSpaceCodes — it still renders in the small grid.
+    expect(screen.getByText("2전시실")).toBeInTheDocument();
+  });
 });
