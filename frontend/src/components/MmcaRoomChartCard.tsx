@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 import { fetchMmcaDaily, type MmcaDailyLogPoint, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
 import { todayString } from "../lib/date";
@@ -83,7 +83,9 @@ export function MmcaRoomChartCard({
   spaceCode: string;
   room: MmcaRoomStatus | undefined;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
   const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -133,6 +135,26 @@ export function MmcaRoomChartCard({
   const currentLabel = room?.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
 
+  function handleHoverMove(event: MouseEvent<SVGRectElement>) {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
+
+    let nearest: number | null = null;
+    let nearestDist = Infinity;
+    points.forEach((p, i) => {
+      const dist = Math.abs(xOf(p.minutes, open, close) - svgX);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = i;
+      }
+    });
+    setHoverIndex(nearest);
+  }
+
+  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : undefined;
+
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
       <div
@@ -177,6 +199,7 @@ export function MmcaRoomChartCard({
 
         <div className="relative mt-8">
           <svg
+            ref={svgRef}
             data-testid="mmca-room-chart"
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
@@ -232,9 +255,52 @@ export function MmcaRoomChartCard({
                     />
                   </>
                 )}
+                {hoverPoint && (
+                  <>
+                    <line
+                      x1={xOf(hoverPoint.minutes, open, close)}
+                      y1={0}
+                      x2={xOf(hoverPoint.minutes, open, close)}
+                      y2={CHART_HEIGHT}
+                      stroke="#D2D2D7"
+                      strokeWidth={1}
+                    />
+                    <circle
+                      cx={xOf(hoverPoint.minutes, open, close)}
+                      cy={yOf(hoverPoint.tier)}
+                      r={4}
+                      fill="#FFFFFF"
+                      stroke={statusOf(hoverPoint.label).core}
+                      strokeWidth={2}
+                    />
+                  </>
+                )}
+                <rect
+                  x={0}
+                  y={0}
+                  width={CHART_WIDTH}
+                  height={CHART_HEIGHT}
+                  fill="transparent"
+                  onMouseMove={handleHoverMove}
+                  onMouseLeave={() => setHoverIndex(null)}
+                />
               </>
             )}
           </svg>
+          {hoverPoint && (
+            <div
+              className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
+              style={{
+                left: `${Math.min(Math.max((xOf(hoverPoint.minutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
+              }}
+            >
+              <span className="font-mono tabular-nums text-ink-soft">{formatMinutes(hoverPoint.minutes)}</span>
+              <span className="mx-1 text-ink-soft">·</span>
+              <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
+                {hoverPoint.label}
+              </span>
+            </div>
+          )}
           <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">
             {ticks.map((tick) => (
               <span
