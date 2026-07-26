@@ -68,40 +68,64 @@ def test_job_error_listener_does_not_leak_exception_message(caplog):
     assert "SECRET123" not in caplog.text
 
 
-def test_collect_mmca_job_runs_every_15_minutes():
-    from datetime import timedelta
+def test_collect_mmca_job_is_cron_aligned_to_the_quarter_hour():
+    from datetime import datetime
 
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
     job = scheduler.get_job("collect_mmca_congestion")
 
-    assert job.trigger.interval == timedelta(minutes=15)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "0,15,30,45"
+
+    # Regardless of when the scheduler starts, the next fire must land
+    # exactly on :00/:15/:30/:45 — no immediate off-grid poll.
+    next_fire = job.trigger.get_next_fire_time(
+        None, datetime(2026, 7, 26, 15, 37, 0).astimezone()
+    )
+    assert next_fire.minute in (0, 15, 30, 45)
+    assert next_fire.second == 0
 
 
-def test_collect_mmca_job_runs_immediately_on_startup():
-    from datetime import datetime, timedelta
-
-    from app.scheduler import build_scheduler
-
-    before = datetime.now().astimezone()
-    scheduler = build_scheduler()
-    job = scheduler.get_job("collect_mmca_congestion")
-
-    # Without an explicit next_run_time, IntervalTrigger waits a full
-    # interval before the first run — this asserts the job is instead
-    # scheduled to run right away (within a few seconds of "now"), not
-    # ~15 minutes out.
-    assert job.next_run_time - before < timedelta(seconds=5)
-
-
-def test_collect_congestion_job_runs_immediately_on_startup():
-    from datetime import datetime, timedelta
+def test_collect_congestion_job_is_cron_aligned_to_five_minutes():
+    from datetime import datetime
 
     from app.scheduler import build_scheduler
 
-    before = datetime.now().astimezone()
     scheduler = build_scheduler()
     job = scheduler.get_job("collect_congestion")
 
-    assert job.next_run_time - before < timedelta(seconds=5)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "*/5"
+
+    next_fire = job.trigger.get_next_fire_time(
+        None, datetime(2026, 7, 26, 15, 37, 0).astimezone()
+    )
+    assert next_fire.minute % 5 == 0
+    assert next_fire.second == 0
+
+
+def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
+    from app.scheduler import build_scheduler
+
+    scheduler = build_scheduler()
+    # next_run_time isn't computed until the scheduler actually starts —
+    # start it just long enough to read the computed schedule, then stop
+    # without letting anything actually fire.
+    scheduler.start(paused=True)
+    try:
+        # Neither collection job should carry an explicit next_run_time
+        # override — that would force an immediate off-grid poll on every
+        # restart, which is exactly what cron-alignment is meant to avoid.
+        # Whatever moment the test runs, the computed next_run_time must
+        # already land on each job's own grid.
+        mmca_job = scheduler.get_job("collect_mmca_congestion")
+        assert mmca_job.next_run_time.minute in (0, 15, 30, 45)
+        assert mmca_job.next_run_time.second == 0
+
+        congestion_job = scheduler.get_job("collect_congestion")
+        assert congestion_job.next_run_time.minute % 5 == 0
+        assert congestion_job.next_run_time.second == 0
+    finally:
+        scheduler.shutdown(wait=False)
