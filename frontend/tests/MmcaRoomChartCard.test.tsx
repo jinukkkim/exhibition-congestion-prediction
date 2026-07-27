@@ -83,6 +83,21 @@ describe("MmcaRoomChartCard", () => {
     expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
   });
 
+  it("falls back to the space code as the title when the room has no name yet", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ space_nm: null })}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByText("MMCA-SPACE-2001")).toBeInTheDocument();
+  });
+
   it("shows '정보 없음' when open but the room has no current status yet", () => {
     render(
       <MmcaRoomChartCard

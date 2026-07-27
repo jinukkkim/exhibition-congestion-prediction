@@ -136,7 +136,7 @@ export function MmcaRoomChartCard({
   const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
-  const title = room.space_nm;
+  const title = room.space_nm ?? spaceCode;
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
   const openBadge = !isOpenToday
