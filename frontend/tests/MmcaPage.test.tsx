@@ -188,4 +188,27 @@ describe("MmcaPage", () => {
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
     expect(container.querySelector("section")?.className).toMatch(/lg:grid-cols-2/);
   });
+
+  it("shows the closed-day state for Deoksugung on a Monday, but not for other venues", async () => {
+    vi.setSystemTime(new Date("2026-07-27T11:00:00")); // Monday, within 10:00-18:00
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <MmcaPage venue="deoksugung" title="국립현대미술관 덕수궁관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
+    expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+  });
 });

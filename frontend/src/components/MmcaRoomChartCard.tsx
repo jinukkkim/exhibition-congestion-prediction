@@ -100,24 +100,25 @@ function areaPath(xy: XY[], linePath: string): string {
 }
 
 export function MmcaRoomChartCard({
-  spaceCode,
   room,
   daily,
   open,
   close,
   nowMinutes,
-  isOpen,
+  isOpenToday,
 }: {
-  spaceCode: string;
-  room: MmcaRoomStatus | undefined;
+  room: MmcaRoomStatus;
   daily: MmcaDailyLogPoint[] | null;
   open: number;
   close: number;
   nowMinutes: number;
-  isOpen: boolean;
+  isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const spaceCode = room.space_code;
+  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
   const points: Point[] = (daily ?? [])
     .flatMap((row): Point[] => {
@@ -135,10 +136,16 @@ export function MmcaRoomChartCard({
   const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
-  const title = room?.space_nm ?? spaceCode;
-  const currentLabel = room?.congestion_nm;
+  const title = room.space_nm;
+  const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
-  const openBadge = isOpen ? "실시간" : nowMinutes < open ? "영업 전" : "영업 종료";
+  const openBadge = !isOpenToday
+    ? "휴관일"
+    : isOpen
+      ? "실시간"
+      : nowMinutes < open
+        ? "영업 전"
+        : "영업 종료";
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
     const svg = svgRef.current;
@@ -175,7 +182,7 @@ export function MmcaRoomChartCard({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
             <p className="mt-1 text-[11px] text-ink-soft/70">
-              오늘 영업시간 {formatMinutes(open)}–{formatMinutes(close)}
+              {isOpenToday ? `오늘 영업시간 ${formatMinutes(open)}–${formatMinutes(close)}` : "오늘은 휴관일입니다"}
             </p>
           </div>
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
@@ -192,13 +199,15 @@ export function MmcaRoomChartCard({
             currentLabel ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <span className="text-7xl font-bold tracking-tight text-ink">{currentLabel}</span>
-                <span className="text-base text-ink-soft">{room?.observed_at.slice(11, 16)} 기준</span>
+                <span className="text-base text-ink-soft">{room.observed_at.slice(11, 16)} 기준</span>
               </div>
             ) : (
               <span className="text-2xl font-semibold text-ink-soft">정보 없음</span>
             )
           ) : (
-            <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
+            <span className="text-2xl font-semibold text-ink-soft">
+              {isOpenToday ? "영업 시간이 아닙니다" : "휴관일입니다"}
+            </span>
           )}
         </div>
 

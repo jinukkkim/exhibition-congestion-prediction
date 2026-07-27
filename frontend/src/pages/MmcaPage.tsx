@@ -68,7 +68,6 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -94,13 +93,12 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
             {rooms.map((room) => (
               <MmcaRoomChartCard
                 key={room.space_code}
-                spaceCode={room.space_code}
                 room={room}
                 daily={daily}
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}
-                isOpen={isOpen}
+                isOpenToday={isOpenToday}
               />
             ))}
           </section>

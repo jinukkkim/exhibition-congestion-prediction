@@ -33,13 +33,12 @@ describe("MmcaRoomChartCard", () => {
   it("renders the room name and current status headline when open", () => {
     render(
       <MmcaRoomChartCard
-        spaceCode="MMCA-SPACE-2001"
         room={makeRoom()}
         daily={[]}
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
-        isOpen
+        isOpenToday
       />
     );
 
@@ -47,16 +46,15 @@ describe("MmcaRoomChartCard", () => {
     expect(screen.getByText("약간 붐빔")).toBeInTheDocument();
   });
 
-  it("shows '영업 시간이 아닙니다' when isOpen is false", () => {
+  it("shows '영업 시간이 아닙니다' when outside today's hours", () => {
     render(
       <MmcaRoomChartCard
-        spaceCode="MMCA-SPACE-2001"
         room={makeRoom()}
         daily={[]}
         open={OPEN}
         close={CLOSE}
         nowMinutes={20 * 60}
-        isOpen={false}
+        isOpenToday
       />
     );
 
@@ -64,16 +62,36 @@ describe("MmcaRoomChartCard", () => {
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
   });
 
-  it("shows '정보 없음' when open but no current room status yet", () => {
+  it("shows a distinct closed-day state instead of business hours when isOpenToday is false", () => {
     render(
       <MmcaRoomChartCard
-        spaceCode="MMCA-SPACE-2001"
-        room={undefined}
+        room={makeRoom()}
         daily={[]}
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
-        isOpen
+        isOpenToday={false}
+      />
+    );
+
+    // A closed weekly day (e.g. Deoksugung on Monday) is not the same thing
+    // as "outside hours today" — it must not claim hours it doesn't have.
+    expect(screen.getByText("휴관일입니다")).toBeInTheDocument();
+    expect(screen.getByText("휴관일")).toBeInTheDocument();
+    expect(screen.getByText("오늘은 휴관일입니다")).toBeInTheDocument();
+    expect(screen.queryByText(/오늘 영업시간/)).not.toBeInTheDocument();
+    expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
+  });
+
+  it("shows '정보 없음' when open but the room has no current status yet", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ congestion_nm: null })}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
       />
     );
 
@@ -83,7 +101,6 @@ describe("MmcaRoomChartCard", () => {
   it("draws a smoothed curve through today's readings for just this room", () => {
     render(
       <MmcaRoomChartCard
-        spaceCode="MMCA-SPACE-2001"
         room={makeRoom()}
         daily={[
           dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유", "MMCA-SPACE-2008": "보통" }),
@@ -92,7 +109,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
-        isOpen
+        isOpenToday
       />
     );
 
@@ -105,7 +122,6 @@ describe("MmcaRoomChartCard", () => {
   it("skips points where this room's reading is null", () => {
     render(
       <MmcaRoomChartCard
-        spaceCode="MMCA-SPACE-2001"
         room={makeRoom()}
         daily={[
           dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
@@ -115,7 +131,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
-        isOpen
+        isOpenToday
       />
     );
 
@@ -125,9 +141,8 @@ describe("MmcaRoomChartCard", () => {
     expect(d.match(/C/g)).toHaveLength(1);
   });
 
-  it("shows the live glow marker only when isOpen is true", () => {
+  it("shows the live glow marker only when open", () => {
     const props = {
-      spaceCode: "MMCA-SPACE-2001",
       room: makeRoom(),
       daily: [
         dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
@@ -138,11 +153,11 @@ describe("MmcaRoomChartCard", () => {
       nowMinutes: WITHIN_HOURS,
     };
 
-    const { container, rerender } = render(<MmcaRoomChartCard {...props} isOpen />);
+    const { container, rerender } = render(<MmcaRoomChartCard {...props} isOpenToday />);
     // Glow renders as two circles (soft glow + white ring dot).
     expect(container.querySelectorAll("circle")).toHaveLength(2);
 
-    rerender(<MmcaRoomChartCard {...props} isOpen={false} />);
+    rerender(<MmcaRoomChartCard {...props} isOpenToday={false} />);
     expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
 });
