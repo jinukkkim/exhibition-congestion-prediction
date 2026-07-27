@@ -113,6 +113,30 @@ def test_is_venue_open_normal_day_within_hours():
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 9, 59)) is False
 
 
+def test_is_venue_open_tolerates_sub_minute_jitter_at_closing():
+    from app.collector import _is_venue_open
+
+    # The scheduler fires exactly at 18:00:00, but real execution always
+    # lands a little after that instant. Comparing by minute (not exact
+    # second) means the closing-time reading isn't silently dropped just
+    # because the poll ran a few seconds late within the same minute.
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 0, 47)) is True
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 0, 59, 999999)) is True
+    # A full minute late is still correctly treated as closed.
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 1, 0)) is False
+
+
+def test_is_venue_open_gwacheon_tolerates_sub_minute_jitter_at_long_day_closing():
+    from app.collector import _is_venue_open
+
+    # The bug was originally found on Gwacheon specifically. The check is
+    # shared across venues, but this pins the venue where it actually
+    # mattered, on its long day (Wed/Sat, 21:00 close).
+    # 2026-07-29 is a Wednesday.
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 0, 47)) is True
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 1, 0)) is False
+
+
 def test_is_venue_open_long_day():
     from app.collector import _is_venue_open
 

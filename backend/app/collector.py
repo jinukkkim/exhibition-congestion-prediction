@@ -64,7 +64,13 @@ def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
         return False
     close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
-    return _SEOUL_BRANCH_OPEN <= now.time() <= close
+    # Truncate to the minute before comparing. The scheduler only ever fires
+    # exactly on 0/15/30/45 but real execution lands a little after that
+    # instant, and closing time's inclusive upper bound is exact-second — a
+    # poll running even 1ms past 18:00:00.000 would otherwise read as closed,
+    # silently dropping the closing-time reading on every business day.
+    now_minute = now.time().replace(second=0, microsecond=0)
+    return _SEOUL_BRANCH_OPEN <= now_minute <= close
 
 
 def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None) -> list[MmcaCongestionReading]:
