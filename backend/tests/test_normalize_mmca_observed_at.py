@@ -66,6 +66,28 @@ def test_assign_representatives_bumps_15_minutes_on_grid_collision():
     assert representatives == [datetime(2026, 7, 24, 16, 30), datetime(2026, 7, 24, 16, 45)]
 
 
+def test_assign_representatives_chains_bumps_across_three_or_more_collisions():
+    # Three legacy rounds ~7 minutes apart, all landing in the same 15-minute
+    # window if floored independently. Each bump compares against the
+    # previous round's already-bumped value, not its raw floor, so the drift
+    # from real collection time compounds — but the result stays grid-
+    # aligned and strictly increasing, the only properties this migration
+    # promises (see the module docstring).
+    clusters = [
+        [_row(1, "2026-07-24 16:37:00", "MMCA-SPACE-1001")],
+        [_row(2, "2026-07-24 16:44:00", "MMCA-SPACE-1001")],
+        [_row(3, "2026-07-24 16:51:00", "MMCA-SPACE-1001")],
+    ]
+
+    representatives = assign_representatives(clusters)
+
+    assert representatives == [
+        datetime(2026, 7, 24, 16, 30),
+        datetime(2026, 7, 24, 16, 45),
+        datetime(2026, 7, 24, 17, 0),
+    ]
+
+
 def test_cluster_rounds_splits_on_a_repeated_space_code_even_with_no_gap():
     # Simulates the old poll-immediately-on-restart era: two full rounds back
     # to back, only ~7s apart — smaller than some real intra-round gaps, so a

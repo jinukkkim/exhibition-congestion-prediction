@@ -29,6 +29,15 @@ therefore assigned in round order and bumped forward a further 15 minutes
 on collision, so every round still lands on the grid with a distinct,
 strictly increasing timestamp.
 
+A bump compares against the *previous round's already-bumped* timestamp,
+not its raw floor — so 3+ legacy rounds in a row, each under 15 minutes
+apart, chain: every bump after the first pushes further from that round's
+real collection time. The result is still grid-aligned and strictly
+increasing (the only properties this migration promises), just not
+necessarily close to when the round actually ran. Not a concern for the
+production data this was run against (no such chain existed), but worth
+knowing if this script is ever reused on different history.
+
 Idempotent — an already-normalized round (all readings sharing one
 timestamp) reduces to a single-row "cluster" that rewrites to itself.
 Pass --dry-run to preview the changes without committing.
@@ -40,6 +49,10 @@ from datetime import datetime, timedelta
 
 from app.config import settings
 
+# fetch_mmca_congestion's HTTP call has a 10s timeout (mmca_api.py) and isn't
+# retried on failure, so no single room's fetch can take longer than that.
+# 60s gives comfortable margin above that while staying well under the
+# ~270s+ gaps observed between genuinely separate rounds.
 ROUND_GAP_SECONDS = 60
 
 
