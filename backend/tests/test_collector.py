@@ -283,6 +283,41 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
     assert stored_times == {round_time}
 
 
+def test_collect_mmca_once_snaps_observed_at_to_the_15_minute_grid(monkeypatch, session_factory):
+    """The scheduler fires on a :00/:15/:30/:45 cron grid, but jitter or a
+    misfire-grace-time catch-up run can land the actual invocation a few
+    minutes off that mark (e.g. 11:31 instead of 11:30). Every reading must
+    still be stamped with the grid mark, not the raw run time, so rounds are
+    always exactly 15 minutes apart regardless of when they actually ran."""
+    import app.collector as collector_module
+
+    def fake_fetch(client, space_code, api_key):
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 11, 31, 12),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="국립현대미술관 과천관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001"]},
+    )
+
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 31, 4)
+    )
+
+    assert len(result) == 1
+    assert result[0].observed_at == datetime(2026, 7, 27, 11, 30)
+    with session_factory() as session:
+        stored = session.query(RawMmcaCongestion).one()
+    assert stored.observed_at == datetime(2026, 7, 27, 11, 30)
+
+
 def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_factory):
     import app.collector as collector_module
 

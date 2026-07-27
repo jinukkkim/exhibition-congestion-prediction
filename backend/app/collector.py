@@ -71,6 +71,12 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
+    # The scheduler fires this on a :00/:15/:30/:45 cron grid, but scheduler
+    # jitter or a misfire-grace-time catch-up run can land a few minutes off
+    # that mark. Every reading in this round is stamped with the grid mark
+    # itself (not raw `now`), so collection rounds always land on a fixed,
+    # predictable 15-minute grid regardless of when the round actually ran.
+    round_time = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
 
     space_codes = [
         space_code
@@ -95,9 +101,9 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             # fetch_mmca_congestion stamps its own wall-clock time per HTTP
             # call. Rooms are polled sequentially, so a slow batch can drift
             # across a minute boundary mid-round — normalize every reading in
-            # this round to the same `now` so they land in one /mmca/daily
-            # bucket together instead of splitting across two.
-            reading.observed_at = now
+            # this round to the round's grid mark so they land in one
+            # /mmca/daily bucket together instead of splitting across two.
+            reading.observed_at = round_time
             readings.append(reading)
 
     with session_factory() as session:

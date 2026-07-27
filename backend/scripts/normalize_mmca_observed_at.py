@@ -7,15 +7,7 @@ time, so a slow batch against the real data.go.kr API could scatter one
 round's rooms across several minutes — exactly what /mmca/daily's per-minute
 bucketing assumes never happens.
 
-This does NOT floor timestamps to the :00/:15/:30/:45 cron grid: some of the
-accumulated history predates the cron-aligned scheduler (PR #24) and was
-collected on a different, non-grid interval. Flooring blindly to the 15-
-minute grid would silently collide two genuinely separate rounds into the
-same bucket if they happen to fall in the same 15-minute window (confirmed
-against real data — see the 2026-07-24 16:37 and 16:44 rounds, ~7 minutes
-apart, both under the 16:30 floor bucket).
-
-Instead this reconstructs rounds by gap: consecutive readings (sorted by
+Rounds are reconstructed by gap: consecutive readings (sorted by
 observed_at) more than ROUND_GAP_SECONDS apart start a new round. That alone
 isn't sufficient, though — history also contains back-to-back rounds only a
 few seconds apart (from the old poll-immediately-on-restart behavior, before
@@ -23,16 +15,19 @@ that was removed), which a time gap alone can't separate from an ordinary
 intra-round gap. A round can never re-fetch the same room twice, so a
 repeated space_code within the current cluster forces a split regardless of
 the elapsed time — confirmed necessary against real data (two full 17-room
-rounds only ~7s apart around 2026-07-26 15:10-15:11). Every reading in a
-round is then rewritten to that round's earliest reading's time, truncated
-to the minute — matching /mmca/daily's own bucket granularity exactly, and
-matching what collect_mmca_once now does for newly collected data.
+rounds only ~7s apart around 2026-07-26 15:10-15:11).
 
-That same back-to-back-rounds artifact also means two correctly-separated
-clusters can start in the same clock-minute (15:10:08 and 15:10:57 both
-truncate to 15:10:00) — confirmed against real data. Representative
-timestamps are assigned in round order and bumped forward a minute on
-collision, so every round still gets a distinct, ordered timestamp.
+Every reading in a round is rewritten to that round's earliest reading's
+time, floored to the :00/:15/:30/:45 grid — matching what collect_mmca_once
+now always stamps new readings with. Naively flooring every round
+independently isn't safe on its own: some accumulated history predates the
+cron-aligned scheduler (PR #24) and was collected on a different, non-grid
+interval, so two genuinely separate rounds can floor to the same 15-minute
+mark (confirmed against real data — the 2026-07-24 16:37 and 16:44 rounds,
+~7 minutes apart, both floor to 16:30). Representative timestamps are
+therefore assigned in round order and bumped forward a further 15 minutes
+on collision, so every round still lands on the grid with a distinct,
+strictly increasing timestamp.
 
 Idempotent — an already-normalized round (all readings sharing one
 timestamp) reduces to a single-row "cluster" that rewrites to itself.
@@ -46,6 +41,10 @@ from datetime import datetime, timedelta
 from app.config import settings
 
 ROUND_GAP_SECONDS = 60
+
+
+def floor_to_15(dt: datetime) -> datetime:
+    return dt.replace(minute=(dt.minute // 15) * 15, second=0, microsecond=0)
 
 
 def cluster_rounds(rows: list[tuple[int, datetime, str]]) -> list[list[tuple[int, datetime, str]]]:
@@ -64,6 +63,20 @@ def cluster_rounds(rows: list[tuple[int, datetime, str]]) -> list[list[tuple[int
         clusters[-1].append((row_id, observed_at, space_code))
         seen_codes.add(space_code)
     return clusters
+
+
+def assign_representatives(clusters: list[list[tuple[int, datetime, str]]]) -> list[datetime]:
+    """One grid-aligned timestamp per cluster, in cluster order, strictly
+    increasing — bumped forward 15 minutes on collision."""
+    representatives: list[datetime] = []
+    prev: datetime | None = None
+    for cluster in clusters:
+        representative = floor_to_15(cluster[0][1])
+        if prev is not None and representative <= prev:
+            representative = prev + timedelta(minutes=15)
+        representatives.append(representative)
+        prev = representative
+    return representatives
 
 
 def main() -> None:
@@ -85,15 +98,10 @@ def main() -> None:
         ]
 
         clusters = cluster_rounds(rows)
+        representatives = assign_representatives(clusters)
 
         changes: list[tuple[int, datetime, datetime]] = []
-        prev_representative: datetime | None = None
-        for cluster in clusters:
-            representative = cluster[0][1].replace(second=0, microsecond=0)
-            if prev_representative is not None and representative <= prev_representative:
-                representative = prev_representative + timedelta(minutes=1)
-            prev_representative = representative
-
+        for cluster, representative in zip(clusters, representatives):
             for row_id, observed_at, _space_code in cluster:
                 if observed_at != representative:
                     changes.append((row_id, observed_at, representative))
