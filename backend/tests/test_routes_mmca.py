@@ -251,3 +251,51 @@ def test_mmca_daily_filters_by_venue(client):
     # gwacheon rows should leak into its result.
     response = test_client.get("/mmca/daily?venue=deoksugung&date=2026-07-25")
     assert response.json() == []
+
+
+def test_mmca_rooms_falls_back_to_last_known_name_when_latest_is_null(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add_all(
+            [
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 24, 10, 0),
+                    space_code="MMCA-SPACE-1001",
+                    space_nm="1전시실",
+                    congestion_nm="여유",
+                ),
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 24, 10, 15),
+                    space_code="MMCA-SPACE-1001",
+                    space_nm=None,
+                    congestion_nm="보통",
+                ),
+            ]
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=seoul")
+    assert response.status_code == 200
+    room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
+    assert room["space_nm"] == "1전시실"
+    assert room["congestion_nm"] == "보통"
+
+
+def test_mmca_rooms_space_nm_stays_null_when_never_known(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 24, 10, 0),
+                space_code="MMCA-SPACE-1001",
+                space_nm=None,
+                congestion_nm="여유",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=seoul")
+    room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
+    assert room["space_nm"] is None
