@@ -1,6 +1,7 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
+import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
@@ -118,6 +119,17 @@ export function MmcaRoomChartCard({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const spaceCode = room.space_code;
+  const title = room.space_nm ?? spaceCode;
+
+  if (DISABLED_MMCA_SPACE_CODES.has(spaceCode)) {
+    return (
+      <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
+        <p className="mt-6 text-2xl font-semibold text-ink-soft">서비스 예정</p>
+      </div>
+    );
+  }
+
   const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
   const points: Point[] = (daily ?? [])
@@ -136,7 +148,6 @@ export function MmcaRoomChartCard({
   const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
-  const title = room.space_nm ?? spaceCode;
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
   const openBadge = !isOpenToday

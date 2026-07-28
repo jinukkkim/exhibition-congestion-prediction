@@ -98,6 +98,24 @@ describe("MmcaRoomChartCard", () => {
     expect(screen.getByText("MMCA-SPACE-2001")).toBeInTheDocument();
   });
 
+  it("shows '서비스 예정' instead of the chart for a disabled room, keeping the title", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ space_code: "MMCA-SPACE-2008", space_nm: "1층 어린이미술관", congestion_nm: "여유" })}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
+    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
+    expect(screen.queryByText("여유")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
+  });
+
   it("shows '정보 없음' when open but the room has no current status yet", () => {
     render(
       <MmcaRoomChartCard
