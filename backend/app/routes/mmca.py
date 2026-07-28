@@ -107,14 +107,8 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             rooms=[
                 MmcaDailyRoom(
                     space_code=code,
-                    space_nm=(
-                        buckets[bucket_time][code].space_nm or last_known.get(code)
-                        if code in buckets[bucket_time]
-                        else None
-                    ),
-                    congestion_nm=buckets[bucket_time][code].congestion_nm
-                    if code in buckets[bucket_time]
-                    else None,
+                    space_nm=(row.space_nm if (row := buckets[bucket_time].get(code)) else None) or last_known.get(code),
+                    congestion_nm=row.congestion_nm if row else None,
                 )
                 for code in codes
             ],

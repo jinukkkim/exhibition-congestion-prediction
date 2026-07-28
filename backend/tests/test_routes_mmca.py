@@ -195,6 +195,8 @@ def test_mmca_daily_fills_null_for_rooms_missing_from_a_poll(client):
 
     response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
     body = response.json()
+    # MMCA-SPACE-1002 has never been polled at all — last_known.get() returns None,
+    # so space_nm correctly stays None (not a fallback case since there's no name to fall back to).
     missing = next(r for r in body[0]["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
     assert missing["congestion_nm"] is None
     assert missing["space_nm"] is None
@@ -308,7 +310,7 @@ def test_mmca_daily_falls_back_to_last_known_name_when_poll_row_is_null(client):
         session.add_all(
             [
                 RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 25, 10, 0),
+                    observed_at=datetime(2026, 7, 20, 10, 0),
                     space_code="MMCA-SPACE-1001",
                     space_nm="1전시실",
                     congestion_nm="여유",
@@ -329,3 +331,33 @@ def test_mmca_daily_falls_back_to_last_known_name_when_poll_row_is_null(client):
     room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1001")
     assert room["space_nm"] == "1전시실"
     assert room["congestion_nm"] == "보통"
+
+
+def test_mmca_daily_falls_back_to_last_known_name_when_room_missing_from_bucket(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add_all(
+            [
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 20, 10, 0),
+                    space_code="MMCA-SPACE-1002",
+                    space_nm="2전시실",
+                    congestion_nm="여유",
+                ),
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 25, 15, 0, 3),
+                    space_code="MMCA-SPACE-1001",
+                    space_nm="1전시실",
+                    congestion_nm="보통",
+                ),
+            ]
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
+    body = response.json()
+    bucket = next(b for b in body if b["observed_at"] == "2026-07-25T15:00:00")
+    room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
+    assert room["space_nm"] == "2전시실"
+    assert room["congestion_nm"] is None
