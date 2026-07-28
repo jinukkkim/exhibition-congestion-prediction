@@ -3,29 +3,13 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
 from app.models import RawMmcaCongestion
 from app.schemas import MmcaDailyLogPoint, MmcaDailyRoom, MmcaRoomStatus
 
 router = APIRouter()
-
-
-def _last_known_names(session: Session, codes: list[str]) -> dict[str, str]:
-    latest_named_ids = [
-        row[0]
-        for row in session.query(func.max(RawMmcaCongestion.id))
-        .filter(
-            RawMmcaCongestion.space_code.in_(codes),
-            RawMmcaCongestion.space_nm.isnot(None),
-        )
-        .group_by(RawMmcaCongestion.space_code)
-        .all()
-    ]
-    rows = session.query(RawMmcaCongestion).filter(RawMmcaCongestion.id.in_(latest_named_ids)).all()
-    return {row.space_code: row.space_nm for row in rows}
 
 
 @router.get("/mmca/rooms", response_model=list[MmcaRoomStatus])
@@ -48,7 +32,6 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
             .order_by(RawMmcaCongestion.space_code)
             .all()
         )
-        last_known = _last_known_names(session, codes)
 
     if not rows:
         raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
@@ -56,7 +39,7 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
     return [
         MmcaRoomStatus(
             space_code=row.space_code,
-            space_nm=row.space_nm or last_known.get(row.space_code),
+            space_nm=row.space_nm or MMCA_SPACE_NAMES.get(row.space_code),
             congestion_nm=row.congestion_nm,
             observed_at=row.observed_at.isoformat(),
         )
@@ -90,7 +73,6 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             .order_by(RawMmcaCongestion.observed_at.asc())
             .all()
         )
-        last_known = _last_known_names(session, codes)
 
     # ponytail: assumes one poll batch finishes within the same minute it
     # starts (true today — an 8-room batch takes ~4s). If room counts grow
@@ -107,7 +89,8 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             rooms=[
                 MmcaDailyRoom(
                     space_code=code,
-                    space_nm=(row.space_nm if (row := buckets[bucket_time].get(code)) else None) or last_known.get(code),
+                    space_nm=(row.space_nm if (row := buckets[bucket_time].get(code)) else None)
+                    or MMCA_SPACE_NAMES.get(code),
                     congestion_nm=row.congestion_nm if row else None,
                 )
                 for code in codes

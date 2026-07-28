@@ -195,11 +195,12 @@ def test_mmca_daily_fills_null_for_rooms_missing_from_a_poll(client):
 
     response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
     body = response.json()
-    # MMCA-SPACE-1002 has never been polled at all — last_known.get() returns None,
-    # so space_nm correctly stays None (not a fallback case since there's no name to fall back to).
+    # MMCA-SPACE-1002 has no poll that day — congestion_nm (a measurement)
+    # correctly stays None, but space_nm (a label) still resolves from the
+    # static MMCA_SPACE_NAMES map.
     missing = next(r for r in body[0]["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
     assert missing["congestion_nm"] is None
-    assert missing["space_nm"] is None
+    assert missing["space_nm"] == "2전시실"
 
 
 def test_mmca_daily_separates_different_poll_times_into_separate_rows(client):
@@ -255,25 +256,17 @@ def test_mmca_daily_filters_by_venue(client):
     assert response.json() == []
 
 
-def test_mmca_rooms_falls_back_to_last_known_name_when_latest_is_null(client):
+def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(client):
     test_client, session_factory = client
 
     with session_factory() as session:
-        session.add_all(
-            [
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 24, 10, 0),
-                    space_code="MMCA-SPACE-1001",
-                    space_nm="1전시실",
-                    congestion_nm="여유",
-                ),
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 24, 10, 15),
-                    space_code="MMCA-SPACE-1001",
-                    space_nm=None,
-                    congestion_nm="보통",
-                ),
-            ]
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 24, 10, 15),
+                space_code="MMCA-SPACE-1001",
+                space_nm=None,
+                congestion_nm="보통",
+            )
         )
         session.commit()
 
@@ -284,44 +277,17 @@ def test_mmca_rooms_falls_back_to_last_known_name_when_latest_is_null(client):
     assert room["congestion_nm"] == "보통"
 
 
-def test_mmca_rooms_space_nm_stays_null_when_never_known(client):
+def test_mmca_daily_falls_back_to_static_room_name_when_poll_row_has_none(client):
     test_client, session_factory = client
 
     with session_factory() as session:
         session.add(
             RawMmcaCongestion(
-                observed_at=datetime(2026, 7, 24, 10, 0),
+                observed_at=datetime(2026, 7, 25, 15, 0, 3),
                 space_code="MMCA-SPACE-1001",
                 space_nm=None,
-                congestion_nm="여유",
+                congestion_nm="보통",
             )
-        )
-        session.commit()
-
-    response = test_client.get("/mmca/rooms?venue=seoul")
-    room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
-    assert room["space_nm"] is None
-
-
-def test_mmca_daily_falls_back_to_last_known_name_when_poll_row_is_null(client):
-    test_client, session_factory = client
-
-    with session_factory() as session:
-        session.add_all(
-            [
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 20, 10, 0),
-                    space_code="MMCA-SPACE-1001",
-                    space_nm="1전시실",
-                    congestion_nm="여유",
-                ),
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 25, 15, 0, 3),
-                    space_code="MMCA-SPACE-1001",
-                    space_nm=None,
-                    congestion_nm="보통",
-                ),
-            ]
         )
         session.commit()
 
@@ -333,25 +299,17 @@ def test_mmca_daily_falls_back_to_last_known_name_when_poll_row_is_null(client):
     assert room["congestion_nm"] == "보통"
 
 
-def test_mmca_daily_falls_back_to_last_known_name_when_room_missing_from_bucket(client):
+def test_mmca_daily_falls_back_to_static_room_name_when_room_missing_from_bucket(client):
     test_client, session_factory = client
 
     with session_factory() as session:
-        session.add_all(
-            [
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 20, 10, 0),
-                    space_code="MMCA-SPACE-1002",
-                    space_nm="2전시실",
-                    congestion_nm="여유",
-                ),
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 25, 15, 0, 3),
-                    space_code="MMCA-SPACE-1001",
-                    space_nm="1전시실",
-                    congestion_nm="보통",
-                ),
-            ]
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 25, 15, 0, 3),
+                space_code="MMCA-SPACE-1001",
+                space_nm="1전시실",
+                congestion_nm="보통",
+            )
         )
         session.commit()
 
