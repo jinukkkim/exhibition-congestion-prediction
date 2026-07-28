@@ -90,6 +90,7 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             .order_by(RawMmcaCongestion.observed_at.asc())
             .all()
         )
+        last_known = _last_known_names(session, codes)
 
     # ponytail: assumes one poll batch finishes within the same minute it
     # starts (true today — an 8-room batch takes ~4s). If room counts grow
@@ -106,7 +107,11 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             rooms=[
                 MmcaDailyRoom(
                     space_code=code,
-                    space_nm=buckets[bucket_time][code].space_nm if code in buckets[bucket_time] else None,
+                    space_nm=(
+                        buckets[bucket_time][code].space_nm or last_known.get(code)
+                        if code in buckets[bucket_time]
+                        else None
+                    ),
                     congestion_nm=buckets[bucket_time][code].congestion_nm
                     if code in buckets[bucket_time]
                     else None,
