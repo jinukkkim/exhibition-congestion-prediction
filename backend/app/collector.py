@@ -47,11 +47,17 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
     return reading
 
 
-_SEOUL_BRANCH_OPEN = time(10, 0)
 _SEOUL_BRANCH_NORMAL_CLOSE = time(18, 0)
 _SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
 _LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
+
+# Collection starts 10 minutes after the real 10:00 opening time (still what
+# the frontend shows as "open") — congestion right at opening is reliably
+# 여유, so skipping that one poll buys back a 10-minute slot/day. That's
+# what keeps the 15-room, 10-minute schedule under the MMCA API's
+# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990.
+_COLLECTION_START = time(10, 10)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
 # is closed on Mondays.
@@ -64,7 +70,7 @@ def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
         return False
     close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
-    return _SEOUL_BRANCH_OPEN <= now.time() <= close
+    return _COLLECTION_START <= now.time() <= close
 
 
 def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None) -> list[MmcaCongestionReading]:

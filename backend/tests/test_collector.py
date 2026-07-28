@@ -107,7 +107,11 @@ def test_is_venue_open_normal_day_within_hours():
     from app.collector import _is_venue_open
 
     # 2026-07-27 is a Monday
-    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 0)) is True
+    # Collection starts 10 minutes after the real 10:00 opening time —
+    # the 10:00 poll itself is deliberately skipped (see _COLLECTION_START).
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 0)) is False
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 9)) is False
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 10)) is True
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 0)) is True
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 1)) is False
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 9, 59)) is False
