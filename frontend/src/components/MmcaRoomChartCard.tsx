@@ -1,19 +1,13 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
+import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-
-// Deliberately not tied to congestion status (that palette is reserved for
-// the headline word/badge, where color = meaning). The chart itself is a
-// single visual treatment regardless of value — sky blue fading into the
-// app's accent blue.
-const CHART_SKY = "#5AC8FA";
-const CHART_BLUE = "#0071E3";
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're
