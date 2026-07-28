@@ -23,6 +23,13 @@ MMCA_SPACE_NAMES: dict[str, str] = {
     "MMCA-SPACE-4001": "1전시실",
 }
 
+# Rooms whose page/card stays visible but shows "서비스 예정" instead of live
+# data — the collector skips these entirely (quota management: keeping them
+# in the 10-minute poll would push the daily MMCA API call count too close
+# to the 1,000/day cap). Deoksugung (only MMCA-SPACE-4001) and Gwacheon's
+# children's museum are disabled; everything else still polls normally.
+MMCA_DISABLED_SPACE_CODES: set[str] = {"MMCA-SPACE-4001", "MMCA-SPACE-2008"}
+
 
 class Settings(BaseSettings):
     seoul_api_key: str

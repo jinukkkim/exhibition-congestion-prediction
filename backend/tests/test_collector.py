@@ -294,19 +294,60 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    # MMCA-SPACE-9001 stands in for a Monday-closed venue that isn't in
+    # MMCA_DISABLED_SPACE_CODES — keeps this test isolated to the
+    # business-hours gate, not the separate disabled-codes gate.
+    monkeypatch.setattr(
+        collector_module,
+        "_VENUE_CLOSED_DAYS",
+        {"deoksugung": {0}, "test-closed-venue": {0}},
+    )
     monkeypatch.setattr(
         collector_module.settings,
         "mmca_venue_space_codes",
         {
             "seoul": ["MMCA-SPACE-1001"],
-            "deoksugung": ["MMCA-SPACE-4001"],
+            "test-closed-venue": ["MMCA-SPACE-9001"],
         },
     )
 
-    # 2026-07-27 is a Monday: Seoul is open, Deoksugung is shut.
+    # 2026-07-27 is a Monday: Seoul is open, the test venue is shut.
     result = collector_module.collect_mmca_once(
         session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
     )
 
     assert len(result) == 1
     assert seen_codes == ["MMCA-SPACE-1001"]
+
+
+def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 14, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2008"]},
+    )
+
+    # 2026-07-27 is a Monday, but the disabled-codes filter applies every
+    # day regardless of business hours — MMCA-SPACE-2008 (children's
+    # museum) must never be fetched even though Gwacheon itself is open.
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+    )
+
+    assert len(result) == 1
+    assert seen_codes == ["MMCA-SPACE-2001"]
