@@ -70,13 +70,25 @@ def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
         return False
     close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
-    return _COLLECTION_START <= now.time() <= close
+    # Truncate to the minute before comparing. The scheduler only ever fires
+    # exactly on the grid but real execution lands a little after that
+    # instant, and closing time's inclusive upper bound is exact-second — a
+    # poll running even 1ms past close would otherwise read as closed,
+    # silently dropping the closing-time reading on every business day.
+    now_minute = now.time().replace(second=0, microsecond=0)
+    return _COLLECTION_START <= now_minute <= close
 
 
 def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None) -> list[MmcaCongestionReading]:
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
+    # The scheduler fires this on a 10-minute cron grid, but scheduler
+    # jitter or a misfire-grace-time catch-up run can land a few minutes off
+    # that mark. Every reading in this round is stamped with the grid mark
+    # itself (not raw `now`), so collection rounds always land on a fixed,
+    # predictable 10-minute grid regardless of when the round actually ran.
+    round_time = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
 
     space_codes = [
         space_code
@@ -92,12 +104,20 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     with httpx.Client() as client:
         for space_code in space_codes:
             try:
-                readings.append(fetch_mmca_congestion(client, space_code, settings.mmca_api_key))
+                reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
             except (httpx.HTTPError, json.JSONDecodeError):
                 # data.go.kr can return a non-JSON (e.g. XML error) body with a
                 # 200 status on key/quota errors — response.json() then raises
                 # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
                 logger.warning("MMCA fetch failed for %s", space_code)
+                continue
+            # fetch_mmca_congestion stamps its own wall-clock time per HTTP
+            # call. Rooms are polled sequentially, so a slow batch can drift
+            # across a minute boundary mid-round — normalize every reading in
+            # this round to the round's grid mark so they land in one
+            # /mmca/daily bucket together instead of splitting across two.
+            reading.observed_at = round_time
+            readings.append(reading)
 
     with session_factory() as session:
         for reading in readings:
