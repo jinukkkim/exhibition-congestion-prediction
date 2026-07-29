@@ -41,6 +41,23 @@ def test_mmca_rooms_returns_503_when_no_data(client):
     assert response.status_code == 503
 
 
+def test_mmca_rooms_returns_placeholder_instead_of_503_when_venue_is_fully_disabled(client):
+    test_client, _ = client
+
+    # Deoksugung's only code (MMCA-SPACE-4001) is in MMCA_DISABLED_SPACE_CODES,
+    # so collection will never backfill history for it — a fresh/empty DB
+    # must not 503 forever, or the frontend falls through to a generic error
+    # page instead of its "서비스 예정" placeholder UI.
+    response = test_client.get("/mmca/rooms?venue=deoksugung")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["space_code"] == "MMCA-SPACE-4001"
+    assert body[0]["space_nm"] == "1전시실"
+    assert body[0]["congestion_nm"] is None
+    assert body[0]["observed_at"] is None
+
+
 def test_mmca_rooms_returns_400_for_unknown_venue(client):
     test_client, _ = client
     response = test_client.get("/mmca/rooms?venue=busan")
@@ -195,9 +212,12 @@ def test_mmca_daily_fills_null_for_rooms_missing_from_a_poll(client):
 
     response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
     body = response.json()
+    # MMCA-SPACE-1002 has no poll that day — congestion_nm (a measurement)
+    # correctly stays None, but space_nm (a label) still resolves from the
+    # static MMCA_SPACE_NAMES map.
     missing = next(r for r in body[0]["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
     assert missing["congestion_nm"] is None
-    assert missing["space_nm"] is None
+    assert missing["space_nm"] == "2전시실"
 
 
 def test_mmca_daily_separates_different_poll_times_into_separate_rows(client):
@@ -251,3 +271,68 @@ def test_mmca_daily_filters_by_venue(client):
     # gwacheon rows should leak into its result.
     response = test_client.get("/mmca/daily?venue=deoksugung&date=2026-07-25")
     assert response.json() == []
+
+
+def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 24, 10, 15),
+                space_code="MMCA-SPACE-1001",
+                space_nm=None,
+                congestion_nm="보통",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=seoul")
+    assert response.status_code == 200
+    room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
+    assert room["space_nm"] == "1전시실"
+    assert room["congestion_nm"] == "보통"
+
+
+def test_mmca_daily_falls_back_to_static_room_name_when_poll_row_has_none(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 25, 15, 0, 3),
+                space_code="MMCA-SPACE-1001",
+                space_nm=None,
+                congestion_nm="보통",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
+    body = response.json()
+    bucket = next(b for b in body if b["observed_at"] == "2026-07-25T15:00:00")
+    room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1001")
+    assert room["space_nm"] == "1전시실"
+    assert room["congestion_nm"] == "보통"
+
+
+def test_mmca_daily_falls_back_to_static_room_name_when_room_missing_from_bucket(client):
+    test_client, session_factory = client
+
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 25, 15, 0, 3),
+                space_code="MMCA-SPACE-1001",
+                space_nm="1전시실",
+                congestion_nm="보통",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/daily?venue=seoul&date=2026-07-25")
+    body = response.json()
+    bucket = next(b for b in body if b["observed_at"] == "2026-07-25T15:00:00")
+    room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
+    assert room["space_nm"] == "2전시실"
+    assert room["congestion_nm"] is None
