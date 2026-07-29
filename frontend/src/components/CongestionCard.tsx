@@ -1,6 +1,7 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
+import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
@@ -266,13 +267,13 @@ export function CongestionCard({
                 <>
                   <defs>
                     <linearGradient id="sparkline-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={status.core} stopOpacity="0.24" />
-                      <stop offset="100%" stopColor={status.core} stopOpacity="0" />
+                      <stop offset="0%" stopColor={CHART_SKY} stopOpacity="0.32" />
+                      <stop offset="100%" stopColor={CHART_BLUE} stopOpacity="0" />
                     </linearGradient>
                     {isOpen && lastPoint && (
                       <radialGradient id="sparkline-glow">
-                        <stop offset="0%" stopColor={status.core} stopOpacity="0.5" />
-                        <stop offset="100%" stopColor={status.core} stopOpacity="0" />
+                        <stop offset="0%" stopColor={CHART_BLUE} stopOpacity="0.5" />
+                        <stop offset="100%" stopColor={CHART_BLUE} stopOpacity="0" />
                       </radialGradient>
                     )}
                   </defs>
@@ -293,7 +294,7 @@ export function CongestionCard({
                       data-testid="sparkline-line"
                       d={linePath}
                       fill="none"
-                      stroke={status.core}
+                      stroke={CHART_BLUE}
                       strokeWidth={2.5}
                       strokeLinecap="round"
                     />
@@ -301,7 +302,7 @@ export function CongestionCard({
                   {isOpen && lastPoint && (
                     <>
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={14} fill="url(#sparkline-glow)" />
-                      <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={status.core} strokeWidth={2.5} />
+                      <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2.5} />
                     </>
                   )}
                   {hoverIndex !== null && xy[hoverIndex] && (
@@ -314,7 +315,7 @@ export function CongestionCard({
                         stroke="#D2D2D7"
                         strokeWidth={1}
                       />
-                      <circle cx={xy[hoverIndex].x} cy={xy[hoverIndex].y} r={4} fill="#FFFFFF" stroke={status.core} strokeWidth={2} />
+                      <circle cx={xy[hoverIndex].x} cy={xy[hoverIndex].y} r={4} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2} />
                     </>
                   )}
                   <rect

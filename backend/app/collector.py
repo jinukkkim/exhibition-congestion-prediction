@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.cache import set_latest
-from app.config import settings
+from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import RawCongestion, RawMmcaCongestion
@@ -47,11 +47,17 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
     return reading
 
 
-_SEOUL_BRANCH_OPEN = time(10, 0)
 _SEOUL_BRANCH_NORMAL_CLOSE = time(18, 0)
 _SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
 _LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
+
+# Collection starts 10 minutes after the real 10:00 opening time (still what
+# the frontend shows as "open") — congestion right at opening is reliably
+# 여유, so skipping that one poll buys back a 10-minute slot/day. That's
+# what keeps the 15-room, 10-minute schedule under the MMCA API's
+# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990.
+_COLLECTION_START = time(10, 10)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
 # is closed on Mondays.
@@ -65,30 +71,31 @@ def _is_venue_open(venue: str, now: datetime) -> bool:
         return False
     close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
     # Truncate to the minute before comparing. The scheduler only ever fires
-    # exactly on 0/15/30/45 but real execution lands a little after that
+    # exactly on the grid but real execution lands a little after that
     # instant, and closing time's inclusive upper bound is exact-second — a
-    # poll running even 1ms past 18:00:00.000 would otherwise read as closed,
+    # poll running even 1ms past close would otherwise read as closed,
     # silently dropping the closing-time reading on every business day.
     now_minute = now.time().replace(second=0, microsecond=0)
-    return _SEOUL_BRANCH_OPEN <= now_minute <= close
+    return _COLLECTION_START <= now_minute <= close
 
 
 def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None) -> list[MmcaCongestionReading]:
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    # The scheduler fires this on a :00/:15/:30/:45 cron grid, but scheduler
+    # The scheduler fires this on a 10-minute cron grid, but scheduler
     # jitter or a misfire-grace-time catch-up run can land a few minutes off
     # that mark. Every reading in this round is stamped with the grid mark
     # itself (not raw `now`), so collection rounds always land on a fixed,
-    # predictable 15-minute grid regardless of when the round actually ran.
-    round_time = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
+    # predictable 10-minute grid regardless of when the round actually ran.
+    round_time = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
 
     space_codes = [
         space_code
         for venue, codes in settings.mmca_venue_space_codes.items()
         if _is_venue_open(venue, now)
         for space_code in codes
+        if space_code not in MMCA_DISABLED_SPACE_CODES
     ]
     if not space_codes:
         return []

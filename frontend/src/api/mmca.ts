@@ -4,7 +4,9 @@ export interface MmcaRoomStatus {
   space_code: string;
   space_nm: string | null;
   congestion_nm: string | null;
-  observed_at: string;
+  // null only for a permanently-disabled room with no collection history
+  // yet (see DISABLED_MMCA_SPACE_CODES) — every real reading has one.
+  observed_at: string | null;
 }
 
 export async function fetchMmcaRooms(venue: MmcaVenue): Promise<MmcaRoomStatus[]> {

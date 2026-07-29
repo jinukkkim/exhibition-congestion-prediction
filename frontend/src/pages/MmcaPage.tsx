@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchMmcaRooms, type MmcaRoomStatus, type MmcaVenue } from "../api/mmca";
+import {
+  fetchMmcaDaily,
+  fetchMmcaRooms,
+  type MmcaDailyLogPoint,
+  type MmcaRoomStatus,
+  type MmcaVenue,
+} from "../api/mmca";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
-import { RoomCongestionCard } from "../components/RoomCongestionCard";
+import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
+import { todayString } from "../lib/date";
+import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 
 const POLL_INTERVAL_MS = 60_000;
 
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
+  const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -34,6 +43,32 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
     };
   }, [venue]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    function load() {
+      fetchMmcaDaily(venue, todayString())
+        .then((data) => {
+          if (!ignore) setDaily(data);
+        })
+        .catch(() => {
+          // Silently retry — keep showing whatever we already have rather
+          // than blanking every card on one failed poll.
+        });
+    }
+
+    load();
+    const timer = setInterval(load, POLL_INTERVAL_MS);
+    return () => {
+      ignore = true;
+      clearInterval(timer);
+    };
+  }, [venue]);
+
+  const now = new Date();
+  const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
@@ -54,9 +89,17 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
         {rooms && (
-          <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <section className={`grid gap-6${rooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
             {rooms.map((room) => (
-              <RoomCongestionCard key={room.space_code} room={room} />
+              <MmcaRoomChartCard
+                key={room.space_code}
+                room={room}
+                daily={daily}
+                open={open}
+                close={close}
+                nowMinutes={nowMinutes}
+                isOpenToday={isOpenToday}
+              />
             ))}
           </section>
         )}

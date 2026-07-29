@@ -31,9 +31,13 @@ def build_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         collect_mmca_once,
-        # Same reasoning as collect_congestion: cron-align to :00/:15/:30/:45
-        # instead of free-running from server start.
-        trigger=CronTrigger(minute="0,15,30,45"),
+        # Same reasoning as collect_congestion: cron-align to a fixed
+        # 10-minute grid instead of free-running from server start.
+        # Deoksugung + Gwacheon's children's museum are excluded from
+        # collection (see MMCA_DISABLED_SPACE_CODES) specifically so the
+        # remaining 15 rooms can poll this often and stay under the MMCA
+        # API's 1,000-call/day cap even on extended-hours days.
+        trigger=CronTrigger(minute="*/10"),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
     )

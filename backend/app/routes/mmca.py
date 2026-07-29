@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
 
-from app.config import settings
+from app.config import MMCA_DISABLED_SPACE_CODES, MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
 from app.models import RawMmcaCongestion
 from app.schemas import MmcaDailyLogPoint, MmcaDailyRoom, MmcaRoomStatus
@@ -34,12 +34,27 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
         )
 
     if not rows:
+        if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
+            # Every room this venue has is permanently disabled (e.g.
+            # Deoksugung's only code, MMCA-SPACE-4001) — collection will
+            # never backfill history for it, so a fresh/empty DB must not
+            # 503 forever. Placeholder rows let the frontend's "서비스 예정"
+            # UI render instead of falling through to a generic error page.
+            return [
+                MmcaRoomStatus(
+                    space_code=code,
+                    space_nm=MMCA_SPACE_NAMES.get(code),
+                    congestion_nm=None,
+                    observed_at=None,
+                )
+                for code in codes
+            ]
         raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
 
     return [
         MmcaRoomStatus(
             space_code=row.space_code,
-            space_nm=row.space_nm,
+            space_nm=row.space_nm or MMCA_SPACE_NAMES.get(row.space_code),
             congestion_nm=row.congestion_nm,
             observed_at=row.observed_at.isoformat(),
         )
@@ -89,10 +104,9 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             rooms=[
                 MmcaDailyRoom(
                     space_code=code,
-                    space_nm=buckets[bucket_time][code].space_nm if code in buckets[bucket_time] else None,
-                    congestion_nm=buckets[bucket_time][code].congestion_nm
-                    if code in buckets[bucket_time]
-                    else None,
+                    space_nm=(row.space_nm if (row := buckets[bucket_time].get(code)) else None)
+                    or MMCA_SPACE_NAMES.get(code),
+                    congestion_nm=row.congestion_nm if row else None,
                 )
                 for code in codes
             ],
