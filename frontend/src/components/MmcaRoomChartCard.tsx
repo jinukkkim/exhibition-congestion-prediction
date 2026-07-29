@@ -204,7 +204,7 @@ export function MmcaRoomChartCard({
             currentLabel ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <span className="text-7xl font-bold tracking-tight text-ink">{currentLabel}</span>
-                <span className="text-base text-ink-soft">{room.observed_at.slice(11, 16)} 기준</span>
+                <span className="text-base text-ink-soft">{room.observed_at?.slice(11, 16)} 기준</span>
               </div>
             ) : (
               <span className="text-2xl font-semibold text-ink-soft">정보 없음</span>

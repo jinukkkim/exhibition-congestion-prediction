@@ -41,6 +41,23 @@ def test_mmca_rooms_returns_503_when_no_data(client):
     assert response.status_code == 503
 
 
+def test_mmca_rooms_returns_placeholder_instead_of_503_when_venue_is_fully_disabled(client):
+    test_client, _ = client
+
+    # Deoksugung's only code (MMCA-SPACE-4001) is in MMCA_DISABLED_SPACE_CODES,
+    # so collection will never backfill history for it — a fresh/empty DB
+    # must not 503 forever, or the frontend falls through to a generic error
+    # page instead of its "서비스 예정" placeholder UI.
+    response = test_client.get("/mmca/rooms?venue=deoksugung")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["space_code"] == "MMCA-SPACE-4001"
+    assert body[0]["space_nm"] == "1전시실"
+    assert body[0]["congestion_nm"] is None
+    assert body[0]["observed_at"] is None
+
+
 def test_mmca_rooms_returns_400_for_unknown_venue(client):
     test_client, _ = client
     response = test_client.get("/mmca/rooms?venue=busan")

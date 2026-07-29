@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
 
-from app.config import MMCA_SPACE_NAMES, settings
+from app.config import MMCA_DISABLED_SPACE_CODES, MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
 from app.models import RawMmcaCongestion
 from app.schemas import MmcaDailyLogPoint, MmcaDailyRoom, MmcaRoomStatus
@@ -34,6 +34,21 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
         )
 
     if not rows:
+        if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
+            # Every room this venue has is permanently disabled (e.g.
+            # Deoksugung's only code, MMCA-SPACE-4001) — collection will
+            # never backfill history for it, so a fresh/empty DB must not
+            # 503 forever. Placeholder rows let the frontend's "서비스 예정"
+            # UI render instead of falling through to a generic error page.
+            return [
+                MmcaRoomStatus(
+                    space_code=code,
+                    space_nm=MMCA_SPACE_NAMES.get(code),
+                    congestion_nm=None,
+                    observed_at=None,
+                )
+                for code in codes
+            ]
         raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
 
     return [
