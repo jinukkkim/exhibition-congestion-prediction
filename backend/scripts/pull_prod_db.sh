@@ -7,17 +7,15 @@
 # server doesn't have the sqlite3 CLI installed) so it's safe to run while
 # the production collector is mid-write, unlike a raw `scp` of the live file.
 #
-# Config comes from backend/.env (gitignored) rather than being hardcoded
-# here, since DEPLOY_HOST/DEPLOY_SSH_KEY are server-specific, not something
-# to commit. Add to backend/.env:
-#   DEPLOY_HOST=<server ip>
-#   DEPLOY_USER=ubuntu
-#   DEPLOY_SSH_KEY=/path/to/your/key
+# Config comes from backend/.env.local (gitignored, see .env.local.example)
+# rather than being hardcoded here or living in .env — app/config.py's
+# Settings reads .env directly and rejects unknown keys, so dev-tooling
+# config has to stay out of it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 set -a
-[ -f .env ] && source .env
+[ -f .env.local ] && source .env.local
 set +a
 
 : "${DEPLOY_HOST:?Set DEPLOY_HOST in backend/.env}"

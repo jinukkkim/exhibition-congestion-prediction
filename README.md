@@ -26,6 +26,20 @@ cp .env.example .env   # fill in SEOUL_API_KEY
 - `DATABASE_URL` — defaults to `sqlite:///./congestion.db`. For Postgres use the `pg8000` driver: `postgresql+pg8000://user:pass@host/db`
 - `REDIS_URL` — defaults to `redis://localhost:6379/0`
 
+### Developing against real data
+
+`scripts/dev.sh` pulls a fresh snapshot of the production DB into
+`congestion.db` before starting uvicorn, so local dev always sees current
+data instead of whatever's been collected locally. Needs `DEPLOY_HOST` /
+`DEPLOY_USER` / `DEPLOY_SSH_KEY` set in `.env` (see `.env.example`).
+
+```bash
+scripts/dev.sh
+```
+
+Run `scripts/pull_prod_db.sh` on its own to refresh the DB without
+restarting the server.
+
 ## Frontend setup
 
 ```bash
