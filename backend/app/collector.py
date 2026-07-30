@@ -105,11 +105,11 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         for space_code in space_codes:
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
-            except (httpx.HTTPError, json.JSONDecodeError):
+            except (httpx.HTTPError, json.JSONDecodeError) as exc:
                 # data.go.kr can return a non-JSON (e.g. XML error) body with a
                 # 200 status on key/quota errors — response.json() then raises
                 # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
-                logger.warning("MMCA fetch failed for %s", space_code)
+                logger.warning("MMCA fetch failed for %s: %r", space_code, exc)
                 continue
             # fetch_mmca_congestion stamps its own wall-clock time per HTTP
             # call. Rooms are polled sequentially, so a slow batch can drift
