@@ -249,6 +249,12 @@ describe("MmcaPage", () => {
         observed_at: null,
       }),
     ]);
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      {
+        observed_at: "2026-07-28T10:10:00",
+        rooms: [{ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: null }],
+      },
+    ]);
 
     render(
       <MemoryRouter>
@@ -258,11 +264,49 @@ describe("MmcaPage", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
     expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument();
-    expect(screen.getByText("2전시실")).toBeInTheDocument();
+    // "2전시실" now also appears as a column header in the daily log table
+    // (this test's fetchMmcaDaily mock has a real bucket for that room), so
+    // assert presence rather than uniqueness.
+    expect(screen.getAllByText("2전시실").length).toBeGreaterThan(0);
   });
 
   it("keeps a full-size card for a no-data room when the venue isn't open yet", async () => {
     vi.setSystemTime(new Date("2026-07-28T09:00:00")); // Tuesday, before 10:00 open
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("keeps rooms in the full-size grid before today's first poll, even though congestion_nm is null", async () => {
+    vi.setSystemTime(new Date("2026-07-28T10:05:00")); // Tuesday, open (10:00) but before the 10:10 first poll
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]); // nothing collected yet today
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("keeps the full chart card for a room that had real data earlier today even though its latest poll is null", async () => {
+    vi.setSystemTime(new Date("2026-07-28T15:00:00")); // Tuesday, well within hours
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      {
+        observed_at: "2026-07-28T11:00:00",
+        rooms: [{ space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "여유" }],
+      },
+    ]);
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
 
     render(

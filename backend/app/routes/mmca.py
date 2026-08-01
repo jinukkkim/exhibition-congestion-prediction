@@ -27,6 +27,12 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
             .all()
         }
 
+        # Disabled rooms must always render their "서비스 예정" placeholder,
+        # regardless of whether they happen to have historical rows from
+        # before they were disabled — don't let that appear/disappear based
+        # on data retention.
+        codes_to_return = codes_with_history | (set(codes) & MMCA_DISABLED_SPACE_CODES)
+
         if not codes_with_history:
             if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
                 # Every room this venue has is permanently disabled (e.g.
@@ -71,7 +77,7 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
             congestion_nm=rows_by_code[code].congestion_nm if code in rows_by_code else None,
             observed_at=rows_by_code[code].observed_at.isoformat() if code in rows_by_code else None,
         )
-        for code in sorted(codes_with_history)
+        for code in sorted(codes_to_return)
     ]
 
 

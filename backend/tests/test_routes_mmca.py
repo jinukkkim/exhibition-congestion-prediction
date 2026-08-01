@@ -141,7 +141,31 @@ def test_mmca_rooms_filters_by_venue(client):
     gwacheon_response = test_client.get("/mmca/rooms?venue=gwacheon")
     assert gwacheon_response.status_code == 200
     gwacheon_codes = {r["space_code"] for r in gwacheon_response.json()}
-    assert gwacheon_codes == {"MMCA-SPACE-2001"}
+    assert gwacheon_codes == {"MMCA-SPACE-2001", "MMCA-SPACE-2008"}
+
+
+def test_mmca_rooms_always_includes_disabled_room_even_without_its_own_history(client):
+    test_client, session_factory = client
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    with session_factory() as session:
+        # Only the non-disabled Gwacheon room has any history; MMCA-SPACE-2008
+        # (the disabled children's museum) has zero rows in this DB.
+        session.add(
+            RawMmcaCongestion(
+                observed_at=today.replace(hour=10, minute=0),
+                space_code="MMCA-SPACE-2001",
+                space_nm="1전시실",
+                congestion_nm="여유",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=gwacheon")
+    assert response.status_code == 200
+    disabled_room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-2008")
+    assert disabled_room["congestion_nm"] is None
+    assert disabled_room["space_nm"] == "1층 어린이미술관"
 
 
 def test_mmca_daily_returns_400_for_unknown_venue(client):

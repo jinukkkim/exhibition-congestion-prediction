@@ -74,8 +74,12 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   // partitioning happens a level above that component.
   const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
+  const hasReadingToday = (code: string) =>
+    daily?.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null) ?? false;
+
   const isRoomInactiveToday = (room: MmcaRoomStatus) =>
-    DISABLED_MMCA_SPACE_CODES.has(room.space_code) || (isOpen && room.congestion_nm == null);
+    DISABLED_MMCA_SPACE_CODES.has(room.space_code) ||
+    (isOpen && room.congestion_nm == null && (daily?.length ?? 0) > 0 && !hasReadingToday(room.space_code));
 
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
