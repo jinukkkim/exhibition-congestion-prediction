@@ -422,9 +422,10 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
 
 
 def test_collect_mmca_once_skips_room_confirmed_empty_all_first_hour(monkeypatch, session_factory):
-    """A room with no ongoing exhibition never opens one mid-day, so once
+    """A room with no ongoing exhibition rarely opens one mid-day, so once
     every reading in its first hour (10:xx-11:00) comes back with no
-    congestion data, stop polling it for the rest of the day."""
+    congestion data, drop to the 2-hour recheck cadence instead of every
+    10 minutes for the rest of the day."""
     import app.collector as collector_module
 
     with session_factory() as session:
@@ -443,7 +444,53 @@ def test_collect_mmca_once_skips_room_confirmed_empty_all_first_hour(monkeypatch
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 11, 0),
+            observed_at=datetime(2026, 7, 27, 12, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
+    )
+
+    # 12:00 is an off-cadence round (2-hour recheck grid is 11/13/15/17/19/21).
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 12, 0)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-1001"]
+    assert len(result) == 1
+    assert result[0].space_code == "MMCA-SPACE-1001"
+
+
+def test_collect_mmca_once_rechecks_confirmed_empty_room_every_two_hours(monkeypatch, session_factory):
+    """The confirmed-empty room isn't silenced forever — every 2 hours from
+    the confirmation cutoff (11, 13, 15, ...) it still gets polled, so a
+    same-day reopening is caught within 2 hours instead of not at all."""
+    import app.collector as collector_module
+
+    with session_factory() as session:
+        for minute in (10, 20, 30, 40, 50):
+            session.add(
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 27, 10, minute),
+                    space_code="MMCA-SPACE-1002",
+                    congestion_nm=None,
+                )
+            )
+        session.commit()
+
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 13, 0),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -458,12 +505,11 @@ def test_collect_mmca_once_skips_room_confirmed_empty_all_first_hour(monkeypatch
     )
 
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 0)
+        session_factory=session_factory, now=datetime(2026, 7, 27, 13, 0)
     )
 
-    assert seen_codes == ["MMCA-SPACE-1001"]
-    assert len(result) == 1
-    assert result[0].space_code == "MMCA-SPACE-1001"
+    assert set(seen_codes) == {"MMCA-SPACE-1001", "MMCA-SPACE-1002"}
+    assert len(result) == 2
 
 
 def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch, session_factory):

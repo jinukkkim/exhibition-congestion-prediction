@@ -67,14 +67,15 @@ _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
     "deoksugung": {0},  # 월요일 휴무
 }
 
-# A room with no ongoing exhibition never opens one mid-day — MMCA-SPACE-1001/
-# 1006/1007's 2026-07-27 opening was a one-time exhibition-change event, not a
-# same-room reopening. So once a room reads empty for its whole first hour,
-# skip it for the rest of the day.
+# A room with no ongoing exhibition rarely opens one mid-day, so once a room
+# reads empty for its whole first hour, fall back to a 2-hour recheck
+# interval instead of the normal 10-minute one for the rest of the day — cheap
+# insurance against the rare same-day opening, at a fraction of the API cost.
 # ponytail: this only exists because 15 rooms * 66 rounds/day sits right up
 # against the MMCA API's 1,000-call/day cap (see MMCA_DISABLED_SPACE_CODES).
-# If that cap goes away, remove this and just poll every room all day.
+# If that cap goes away, remove this and just poll every room every round.
 _MMCA_EMPTY_CONFIRM_CUTOFF = time(11, 0)
+_MMCA_EMPTY_RECHECK_INTERVAL_HOURS = 2
 
 
 def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datetime) -> bool:
@@ -92,6 +93,14 @@ def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datet
         )
     ).all()
     return bool(rows) and all(congestion_nm is None for congestion_nm in rows)
+
+
+def _mmca_room_due_for_recheck(round_time: datetime) -> bool:
+    hours_since_cutoff = round_time.hour - _MMCA_EMPTY_CONFIRM_CUTOFF.hour
+    return (
+        round_time.minute == _MMCA_EMPTY_CONFIRM_CUTOFF.minute
+        and hours_since_cutoff % _MMCA_EMPTY_RECHECK_INTERVAL_HOURS == 0
+    )
 
 
 def _is_venue_open(venue: str, now: datetime) -> bool:
@@ -128,7 +137,7 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     if not space_codes:
         return []
 
-    if round_time.time() >= _MMCA_EMPTY_CONFIRM_CUTOFF:
+    if round_time.time() >= _MMCA_EMPTY_CONFIRM_CUTOFF and not _mmca_room_due_for_recheck(round_time):
         with session_factory() as session:
             space_codes = [
                 code
