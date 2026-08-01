@@ -18,3 +18,4 @@ frontend/test-results/
 # Local data
 backend/congestion.db
 .env
+.env.local
