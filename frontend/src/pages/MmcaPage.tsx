@@ -76,7 +76,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         if (!ignore) setLastWeekDaily(data);
       })
       .catch(() => {
-        if (!ignore) setLastWeekDaily(null);
+        // Silently retry on the next mount — state is already null on first load.
       });
 
     return () => {

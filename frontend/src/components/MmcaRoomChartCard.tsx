@@ -8,7 +8,7 @@ const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 const LAST_WEEK_STROKE = "#C7C7CC";
-const LAST_WEEK_MATCH_MINUTES = 30; // how close a last-week reading must be to the hovered time to surface in the tooltip
+const LAST_WEEK_MATCH_MINUTES = 10; // MMCA readings snap to a 10-minute grid (see collector.py), so a genuine match is always distance 0 — this just guards against an exact-timestamp miss, not a fuzzy "nearby" match
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're

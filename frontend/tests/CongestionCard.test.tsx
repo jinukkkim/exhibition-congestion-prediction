@@ -197,6 +197,7 @@ describe("CongestionCard", () => {
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
     expect(screen.getByText(/지난주/)).toBeInTheDocument();
+    expect(screen.getByText(/\(지난주/)).toBeInTheDocument();
   });
 
   it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
