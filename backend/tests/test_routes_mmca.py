@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import fakeredis
 import pytest
@@ -9,6 +10,12 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.models import RawMmcaCongestion
+
+# Matches app/routes/mmca.py's _SEOUL_TZ — day_start there is KST-pinned, so
+# "today" in these tests must be too, or a test run on a non-KST CI runner
+# (e.g. UTC on GitHub Actions) can disagree with the route about which
+# calendar day it is for ~9 hours out of every 24.
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +73,7 @@ def test_mmca_rooms_returns_400_for_unknown_venue(client):
 
 def test_mmca_rooms_returns_latest_reading_per_room(client):
     test_client, session_factory = client
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
     with session_factory() as session:
         session.add_all(
@@ -146,7 +153,7 @@ def test_mmca_rooms_filters_by_venue(client):
 
 def test_mmca_rooms_always_includes_disabled_room_even_without_its_own_history(client):
     test_client, session_factory = client
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
     with session_factory() as session:
         # Only the non-disabled Gwacheon room has any history; MMCA-SPACE-2008
@@ -300,7 +307,7 @@ def test_mmca_daily_filters_by_venue(client):
 
 def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(client):
     test_client, session_factory = client
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
     with session_factory() as session:
         session.add(
@@ -322,7 +329,9 @@ def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(cli
 
 def test_mmca_rooms_hides_stale_reading_when_no_data_collected_today(client):
     test_client, session_factory = client
-    yesterday = datetime.now().replace(hour=17, minute=50, second=0, microsecond=0) - timedelta(days=1)
+    yesterday = datetime.now(_SEOUL_TZ).replace(
+        tzinfo=None, hour=17, minute=50, second=0, microsecond=0
+    ) - timedelta(days=1)
 
     with session_factory() as session:
         session.add(
