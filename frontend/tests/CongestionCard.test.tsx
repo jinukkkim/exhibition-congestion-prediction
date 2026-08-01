@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CongestionCard } from "../src/components/CongestionCard";
@@ -127,5 +127,95 @@ describe("CongestionCard", () => {
 
     expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
     expect(screen.queryByTestId("sparkline-line")).not.toBeInTheDocument();
+  });
+
+  it("renders a grey last-week line alongside this week's when both have data", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T14:30:00", 1500)]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T14:30:00", 900)]}
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-line")).toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-last-week-line")).toBeInTheDocument();
+  });
+
+  it("omits the last-week line when lastWeekDaily is null or empty", () => {
+    const { rerender } = render(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T14:30:00", 1500)]}
+        lastWeekDaily={null}
+      />
+    );
+    expect(screen.queryByTestId("sparkline-last-week-line")).not.toBeInTheDocument();
+
+    rerender(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T14:30:00", 1500)]}
+        lastWeekDaily={[]}
+      />
+    );
+    expect(screen.queryByTestId("sparkline-last-week-line")).not.toBeInTheDocument();
+  });
+
+  it("shows the grey line on its own when this week has no data yet but last week does", () => {
+    render(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        daily={[]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T14:30:00", 900)]}
+      />
+    );
+
+    expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-last-week-line")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparkline-line")).not.toBeInTheDocument();
+  });
+
+  it("shows both values in the tooltip when hovering a time both weeks have data near", () => {
+    const { container } = render(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 1000)]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:15:00", 700)]}
+      />
+    );
+
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+  });
+
+  it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
+    const { container } = render(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        daily={[]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:15:00", 700)]}
+      />
+    );
+
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
 });
