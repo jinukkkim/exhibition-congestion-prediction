@@ -11,7 +11,7 @@ import {
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
-import { todayString } from "../lib/date";
+import { shiftDate, todayString } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 
@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 60_000;
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
   const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
+  const [lastWeekDaily, setLastWeekDaily] = useState<MmcaDailyLogPoint[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -67,6 +68,22 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
     };
   }, [venue]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    fetchMmcaDaily(venue, shiftDate(todayString(), -7))
+      .then((data) => {
+        if (!ignore) setLastWeekDaily(data);
+      })
+      .catch(() => {
+        if (!ignore) setLastWeekDaily(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [venue]);
+
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -110,6 +127,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
                 key={room.space_code}
                 room={room}
                 daily={daily}
+                lastWeekDaily={lastWeekDaily}
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}
