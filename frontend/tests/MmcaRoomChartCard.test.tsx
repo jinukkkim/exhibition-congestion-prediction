@@ -243,4 +243,170 @@ describe("MmcaRoomChartCard", () => {
     rerender(<MmcaRoomChartCard {...props} isOpenToday={false} />);
     expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
+
+  it("renders a grey last-week line alongside this week's when both have data", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-08T10:15:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument();
+    expect(screen.getByTestId("mmca-room-chart-last-week-line")).toBeInTheDocument();
+  });
+
+  it("omits the last-week line when lastWeekDaily is null or empty", () => {
+    const dailyThisWeek = [
+      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+    ];
+    const { rerender } = render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={dailyThisWeek}
+        lastWeekDaily={null}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+    expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument();
+    expect(screen.queryByTestId("mmca-room-chart-last-week-line")).not.toBeInTheDocument();
+
+    rerender(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={dailyThisWeek}
+        lastWeekDaily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+    expect(screen.queryByTestId("mmca-room-chart-last-week-line")).not.toBeInTheDocument();
+  });
+
+  it("shows the grey line on its own when this week has no data yet but last week does", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ congestion_nm: null, observed_at: null })}
+        daily={[]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-08T10:30:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByTestId("mmca-room-chart-last-week-line")).toBeInTheDocument();
+    expect(screen.queryByTestId("mmca-room-chart-line")).not.toBeInTheDocument();
+  });
+
+  it("shows both labels in the tooltip when hovering a time both weeks have data near", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" })]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    // Left edge — nearest point is the 10:00 reading, which has a last-week
+    // match at the same minute (10:00).
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+  });
+
+  it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ congestion_nm: null, observed_at: null })}
+        daily={[]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-08T10:30:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+  });
+
+  it("shows the standalone '지난주' tooltip over a time slot today hasn't reached yet, even though today has earlier data", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        // Today has one reading at 10:00. Last week has a 10:00 reading and
+        // a 15:00 reading. Hovering near 15:00 must be closer to last
+        // week's 15:00 point than to today's only (10:00) point, so it
+        // must show the standalone last-week tooltip, not re-anchor to
+        // today's 10:00 value.
+        daily={[dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-08T15:00:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    // clientX 300 = the 15:00 point's exact x position on this fixture's
+    // axis (OPEN 10:00/600min, CLOSE 18:00/1080min) — 300 away from
+    // today's only 10:00 point (x 0), 0 away from last week's 15:00 point.
+    fireEvent.mouseMove(hoverTarget, { clientX: 300, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+  });
 });

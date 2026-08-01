@@ -7,6 +7,8 @@ import { statusOf } from "../lib/status";
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
+const LAST_WEEK_STROKE = "#C7C7CC";
+const LAST_WEEK_MATCH_MINUTES = 30; // how close a last-week reading must be to the hovered time to surface in the tooltip
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're
@@ -58,6 +60,19 @@ function toXY(points: Point[], open: number, close: number): XY[] {
   return points.map((p) => ({ x: xOf(p.minutes, open, close), y: yOf(p.tier) }));
 }
 
+function nearestWithin(points: Point[], minutes: number, maxDistance: number): Point | undefined {
+  let nearest: Point | undefined;
+  let nearestDist = Infinity;
+  for (const p of points) {
+    const dist = Math.abs(p.minutes - minutes);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = p;
+    }
+  }
+  return nearest && nearestDist <= maxDistance ? nearest : undefined;
+}
+
 // Centripetal Catmull-Rom -> cubic Bezier, ported from CongestionCard.tsx.
 function smoothPath(xy: XY[]): string {
   const dist = (a: XY, b: XY) => Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)) || 1e-6;
@@ -93,30 +108,8 @@ function areaPath(xy: XY[], linePath: string): string {
   return `M ${first.x} ${CHART_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${CHART_HEIGHT} Z`;
 }
 
-export function MmcaRoomChartCard({
-  room,
-  daily,
-  open,
-  close,
-  nowMinutes,
-  isOpenToday,
-}: {
-  room: MmcaRoomStatus;
-  daily: MmcaDailyLogPoint[] | null;
-  open: number;
-  close: number;
-  nowMinutes: number;
-  isOpenToday: boolean;
-}) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-
-  const spaceCode = room.space_code;
-  const title = room.space_nm ?? spaceCode;
-
-  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
-
-  const points: Point[] = (daily ?? [])
+function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: number, close: number): Point[] {
+  return (daily ?? [])
     .flatMap((row): Point[] => {
       const value = row.rooms.find((r) => r.space_code === spaceCode)?.congestion_nm;
       if (value == null) return [];
@@ -125,6 +118,38 @@ export function MmcaRoomChartCard({
       return [{ minutes: minutesOfDay(row.observed_at), tier, label: value }];
     })
     .filter((p) => p.minutes >= open && p.minutes <= close);
+}
+
+export function MmcaRoomChartCard({
+  room,
+  daily,
+  lastWeekDaily = null,
+  open,
+  close,
+  nowMinutes,
+  isOpenToday,
+}: {
+  room: MmcaRoomStatus;
+  daily: MmcaDailyLogPoint[] | null;
+  lastWeekDaily?: MmcaDailyLogPoint[] | null;
+  open: number;
+  close: number;
+  nowMinutes: number;
+  isOpenToday: boolean;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
+
+  const spaceCode = room.space_code;
+  const title = room.space_nm ?? spaceCode;
+
+  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+
+  const points = roomPoints(daily, spaceCode, open, close);
+  // Last week is always a fully-elapsed day, so it just uses the plain
+  // per-room series — no synthetic-opening-point treatment (that's about
+  // masking today's known 10:00-poll gap, not relevant to a past day).
+  const lastWeekPoints = roomPoints(lastWeekDaily, spaceCode, open, close);
 
   const ticks = hourlyTicks(open, close);
   // The backend skips the 10:00 poll (opening congestion is reliably 여유,
@@ -137,8 +162,10 @@ export function MmcaRoomChartCard({
   const renderPoints: Point[] = hasOpeningReading
     ? [{ minutes: open, tier: 0, label: "여유" }, ...points]
     : points;
-  const xy = toXY(renderPoints, open, close);
+  const xy = renderPoints.length > 0 ? toXY(renderPoints, open, close) : [];
+  const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close) : [];
   const linePath = renderPoints.length > 1 ? smoothPath(xy) : "";
+  const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
@@ -158,19 +185,45 @@ export function MmcaRoomChartCard({
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
 
-    let nearest: number | null = null;
-    let nearestDist = Infinity;
+    let thisWeekIndex: number | null = null;
+    let thisWeekDist = Infinity;
     points.forEach((p, i) => {
       const dist = Math.abs(xOf(p.minutes, open, close) - svgX);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = i;
+      if (dist < thisWeekDist) {
+        thisWeekDist = dist;
+        thisWeekIndex = i;
       }
     });
-    setHoverIndex(nearest);
+
+    let lastWeekIndex: number | null = null;
+    let lastWeekDist = Infinity;
+    lastWeekPoints.forEach((p, i) => {
+      const dist = Math.abs(xOf(p.minutes, open, close) - svgX);
+      if (dist < lastWeekDist) {
+        lastWeekDist = dist;
+        lastWeekIndex = i;
+      }
+    });
+
+    // Whichever series has an actual point closer to the hovered x wins —
+    // not a fixed "does this week have any data at all" switch. See
+    // CongestionCard.tsx's handleHoverMove for the same pattern and
+    // rationale (today's partial-day data shouldn't re-anchor a hover over
+    // a time slot today hasn't reached yet).
+    if (thisWeekIndex !== null && (lastWeekIndex === null || thisWeekDist <= lastWeekDist)) {
+      setHover({ isLastWeek: false, index: thisWeekIndex });
+    } else if (lastWeekIndex !== null) {
+      setHover({ isLastWeek: true, index: lastWeekIndex });
+    } else {
+      setHover(null);
+    }
   }
 
-  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : undefined;
+  const hoverSeriesPoints = hover ? (hover.isLastWeek ? lastWeekPoints : points) : undefined;
+  const hoverPoint = hover && hoverSeriesPoints ? hoverSeriesPoints[hover.index] : undefined;
+  const hoverIsThisWeek = hover ? !hover.isLastWeek : false;
+  const hoverLastWeekMatch =
+    hoverIsThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
@@ -223,7 +276,7 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {linePath && (
+            {(linePath || lastWeekLinePath) && (
               <>
                 <defs>
                   <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
@@ -237,16 +290,29 @@ export function MmcaRoomChartCard({
                     </radialGradient>
                   )}
                 </defs>
-                <path d={areaD} fill={`url(#fill-${spaceCode})`} />
-                <path
-                  data-testid="mmca-room-chart-line"
-                  d={linePath}
-                  fill="none"
-                  stroke={CHART_BLUE}
-                  strokeWidth={2.5}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
+                {areaD && <path d={areaD} fill={`url(#fill-${spaceCode})`} />}
+                {lastWeekLinePath && (
+                  <path
+                    data-testid="mmca-room-chart-last-week-line"
+                    d={lastWeekLinePath}
+                    fill="none"
+                    stroke={LAST_WEEK_STROKE}
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )}
+                {linePath && (
+                  <path
+                    data-testid="mmca-room-chart-line"
+                    d={linePath}
+                    fill="none"
+                    stroke={CHART_BLUE}
+                    strokeWidth={2.5}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )}
                 {isOpen && lastPoint && (
                   <>
                     <line
@@ -289,7 +355,7 @@ export function MmcaRoomChartCard({
                       cy={yOf(hoverPoint.tier)}
                       r={4}
                       fill="#FFFFFF"
-                      stroke={CHART_BLUE}
+                      stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
                       strokeWidth={2}
                     />
                   </>
@@ -301,7 +367,7 @@ export function MmcaRoomChartCard({
                   height={CHART_HEIGHT}
                   fill="transparent"
                   onMouseMove={handleHoverMove}
-                  onMouseLeave={() => setHoverIndex(null)}
+                  onMouseLeave={() => setHover(null)}
                 />
               </>
             )}
@@ -315,9 +381,23 @@ export function MmcaRoomChartCard({
             >
               <span className="font-mono tabular-nums text-ink-soft">{formatMinutes(hoverPoint.minutes)}</span>
               <span className="mx-1 text-ink-soft">·</span>
-              <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
-                {hoverPoint.label}
-              </span>
+              {hoverIsThisWeek ? (
+                <>
+                  <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
+                    {hoverPoint.label}
+                  </span>
+                  {hoverLastWeekMatch && (
+                    <span className="ml-1 text-ink-soft">(지난주 {hoverLastWeekMatch.label})</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-ink-soft">
+                  지난주{" "}
+                  <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
+                    {hoverPoint.label}
+                  </span>
+                </span>
+              )}
             </div>
           )}
           <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">
