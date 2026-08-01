@@ -161,7 +161,7 @@ export function CongestionCard({
   lastWeekDaily?: DailyLogPoint[] | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
   if (!data) {
     return (
@@ -224,33 +224,56 @@ export function CongestionCard({
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = xy[xy.length - 1];
 
-  // Hover hit-tests against whichever series is actually on screen: this
-  // week's points when present, otherwise last week's (only-last-week case).
-  const hoverSeries = hasThisWeek ? xy : lastWeekXy;
-  const hoverSeriesPoints = hasThisWeek ? points : lastWeekPoints;
-
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * SPARKLINE_WIDTH;
 
-    let nearest: number | null = null;
-    let nearestDist = Infinity;
-    hoverSeries.forEach((p, i) => {
-      if (hoverSeriesPoints[i].isRaw) return; // 09:30/closing-time points don't show hover info
+    let thisWeekIndex: number | null = null;
+    let thisWeekDist = Infinity;
+    xy.forEach((p, i) => {
+      if (points[i].isRaw) return; // 09:30/closing-time points don't show hover info
       const dist = Math.abs(p.x - svgX);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = i;
+      if (dist < thisWeekDist) {
+        thisWeekDist = dist;
+        thisWeekIndex = i;
       }
     });
-    setHoverIndex(nearest);
+
+    let lastWeekIndex: number | null = null;
+    let lastWeekDist = Infinity;
+    lastWeekXy.forEach((p, i) => {
+      const dist = Math.abs(p.x - svgX);
+      if (dist < lastWeekDist) {
+        lastWeekDist = dist;
+        lastWeekIndex = i;
+      }
+    });
+
+    // Whichever series has an actual point closer to the hovered x wins —
+    // not a fixed "does this week have any data at all" switch. Today's
+    // points cluster near the current time, so a hover further along the
+    // axis (a time slot today hasn't reached yet) is genuinely closer to
+    // last week's point there than to today's last real reading, and must
+    // show the standalone last-week tooltip instead of re-anchoring to
+    // today's most recent value.
+    if (thisWeekIndex !== null && (lastWeekIndex === null || thisWeekDist <= lastWeekDist)) {
+      setHover({ isLastWeek: false, index: thisWeekIndex });
+    } else if (lastWeekIndex !== null) {
+      setHover({ isLastWeek: true, index: lastWeekIndex });
+    } else {
+      setHover(null);
+    }
   }
 
-  const hoverPoint = hoverIndex !== null ? hoverSeriesPoints[hoverIndex] : undefined;
+  const hoverSeriesXY = hover ? (hover.isLastWeek ? lastWeekXy : xy) : undefined;
+  const hoverSeriesPoints = hover ? (hover.isLastWeek ? lastWeekPoints : points) : undefined;
+  const hoverPoint = hover && hoverSeriesPoints ? hoverSeriesPoints[hover.index] : undefined;
+  const hoverXY = hover && hoverSeriesXY ? hoverSeriesXY[hover.index] : undefined;
+  const hoverIsThisWeek = hover ? !hover.isLastWeek : false;
   const hoverLastWeekMatch =
-    hasThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
+    hoverIsThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
@@ -355,22 +378,22 @@ export function CongestionCard({
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2.5} />
                     </>
                   )}
-                  {hoverIndex !== null && hoverSeries[hoverIndex] && (
+                  {hoverXY && (
                     <>
                       <line
-                        x1={hoverSeries[hoverIndex].x}
+                        x1={hoverXY.x}
                         y1={0}
-                        x2={hoverSeries[hoverIndex].x}
+                        x2={hoverXY.x}
                         y2={SPARKLINE_HEIGHT}
                         stroke="#D2D2D7"
                         strokeWidth={1}
                       />
                       <circle
-                        cx={hoverSeries[hoverIndex].x}
-                        cy={hoverSeries[hoverIndex].y}
+                        cx={hoverXY.x}
+                        cy={hoverXY.y}
                         r={4}
                         fill="#FFFFFF"
-                        stroke={hasThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
+                        stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
                         strokeWidth={2}
                       />
                     </>
@@ -382,12 +405,12 @@ export function CongestionCard({
                     height={SPARKLINE_HEIGHT}
                     fill="transparent"
                     onMouseMove={handleHoverMove}
-                    onMouseLeave={() => setHoverIndex(null)}
+                    onMouseLeave={() => setHover(null)}
                   />
                 </>
               )}
             </svg>
-            {hoverIndex !== null && hoverPoint && (
+            {hoverPoint && hoverXY && (
               <div
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
@@ -395,14 +418,14 @@ export function CongestionCard({
                   // rather than the bucket's true center, so it lines up with
                   // the guide line/dot; clamped so the box never overflows the
                   // card's clipped edges.
-                  left: `${Math.min(Math.max((hoverSeries[hoverIndex].x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
+                  left: `${Math.min(Math.max((hoverXY.x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
                 <span className="font-mono tabular-nums text-ink-soft">
                   {hoverPoint.isRaw ? formatMinutes(hoverPoint.minutes) : bucketRange(hoverPoint.minutes, BUCKET_MINUTES)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
-                {hasThisWeek ? (
+                {hoverIsThisWeek ? (
                   <>
                     <span className="font-mono font-semibold tabular-nums text-ink">
                       {Math.round(hoverPoint.value).toLocaleString()}

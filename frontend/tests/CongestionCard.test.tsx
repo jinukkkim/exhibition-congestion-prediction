@@ -218,4 +218,32 @@ describe("CongestionCard", () => {
     expect(screen.getByText(/지난주/)).toBeInTheDocument();
     expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
+
+  it("shows the standalone '지난주' tooltip over a time slot today hasn't reached yet, even though today has earlier data", () => {
+    const { container } = render(
+      <CongestionCard
+        data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
+        // Today has one reading at 10:00. Last week has a 10:00 reading and
+        // a 15:00 reading. Hovering near 15:00 must be closer to last
+        // week's 15:00 point than to today's only (10:00) point, so it
+        // must show the standalone last-week tooltip, not re-anchor to
+        // today's 10:00 value.
+        daily={[dailyPoint("2026-07-15T10:00:00", 800)]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T15:00:00", 950)]}
+      />
+    );
+
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    // clientX 230 ≈ the 15:00 point's x position on this fixture's axis
+    // (open 09:30, close 21:00 on a Wed) — much closer to last week's
+    // 15:00 point (~x 240) than to today's only 10:00 point (~x 31).
+    fireEvent.mouseMove(hoverTarget, { clientX: 230, clientY: 0 });
+
+    expect(screen.getByText(/지난주/)).toBeInTheDocument();
+    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+  });
 });
