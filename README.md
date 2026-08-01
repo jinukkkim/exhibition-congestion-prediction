@@ -31,7 +31,7 @@ cp .env.example .env   # fill in SEOUL_API_KEY
 `scripts/dev.sh` pulls a fresh snapshot of the production DB into
 `congestion.db` before starting uvicorn, so local dev always sees current
 data instead of whatever's been collected locally. Needs `DEPLOY_HOST` /
-`DEPLOY_USER` / `DEPLOY_SSH_KEY` set in `.env` (see `.env.example`).
+`DEPLOY_USER` / `DEPLOY_SSH_KEY` set in `.env.local` (see `.env.local.example`).
 
 ```bash
 scripts/dev.sh

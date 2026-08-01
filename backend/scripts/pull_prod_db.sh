@@ -18,9 +18,9 @@ set -a
 [ -f .env.local ] && source .env.local
 set +a
 
-: "${DEPLOY_HOST:?Set DEPLOY_HOST in backend/.env}"
+: "${DEPLOY_HOST:?Set DEPLOY_HOST in backend/.env.local}"
 : "${DEPLOY_USER:=ubuntu}"
-: "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY in backend/.env (path to the SSH private key)}"
+: "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY in backend/.env.local (path to the SSH private key)}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/ubuntu/exhibition-traffic/backend}"
 REMOTE_TMP="/tmp/congestion_snapshot_$$.db"
 
