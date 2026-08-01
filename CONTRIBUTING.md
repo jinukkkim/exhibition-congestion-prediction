@@ -31,19 +31,3 @@ Example: `fix(be): close redis pubsub connection on sse generator teardown`
 - Include tests for new features / bug fixes
 - Prefer new commits over force-pushing to an open PR
 
-### PR description template
-
-```markdown
-## 설명
-
-<!-- 이 PR이 구현한 기능, 수정 사항 -->
-
-## 구현 내용
-
-<!-- 변경 사항을 세밀하고 정확하게 기술 -->
-
-## 테스트
-
-<!-- tests -->
-
-```
