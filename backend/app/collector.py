@@ -84,18 +84,39 @@ def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datet
         hour=_MMCA_EMPTY_CONFIRM_CUTOFF.hour, minute=_MMCA_EMPTY_CONFIRM_CUTOFF.minute
     )
     # congestion_nm is only ever null when resultCode is 0002 (no ongoing
-    # exhibition) — see MmcaCongestionReading.congestion_nm / mmca_api.py.
-    rows = session.scalars(
-        select(RawMmcaCongestion.congestion_nm).where(
+    # exhibition) — see MmcaCongestionReading.congestion_nm / mmca_api.py. A
+    # real reading at any point today — even one caught by an earlier 2-hour
+    # recheck — means the room has reopened, so resume normal 10-minute
+    # polling for the rest of the day instead of staying stuck on the
+    # empty-room cadence.
+    reopened_today = session.scalars(
+        select(RawMmcaCongestion.id).where(
+            RawMmcaCongestion.space_code == space_code,
+            RawMmcaCongestion.observed_at >= day_start,
+            RawMmcaCongestion.observed_at < round_time,
+            RawMmcaCongestion.congestion_nm.isnot(None),
+        )
+    ).first()
+    if reopened_today is not None:
+        return False
+
+    # No real reading yet today (checked above over the whole day so far,
+    # which covers this range too) — confirmed empty once the first hour has
+    # actually been polled at least once.
+    first_hour_reading = session.scalars(
+        select(RawMmcaCongestion.id).where(
             RawMmcaCongestion.space_code == space_code,
             RawMmcaCongestion.observed_at >= day_start,
             RawMmcaCongestion.observed_at < cutoff,
         )
-    ).all()
-    return bool(rows) and all(congestion_nm is None for congestion_nm in rows)
+    ).first()
+    return first_hour_reading is not None
 
 
 def _mmca_room_due_for_recheck(round_time: datetime) -> bool:
+    # Only compares hours, so this assumes _MMCA_EMPTY_CONFIRM_CUTOFF falls on
+    # an exact hour (currently 11:00) — if the cutoff ever moves off :00, this
+    # needs a minute-aware interval, not just an hour difference.
     hours_since_cutoff = round_time.hour - _MMCA_EMPTY_CONFIRM_CUTOFF.hour
     return (
         round_time.minute == _MMCA_EMPTY_CONFIRM_CUTOFF.minute

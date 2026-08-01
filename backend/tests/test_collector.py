@@ -512,10 +512,80 @@ def test_collect_mmca_once_rechecks_confirmed_empty_room_every_two_hours(monkeyp
     assert len(result) == 2
 
 
+def test_collect_mmca_once_resumes_normal_polling_after_reopening_detected_by_recheck(
+    monkeypatch, session_factory
+):
+    """Once a 2-hour recheck detects a real reading (the room reopened), the
+    room must go straight back to normal 10-minute polling for the rest of
+    the day — it must not stay stuck on the empty-room cadence just because
+    the first hour was empty."""
+    import app.collector as collector_module
+
+    with session_factory() as session:
+        for minute in (10, 20, 30, 40, 50):
+            session.add(
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 27, 10, minute),
+                    space_code="MMCA-SPACE-1002",
+                    congestion_nm=None,
+                )
+            )
+        session.commit()
+
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"seoul": ["MMCA-SPACE-1002"]},
+    )
+
+    # 13:00 is a recheck round — the room gets polled and comes back real.
+    monkeypatch.setattr(
+        collector_module,
+        "fetch_mmca_congestion",
+        lambda client, space_code, api_key: MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 13, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        ),
+    )
+    collector_module.collect_mmca_once(session_factory=session_factory, now=datetime(2026, 7, 27, 13, 0))
+
+    # 13:10 is an ordinary off-grid round. If the room were still treated as
+    # confirmed-empty, it would be skipped here.
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 7, 27, 13, 10),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="약간 붐빔",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    result = collector_module.collect_mmca_once(session_factory=session_factory, now=datetime(2026, 7, 27, 13, 10))
+
+    assert seen_codes == ["MMCA-SPACE-1002"]
+    assert len(result) == 1
+
+
 def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch, session_factory):
     import app.collector as collector_module
 
     with session_factory() as session:
+        # Mixed first-hour readings: one real, one empty. Any real reading
+        # this early rules out "confirmed empty" outright.
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime(2026, 7, 27, 10, 20),
+                space_code="MMCA-SPACE-1001",
+                congestion_nm=None,
+            )
+        )
         session.add(
             RawMmcaCongestion(
                 observed_at=datetime(2026, 7, 27, 10, 30),
@@ -530,7 +600,7 @@ def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch,
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 11, 0),
+            observed_at=datetime(2026, 7, 27, 11, 10),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -544,8 +614,11 @@ def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch,
         {"seoul": ["MMCA-SPACE-1001"]},
     )
 
+    # 11:10 is off the 2-hour recheck grid (11/13/15/...), so the
+    # confirmed-empty filter actually runs this round instead of being
+    # bypassed by the recheck gate.
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 0)
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 10)
     )
 
     assert seen_codes == ["MMCA-SPACE-1001"]
