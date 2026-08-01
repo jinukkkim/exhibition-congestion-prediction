@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from sqlalchemy import select
+
 from app.cache import set_latest
 from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
@@ -65,6 +67,32 @@ _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
     "deoksugung": {0},  # 월요일 휴무
 }
 
+# A room with no ongoing exhibition never opens one mid-day — MMCA-SPACE-1001/
+# 1006/1007's 2026-07-27 opening was a one-time exhibition-change event, not a
+# same-room reopening. So once a room reads empty for its whole first hour,
+# skip it for the rest of the day.
+# ponytail: this only exists because 15 rooms * 66 rounds/day sits right up
+# against the MMCA API's 1,000-call/day cap (see MMCA_DISABLED_SPACE_CODES).
+# If that cap goes away, remove this and just poll every room all day.
+_MMCA_EMPTY_CONFIRM_CUTOFF = time(11, 0)
+
+
+def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datetime) -> bool:
+    day_start = round_time.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = round_time.replace(
+        hour=_MMCA_EMPTY_CONFIRM_CUTOFF.hour, minute=_MMCA_EMPTY_CONFIRM_CUTOFF.minute
+    )
+    # congestion_nm is only ever null when resultCode is 0002 (no ongoing
+    # exhibition) — see MmcaCongestionReading.congestion_nm / mmca_api.py.
+    rows = session.scalars(
+        select(RawMmcaCongestion.congestion_nm).where(
+            RawMmcaCongestion.space_code == space_code,
+            RawMmcaCongestion.observed_at >= day_start,
+            RawMmcaCongestion.observed_at < cutoff,
+        )
+    ).all()
+    return bool(rows) and all(congestion_nm is None for congestion_nm in rows)
+
 
 def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
@@ -99,6 +127,16 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     ]
     if not space_codes:
         return []
+
+    if round_time.time() >= _MMCA_EMPTY_CONFIRM_CUTOFF:
+        with session_factory() as session:
+            space_codes = [
+                code
+                for code in space_codes
+                if not _mmca_room_confirmed_empty_today(session, code, round_time)
+            ]
+        if not space_codes:
+            return []
 
     readings: list[MmcaCongestionReading] = []
     with httpx.Client() as client:
