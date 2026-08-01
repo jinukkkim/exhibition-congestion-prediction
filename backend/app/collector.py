@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from sqlalchemy import select
+
 from app.cache import set_latest
 from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
@@ -65,6 +67,62 @@ _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
     "deoksugung": {0},  # 월요일 휴무
 }
 
+# A room with no ongoing exhibition rarely opens one mid-day, so once a room
+# reads empty for its whole first hour, fall back to a 2-hour recheck
+# interval instead of the normal 10-minute one for the rest of the day — cheap
+# insurance against the rare same-day opening, at a fraction of the API cost.
+# ponytail: this only exists because 15 rooms * 66 rounds/day sits right up
+# against the MMCA API's 1,000-call/day cap (see MMCA_DISABLED_SPACE_CODES).
+# If that cap goes away, remove this and just poll every room every round.
+_MMCA_EMPTY_CONFIRM_CUTOFF = time(11, 0)
+_MMCA_EMPTY_RECHECK_INTERVAL_HOURS = 2
+
+
+def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datetime) -> bool:
+    day_start = round_time.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = round_time.replace(
+        hour=_MMCA_EMPTY_CONFIRM_CUTOFF.hour, minute=_MMCA_EMPTY_CONFIRM_CUTOFF.minute
+    )
+    # congestion_nm is only ever null when resultCode is 0002 (no ongoing
+    # exhibition) — see MmcaCongestionReading.congestion_nm / mmca_api.py. A
+    # real reading at any point today — even one caught by an earlier 2-hour
+    # recheck — means the room has reopened, so resume normal 10-minute
+    # polling for the rest of the day instead of staying stuck on the
+    # empty-room cadence.
+    reopened_today = session.scalars(
+        select(RawMmcaCongestion.id).where(
+            RawMmcaCongestion.space_code == space_code,
+            RawMmcaCongestion.observed_at >= day_start,
+            RawMmcaCongestion.observed_at < round_time,
+            RawMmcaCongestion.congestion_nm.isnot(None),
+        )
+    ).first()
+    if reopened_today is not None:
+        return False
+
+    # No real reading yet today (checked above over the whole day so far,
+    # which covers this range too) — confirmed empty once the first hour has
+    # actually been polled at least once.
+    first_hour_reading = session.scalars(
+        select(RawMmcaCongestion.id).where(
+            RawMmcaCongestion.space_code == space_code,
+            RawMmcaCongestion.observed_at >= day_start,
+            RawMmcaCongestion.observed_at < cutoff,
+        )
+    ).first()
+    return first_hour_reading is not None
+
+
+def _mmca_room_due_for_recheck(round_time: datetime) -> bool:
+    # Only compares hours, so this assumes _MMCA_EMPTY_CONFIRM_CUTOFF falls on
+    # an exact hour (currently 11:00) — if the cutoff ever moves off :00, this
+    # needs a minute-aware interval, not just an hour difference.
+    hours_since_cutoff = round_time.hour - _MMCA_EMPTY_CONFIRM_CUTOFF.hour
+    return (
+        round_time.minute == _MMCA_EMPTY_CONFIRM_CUTOFF.minute
+        and hours_since_cutoff % _MMCA_EMPTY_RECHECK_INTERVAL_HOURS == 0
+    )
+
 
 def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
@@ -99,6 +157,16 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     ]
     if not space_codes:
         return []
+
+    if round_time.time() >= _MMCA_EMPTY_CONFIRM_CUTOFF and not _mmca_room_due_for_recheck(round_time):
+        with session_factory() as session:
+            space_codes = [
+                code
+                for code in space_codes
+                if not _mmca_room_confirmed_empty_today(session, code, round_time)
+            ]
+        if not space_codes:
+            return []
 
     readings: list[MmcaCongestionReading] = []
     with httpx.Client() as client:
