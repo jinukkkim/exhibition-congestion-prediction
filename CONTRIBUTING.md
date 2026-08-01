@@ -27,6 +27,8 @@ Example: `fix(be): close redis pubsub connection on sse generator teardown`
 
 - **Title**: English, follows the commit convention format (`type(scope): subject`)
 - **Description**: Korean, follows the template below
+  - 기술적이고 간결하게 작성
+  - 종결어미는 명사형 종결 사용 (예: `~수정`, `~추가`, `~분리` / ~~`~수정했습니다`~~, ~~`~추가함`~~)
 - Merge via "Merge commit" (not squash/rebase) — keep each commit as-is in `develop`/`main` history
 - Include tests for new features / bug fixes
 - Prefer new commits over force-pushing to an open PR
