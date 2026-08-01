@@ -10,8 +10,10 @@ import {
 } from "../api/mmca";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
+import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
 import { todayString } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
+import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -68,6 +70,15 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  // Mirrors MmcaRoomChartCard's own isOpen formula — needed here too since
+  // partitioning happens a level above that component.
+  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+
+  const isRoomInactiveToday = (room: MmcaRoomStatus) =>
+    DISABLED_MMCA_SPACE_CODES.has(room.space_code) || (isOpen && room.congestion_nm == null);
+
+  const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
+  const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -88,9 +99,9 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
-        {rooms && (
-          <section className={`grid gap-6${rooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
-            {rooms.map((room) => (
+        {activeRooms.length > 0 && (
+          <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
+            {activeRooms.map((room) => (
               <MmcaRoomChartCard
                 key={room.space_code}
                 room={room}
@@ -99,6 +110,17 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
                 close={close}
                 nowMinutes={nowMinutes}
                 isOpenToday={isOpenToday}
+              />
+            ))}
+          </section>
+        )}
+        {inactiveRooms.length > 0 && (
+          <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {inactiveRooms.map((room) => (
+              <MmcaRoomInactiveCard
+                key={room.space_code}
+                room={room}
+                reason={DISABLED_MMCA_SPACE_CODES.has(room.space_code) ? "서비스 예정" : "오늘 정보 없음"}
               />
             ))}
           </section>

@@ -211,4 +211,67 @@ describe("MmcaPage", () => {
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
     expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
   });
+
+  it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-2001" }),
+      makeRoom({
+        space_code: "MMCA-SPACE-2008",
+        space_nm: "1층 어린이미술관",
+        congestion_nm: null,
+        observed_at: null,
+      }),
+    ]);
+
+    const { container } = render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
+    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
+    expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
+
+    const sections = container.querySelectorAll("section");
+    const inactiveSection = Array.from(sections).find((s) => s.textContent?.includes("서비스 예정"));
+    expect(inactiveSection?.className).toMatch(/lg:grid-cols-6/);
+  });
+
+  it("groups open rooms with no data collected today into small inactive cards", async () => {
+    vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({
+        space_code: "MMCA-SPACE-1002",
+        space_nm: "2전시실",
+        congestion_nm: null,
+        observed_at: null,
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
+    expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument();
+    expect(screen.getByText("2전시실")).toBeInTheDocument();
+  });
+
+  it("keeps a full-size card for a no-data room when the venue isn't open yet", async () => {
+    vi.setSystemTime(new Date("2026-07-28T09:00:00")); // Tuesday, before 10:00 open
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
 });
