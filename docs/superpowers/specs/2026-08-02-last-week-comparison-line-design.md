@@ -59,16 +59,33 @@ new prop (same array, every room reads its own room out of it, mirroring how
   `smoothPath()` helper: stroke `#C7C7CC`, width 2 (vs. the blue line's
   2.5), no area fill, no glow/end-dot (those affordances mean
   "live/primary", which this isn't).
-- Hover (`handleHoverMove` / tooltip): keep hit-testing against this week's
-  points as today. Additionally look up the last-week resampled point
-  nearest the hovered bucket's minute; if one exists within one bucket
-  width, append its value to the same tooltip box in muted/grey text, e.g.
-  `1,200명 (지난주 980명)`. If none exists nearby, the tooltip renders
-  exactly as it does today. If this week has no point at the hovered
-  position but a last-week one exists (only-last-week case, see below),
-  the tooltip shows just the last-week value on its own, labeled — e.g.
-  `지난주 980명` — not the parenthetical form, since there's no this-week
-  number to attach it to.
+- Hover (`handleHoverMove` / tooltip): per hover position, find the nearest
+  point independently in *each* series (this week, this-week's `isRaw`
+  markers excluded as today) and compare which one is actually closer to
+  the hovered x — not a single day-level "does this week have any data at
+  all" switch. This matters once today is partway through: today's points
+  cluster near the current time, so hovering further along the axis (a
+  time slot today hasn't reached yet) is genuinely closer to last week's
+  point there than to today's last real reading, and must show the
+  standalone last-week tooltip rather than re-anchoring to today's most
+  recent value. (A same-day-only, whole-chart-empty check was the first
+  cut, but it made the standalone tooltip unreachable during the common
+  case — today open, partially populated — so it was replaced with this
+  per-position nearest-of-both-series comparison before implementation
+  landed.)
+  - Whichever series' nearest point wins becomes the tooltip's primary
+    value. If this week wins, additionally look up the last-week point
+    nearest that same minute (within one bucket width `BUCKET_MINUTES`);
+    if one exists, append it in muted text: `1,200명 (지난주 980명)`. If
+    none exists nearby, the tooltip renders the this-week value alone.
+  - If last week wins, the tooltip shows just the last-week value on its
+    own, labeled — e.g. `지난주 980명` — not the parenthetical form, since
+    there's no relevant this-week number to attach it to.
+  - Note for later: once a same-day prediction curve exists for the
+    "now → close" portion of the chart, that will supersede this
+    corner — hovering a future time slot will have a predicted this-week
+    value to show instead of falling through to last week. Out of scope
+    for this feature; noted so the two don't conflict later.
 
 ## `MmcaRoomChartCard`
 
@@ -78,11 +95,14 @@ new prop (same array, every room reads its own room out of it, mirroring how
 - y-scale here is already absolute (`yOf`: fixed tier 0–3 positions) — no
   scale change needed, just render the second series.
 - Same grey-line styling as above (`#C7C7CC`, width 2, no fill/glow/dot).
-- Hover: same pattern — look up the nearest last-week point to the hovered
-  minute and append its tier label to the existing tooltip in muted text,
-  e.g. `보통 (지난주 여유)`. Omitted if nothing nearby. If this week has no
-  point at the hovered position but last week does, show the last-week
-  label alone (`지난주 여유`), same as `CongestionCard`.
+- Hover: same per-position nearest-of-both-series comparison as
+  `CongestionCard` (see above) — find the nearest point in each series
+  independently and let whichever is actually closer to the hovered x win,
+  rather than a day-level switch. If this week wins, look up the nearest
+  last-week point to that minute and append its tier label to the existing
+  tooltip in muted text, e.g. `보통 (지난주 여유)` — omitted if nothing
+  nearby. If last week wins, show the last-week label alone (`지난주
+  여유`).
 
 ## Chart visible with only last week
 
