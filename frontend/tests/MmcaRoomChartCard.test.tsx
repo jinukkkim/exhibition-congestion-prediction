@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
@@ -172,6 +172,74 @@ describe("MmcaRoomChartCard", () => {
     // spurious 3rd point would produce two.
     const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
     expect(d.match(/C/g)).toHaveLength(1);
+  });
+
+  it("extends the line back to a synthetic 여유 point at open when the :10 reading exists", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    // 2 real readings + 1 synthetic opening point → 2 Bezier segments.
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d.match(/C/g)).toHaveLength(2);
+  });
+
+  it("skips the synthetic opening point when the :10 reading is missing", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:30:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d.match(/C/g)).toHaveLength(1);
+  });
+
+  it("never surfaces a hover tooltip for the synthetic opening point", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    // Mouse all the way at the left edge, right over the synthetic 10:00 point.
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    // Nearest interactive point is the real 10:10 reading, never the
+    // decorative 10:00 one — it isn't part of the hover-eligible point set.
+    expect(screen.getByText("10:10")).toBeInTheDocument();
+    expect(screen.queryByText("10:00")).not.toBeInTheDocument();
   });
 
   it("shows the live glow marker only when open", () => {

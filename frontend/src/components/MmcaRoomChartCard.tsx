@@ -137,9 +137,19 @@ export function MmcaRoomChartCard({
     .filter((p) => p.minutes >= open && p.minutes <= close);
 
   const ticks = hourlyTicks(open, close);
-  const xy = toXY(points, open, close);
-  const linePath = points.length > 1 ? smoothPath(xy) : "";
-  const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
+  // The backend skips the 10:00 poll (opening congestion is reliably 여유,
+  // see collector.py's _COLLECTION_START comment), so the real data never has
+  // a point there. Draw one anyway purely so the line starts from 여유 at
+  // open instead of from the first real reading — but only when that first
+  // reading actually landed at :10, and keep it out of `points` (used for
+  // hover) so it can never surface as an interactive "10:00 여유" tooltip.
+  const hasOpeningReading = points.length > 0 && points[0].minutes === open + 10;
+  const renderPoints: Point[] = hasOpeningReading
+    ? [{ minutes: open, tier: 0, label: "여유" }, ...points]
+    : points;
+  const xy = toXY(renderPoints, open, close);
+  const linePath = renderPoints.length > 1 ? smoothPath(xy) : "";
+  const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastPoint = points[points.length - 1];
 
   const currentLabel = room.congestion_nm;
