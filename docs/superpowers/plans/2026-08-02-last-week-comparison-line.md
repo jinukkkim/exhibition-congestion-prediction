@@ -614,15 +614,21 @@ git commit -m "feat(fe): add last-week grey comparison line to CongestionCard"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describe("MmcaRoomChartCard", ...)` block, after the last existing `it`):
+Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describe("MmcaRoomChartCard", ...)` block, after the last existing `it`). Note: the chart area (and its hover-capture rect) only renders when at least one series has **2 or more** points — `smoothPath`/the path-drawing gate need that minimum, same as the pre-existing this-week-only behavior — so every fixture below gives at least one series 2 points:
 
 ```tsx
   it("renders a grey last-week line alongside this week's when both have data", () => {
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
-        daily={[dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
-        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" })]}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-08T10:15:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
@@ -635,10 +641,14 @@ Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describ
   });
 
   it("omits the last-week line when lastWeekDaily is null or empty", () => {
+    const dailyThisWeek = [
+      dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+      dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+    ];
     const { rerender } = render(
       <MmcaRoomChartCard
         room={makeRoom()}
-        daily={[dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
+        daily={dailyThisWeek}
         lastWeekDaily={null}
         open={OPEN}
         close={CLOSE}
@@ -646,12 +656,13 @@ Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describ
         isOpenToday
       />
     );
+    expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument();
     expect(screen.queryByTestId("mmca-room-chart-last-week-line")).not.toBeInTheDocument();
 
     rerender(
       <MmcaRoomChartCard
         room={makeRoom()}
-        daily={[dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
+        daily={dailyThisWeek}
         lastWeekDaily={[]}
         open={OPEN}
         close={CLOSE}
@@ -686,7 +697,10 @@ Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describ
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
-        daily={[dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
         lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "붐빔" })]}
         open={OPEN}
         close={CLOSE}
@@ -700,6 +714,8 @@ Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describ
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
+    // Left edge — nearest point is the 10:00 reading, which has a last-week
+    // match at the same minute (10:00).
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
     expect(screen.getByText(/지난주/)).toBeInTheDocument();
@@ -710,7 +726,10 @@ Add to `frontend/tests/MmcaRoomChartCard.test.tsx` (inside the existing `describ
       <MmcaRoomChartCard
         room={makeRoom({ congestion_nm: null, observed_at: null })}
         daily={[]}
-        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" })]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-08T10:30:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
@@ -1238,7 +1257,24 @@ git commit -m "feat(fe): fetch and wire last-week data into NationalMuseumPage"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `frontend/tests/MmcaPage.test.tsx` (inside the existing `describe("MmcaPage", ...)` block, after the last existing `it`):
+Add `shiftDate, todayString` to `frontend/tests/MmcaPage.test.tsx`'s imports — change:
+
+```tsx
+import { MmcaPage } from "../src/pages/MmcaPage";
+import * as api from "../src/api/mmca";
+import type { MmcaRoomStatus } from "../src/api/mmca";
+```
+
+to:
+
+```tsx
+import { MmcaPage } from "../src/pages/MmcaPage";
+import * as api from "../src/api/mmca";
+import type { MmcaRoomStatus } from "../src/api/mmca";
+import { shiftDate, todayString } from "../src/lib/date";
+```
+
+Add to `frontend/tests/MmcaPage.test.tsx` (inside the existing `describe("MmcaPage", ...)` block, after the last existing `it`). Note: `MmcaPage`'s existing "today" daily effect already re-polls on the 60s interval (`POLL_INTERVAL_MS` in `frontend/src/pages/MmcaPage.tsx`) — this test only asserts that the *last-week* fetch does not join that interval, not that `fetchMmcaDaily` overall stays flat:
 
 ```tsx
   it("fetches last week's daily data once per venue, separate from the 60s poll", async () => {
@@ -1251,20 +1287,22 @@ Add to `frontend/tests/MmcaPage.test.tsx` (inside the existing `describe("MmcaPa
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    const today = todayString();
+    const lastWeek = shiftDate(today, -7);
+
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", lastWeek));
     // MmcaPage's own today fetch + MmcaPage's own last-week fetch +
     // MmcaDailyLogTable's independent today fetch = 3, fixed regardless of
     // room count (see the "fetches daily data exactly once" test below).
     expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
-
-    const dates = fetchMmcaDaily.mock.calls.map(([, date]) => date);
-    const today = dates.find((d) => d !== undefined);
-    expect(dates.filter((d) => d !== today)).toHaveLength(1);
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(60_000);
 
-    // The 60s poll only re-fetches rooms, not either daily dataset.
-    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
+    // The page's own "today" effect re-polls on the interval (pre-existing
+    // behavior, unchanged by this task) — but the last-week fetch must not
+    // join it.
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
   });
 ```
 
@@ -1412,3 +1450,4 @@ git commit -m "feat(fe): fetch and wire last-week data into MmcaPage"
 - **Spec coverage:** shared y-scale (Task 1), grey line styling (Tasks 1–2), merged/standalone tooltip text (Tasks 1–2), chart-visible-with-only-last-week gating (Tasks 1–2), data fetching via existing endpoints (Tasks 3–4), no backend change (confirmed — no backend task exists), out-of-scope items (`DailyLogTable`, `MmcaDailyLogTable`, `PredictionChart`) untouched by any task. All spec sections have a corresponding task.
 - **Existing-test breakage:** confirmed `MmcaPage.test.tsx` hardcodes `fetchMmcaDaily` call counts of `2` in two tests — both updated to `3` in Task 4 with corrected comments, since the new last-week fetch reuses the same `fetchMmcaDaily` function.
 - **Type consistency:** `lastWeekDaily` prop name, type, and default (`null`) match between `CongestionCard`/`NationalMuseumPage` (Tasks 1, 3) and between `MmcaRoomChartCard`/`MmcaPage` (Tasks 2, 4). Test-id names (`sparkline-last-week-line`, `mmca-room-chart-last-week-line`) are consistent between implementation and tests within each task.
+- **Test fixture check (traced by hand before dispatch):** `MmcaRoomChartCard`'s chart area is gated on `(linePath || lastWeekLinePath)`, both of which require ≥2 points on that series (`smoothPath` needs at least 2 points) — unlike `CongestionCard`, whose gate (`xy.length > 0 || lastWeekXy.length > 0`) only needs 1. An earlier draft of Task 2's tests used single-point fixtures that left both empty, which would've hidden the hover rect entirely and broken `fireEvent.mouseMove`. Fixed: every Task 2 fixture now gives at least one series 2 points. Also caught: `MmcaPage`'s existing "today" daily effect already re-polls on the 60s interval (pre-existing, not something this plan changes) — Task 4's new test was corrected to assert only that the *last-week* fetch stays flat across a poll tick, not that `fetchMmcaDaily` overall does.
