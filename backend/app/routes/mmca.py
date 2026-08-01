@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
@@ -10,6 +11,12 @@ from app.models import RawMmcaCongestion
 from app.schemas import MmcaDailyLogPoint, MmcaDailyRoom, MmcaRoomStatus
 
 router = APIRouter()
+
+# observed_at is always stored pinned to Asia/Seoul (see collector.py,
+# mmca_api.py) — a naive datetime.now() would use the server's OS timezone
+# instead, misaligning "today" whenever the server isn't KST (e.g. a UTC
+# container).
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 @router.get("/mmca/rooms", response_model=list[MmcaRoomStatus])
@@ -55,7 +62,9 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
         # (e.g. business hours just started, before the collector's first
         # poll) — only ever surface a *today* reading, never fall back to a
         # stale prior-day value.
-        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = datetime.now(_SEOUL_TZ).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+        )
         latest_ids = [
             row[0]
             for row in session.query(func.max(RawMmcaCongestion.id))
@@ -88,7 +97,9 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
     if date is None:
-        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = datetime.now(_SEOUL_TZ).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+        )
     else:
         try:
             day_start = datetime.strptime(date, "%Y-%m-%d")
