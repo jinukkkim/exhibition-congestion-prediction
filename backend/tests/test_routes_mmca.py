@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import fakeredis
 import pytest
@@ -9,6 +10,12 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.models import RawMmcaCongestion
+
+# Matches app/routes/mmca.py's _SEOUL_TZ — day_start there is KST-pinned, so
+# "today" in these tests must be too, or a test run on a non-KST CI runner
+# (e.g. UTC on GitHub Actions) can disagree with the route about which
+# calendar day it is for ~9 hours out of every 24.
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 @pytest.fixture(autouse=True)
@@ -66,26 +73,27 @@ def test_mmca_rooms_returns_400_for_unknown_venue(client):
 
 def test_mmca_rooms_returns_latest_reading_per_room(client):
     test_client, session_factory = client
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
     with session_factory() as session:
         session.add_all(
             [
                 RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 24, 10, 0),
+                    observed_at=today.replace(hour=10, minute=0),
                     space_code="MMCA-SPACE-1001",
                     space_nm="1전시실",
                     agnc_nm="국립현대미술관",
                     congestion_nm="여유",
                 ),
                 RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 24, 10, 6),
+                    observed_at=today.replace(hour=10, minute=6),
                     space_code="MMCA-SPACE-1001",
                     space_nm="1전시실",
                     agnc_nm="국립현대미술관",
                     congestion_nm="보통",
                 ),
                 RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 24, 10, 6),
+                    observed_at=today.replace(hour=10, minute=6),
                     space_code="MMCA-SPACE-1002",
                     space_nm="2전시실",
                     agnc_nm="국립현대미술관",
@@ -140,7 +148,31 @@ def test_mmca_rooms_filters_by_venue(client):
     gwacheon_response = test_client.get("/mmca/rooms?venue=gwacheon")
     assert gwacheon_response.status_code == 200
     gwacheon_codes = {r["space_code"] for r in gwacheon_response.json()}
-    assert gwacheon_codes == {"MMCA-SPACE-2001"}
+    assert gwacheon_codes == {"MMCA-SPACE-2001", "MMCA-SPACE-2008"}
+
+
+def test_mmca_rooms_always_includes_disabled_room_even_without_its_own_history(client):
+    test_client, session_factory = client
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+
+    with session_factory() as session:
+        # Only the non-disabled Gwacheon room has any history; MMCA-SPACE-2008
+        # (the disabled children's museum) has zero rows in this DB.
+        session.add(
+            RawMmcaCongestion(
+                observed_at=today.replace(hour=10, minute=0),
+                space_code="MMCA-SPACE-2001",
+                space_nm="1전시실",
+                congestion_nm="여유",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=gwacheon")
+    assert response.status_code == 200
+    disabled_room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-2008")
+    assert disabled_room["congestion_nm"] is None
+    assert disabled_room["space_nm"] == "1층 어린이미술관"
 
 
 def test_mmca_daily_returns_400_for_unknown_venue(client):
@@ -275,11 +307,12 @@ def test_mmca_daily_filters_by_venue(client):
 
 def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(client):
     test_client, session_factory = client
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
     with session_factory() as session:
         session.add(
             RawMmcaCongestion(
-                observed_at=datetime(2026, 7, 24, 10, 15),
+                observed_at=today.replace(hour=10, minute=15),
                 space_code="MMCA-SPACE-1001",
                 space_nm=None,
                 congestion_nm="보통",
@@ -292,6 +325,33 @@ def test_mmca_rooms_falls_back_to_static_room_name_when_latest_poll_has_none(cli
     room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
     assert room["space_nm"] == "1전시실"
     assert room["congestion_nm"] == "보통"
+
+
+def test_mmca_rooms_hides_stale_reading_when_no_data_collected_today(client):
+    test_client, session_factory = client
+    yesterday = datetime.now(_SEOUL_TZ).replace(
+        tzinfo=None, hour=17, minute=50, second=0, microsecond=0
+    ) - timedelta(days=1)
+
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=yesterday,
+                space_code="MMCA-SPACE-1001",
+                space_nm="1전시실",
+                congestion_nm="붐빔",
+            )
+        )
+        session.commit()
+
+    response = test_client.get("/mmca/rooms?venue=seoul")
+    assert response.status_code == 200
+    room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-1001")
+    # Business hours may have started today, but nothing has been collected
+    # yet — must not silently show yesterday's last real reading.
+    assert room["congestion_nm"] is None
+    assert room["observed_at"] is None
+    assert room["space_nm"] == "1전시실"
 
 
 def test_mmca_daily_falls_back_to_static_room_name_when_poll_row_has_none(client):

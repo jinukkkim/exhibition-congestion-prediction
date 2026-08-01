@@ -4,8 +4,9 @@ export interface MmcaRoomStatus {
   space_code: string;
   space_nm: string | null;
   congestion_nm: string | null;
-  // null only for a permanently-disabled room with no collection history
-  // yet (see DISABLED_MMCA_SPACE_CODES) — every real reading has one.
+  // null when there's no reading yet today — either a permanently-disabled
+  // room with no collection history at all (see DISABLED_MMCA_SPACE_CODES),
+  // or a normal room that just hasn't had its first poll of the day yet.
   observed_at: string | null;
 }
 

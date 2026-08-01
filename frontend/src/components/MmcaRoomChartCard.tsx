@@ -2,7 +2,6 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
-import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
@@ -114,15 +113,6 @@ export function MmcaRoomChartCard({
 
   const spaceCode = room.space_code;
   const title = room.space_nm ?? spaceCode;
-
-  if (DISABLED_MMCA_SPACE_CODES.has(spaceCode)) {
-    return (
-      <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
-        <p className="mt-6 text-2xl font-semibold text-ink-soft">서비스 예정</p>
-      </div>
-    );
-  }
 
   const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
 

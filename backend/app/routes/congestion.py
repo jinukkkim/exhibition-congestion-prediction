@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -8,6 +9,11 @@ from app.models import RawCongestion
 from app.schemas import CongestionHistoryPoint, CurrentCongestion, DailyLogPoint
 
 router = APIRouter()
+
+# Matches app/routes/mmca.py's _SEOUL_TZ — observed_at values come from the
+# Seoul Open API's own KST timestamps, so a naive datetime.now() would
+# misalign "today" whenever the server's OS timezone isn't KST.
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 @router.get("/congestion/current", response_model=CurrentCongestion)
@@ -56,7 +62,9 @@ def congestion_history(
 @router.get("/congestion/daily", response_model=list[DailyLogPoint])
 def congestion_daily(date: str | None = Query(default=None)) -> list[DailyLogPoint]:
     if date is None:
-        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = datetime.now(_SEOUL_TZ).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+        )
     else:
         try:
             day_start = datetime.strptime(date, "%Y-%m-%d")
