@@ -8,7 +8,15 @@ import { statusOf } from "../lib/status";
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-const LAST_WEEK_MATCH_MINUTES = 10; // MMCA readings snap to a 10-minute grid (see collector.py), so a genuine match is always distance 0 — this just guards against an exact-timestamp miss, not a fuzzy "nearby" match
+// MMCA readings snap to a 10-minute grid (see collector.py), so a genuine
+// same-time match is always distance 0, and the next reading on the grid
+// is always exactly 10 minutes away. A window of exactly 10 (nearestWithin
+// uses `dist <= maxDistance`) would let that adjacent, different-time
+// reading match when last week is simply missing the exact time slot
+// (e.g. a confirmed-empty skip in collector.py) — same boundary bug as
+// CongestionCard's bucket-width window, fixed the same way: strictly less
+// than the grid spacing so only distance 0 admits.
+const LAST_WEEK_MATCH_MINUTES = 5;
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're

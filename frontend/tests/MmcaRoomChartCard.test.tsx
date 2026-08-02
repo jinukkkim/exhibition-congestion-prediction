@@ -350,6 +350,41 @@ describe("MmcaRoomChartCard", () => {
     expect(tooltip.getByText(/\(지난주/)).toBeInTheDocument();
   });
 
+  it("does not match an adjacent 10-minute-grid reading when last week is missing the exact hovered time", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        // Gap at the exact hovered minute (10:00) — nearest last-week
+        // readings are one grid step (10 minutes) away in each direction.
+        // A same-time match must not fall back to either of these.
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T09:50:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-08T10:10:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        isOpenToday
+      />
+    );
+
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+
+    // Left edge — nearest point is the 10:00 reading.
+    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/^여유$/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/지난주/)).not.toBeInTheDocument();
+  });
+
   it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
     render(
       <MmcaRoomChartCard
