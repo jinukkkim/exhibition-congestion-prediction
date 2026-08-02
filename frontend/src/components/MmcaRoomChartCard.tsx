@@ -1,15 +1,13 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
-import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
+import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
-const LAST_WEEK_FILL = "#D9D9D9"; // matches the reference site's last-week area fill (at 20% opacity)
 const LAST_WEEK_MATCH_MINUTES = 10; // MMCA readings snap to a 10-minute grid (see collector.py), so a genuine match is always distance 0 — this just guards against an exact-timestamp miss, not a fuzzy "nearby" match
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX

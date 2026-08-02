@@ -1,14 +1,12 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
-import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
+import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
 const SPARKLINE_HEIGHT = 200;
-const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
-const LAST_WEEK_FILL = "#D9D9D9"; // matches the reference site's last-week area fill (at 20% opacity)
 
 const OPEN_MINUTES = 9 * 60 + 30; // 09:30, every day
 const LONG_CLOSE_DAYS = new Set([3, 6]); // Wed, Sat: 21:00 close; other days: 17:30
