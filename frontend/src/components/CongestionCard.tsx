@@ -8,6 +8,7 @@ import { statusOf } from "../lib/status";
 const SPARKLINE_WIDTH = 480;
 const SPARKLINE_HEIGHT = 200;
 const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
+const LAST_WEEK_FILL = "#D9D9D9"; // matches the reference site's last-week area fill (at 20% opacity)
 
 const OPEN_MINUTES = 9 * 60 + 30; // 09:30, every day
 const LONG_CLOSE_DAYS = new Set([3, 6]); // Wed, Sat: 21:00 close; other days: 17:30
@@ -223,6 +224,7 @@ export function CongestionCard({
   const linePath = xy.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekXy.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
+  const lastWeekAreaD = lastWeekXy.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = xy[xy.length - 1];
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
@@ -353,7 +355,9 @@ export function CongestionCard({
                       </radialGradient>
                     )}
                   </defs>
-                  {areaD && <path d={areaD} fill="url(#sparkline-fill)" />}
+                  {lastWeekAreaD && (
+                    <path data-testid="sparkline-last-week-area" d={lastWeekAreaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                  )}
                   {lastWeekLinePath && (
                     <path
                       data-testid="sparkline-last-week-line"
@@ -364,6 +368,7 @@ export function CongestionCard({
                       strokeLinecap="round"
                     />
                   )}
+                  {areaD && <path d={areaD} fill="url(#sparkline-fill)" />}
                   {isOpen && lastPoint && (
                     <line
                       x1={lastPoint.x}

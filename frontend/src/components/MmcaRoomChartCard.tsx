@@ -9,6 +9,7 @@ const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
+const LAST_WEEK_FILL = "#D9D9D9"; // matches the reference site's last-week area fill (at 20% opacity)
 const LAST_WEEK_MATCH_MINUTES = 10; // MMCA readings snap to a 10-minute grid (see collector.py), so a genuine match is always distance 0 — this just guards against an exact-timestamp miss, not a fuzzy "nearby" match
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
@@ -168,6 +169,7 @@ export function MmcaRoomChartCard({
   const linePath = renderPoints.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
+  const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = points[points.length - 1];
 
   const currentLabel = room.congestion_nm;
@@ -303,7 +305,9 @@ export function MmcaRoomChartCard({
                     </radialGradient>
                   )}
                 </defs>
-                {areaD && <path d={areaD} fill={`url(#fill-${spaceCode})`} />}
+                {lastWeekAreaD && (
+                  <path data-testid="mmca-room-chart-last-week-area" d={lastWeekAreaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                )}
                 {lastWeekLinePath && (
                   <path
                     data-testid="mmca-room-chart-last-week-line"
@@ -315,6 +319,7 @@ export function MmcaRoomChartCard({
                     strokeLinecap="round"
                   />
                 )}
+                {areaD && <path d={areaD} fill={`url(#fill-${spaceCode})`} />}
                 {linePath && (
                   <path
                     data-testid="mmca-room-chart-line"
