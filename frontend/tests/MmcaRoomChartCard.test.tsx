@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
@@ -345,8 +345,9 @@ describe("MmcaRoomChartCard", () => {
     // match at the same minute (10:00).
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.getByText(/\(지난주/)).toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.getByText(/\(지난주/)).toBeInTheDocument();
   });
 
   it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
@@ -372,8 +373,9 @@ describe("MmcaRoomChartCard", () => {
 
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
 
   it("shows the standalone '지난주' tooltip over a time slot today hasn't reached yet, even though today has earlier data", () => {
@@ -407,7 +409,8 @@ describe("MmcaRoomChartCard", () => {
     // today's only 10:00 point (x 0), 0 away from last week's 15:00 point.
     fireEvent.mouseMove(hoverTarget, { clientX: 300, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
 });

@@ -2,12 +2,13 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
+import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-const LAST_WEEK_STROKE = "#C7C7CC";
+const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
 const LAST_WEEK_MATCH_MINUTES = 10; // MMCA readings snap to a 10-minute grid (see collector.py), so a genuine match is always distance 0 — this just guards against an exact-timestamp miss, not a fuzzy "nearby" match
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
@@ -270,6 +271,18 @@ export function MmcaRoomChartCard({
         </div>
 
         <div className="relative mt-8">
+          {(linePath || lastWeekLinePath) && (
+            <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
+                {monthDayWeekday(todayString())} 오늘
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
+                {monthDayWeekday(shiftDate(todayString(), -7))} 지난주
+              </span>
+            </div>
+          )}
           <svg
             ref={svgRef}
             data-testid="mmca-room-chart"
@@ -374,6 +387,7 @@ export function MmcaRoomChartCard({
           </svg>
           {hoverPoint && (
             <div
+              data-testid="mmca-room-chart-tooltip"
               className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
               style={{
                 left: `${Math.min(Math.max((xOf(hoverPoint.minutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,

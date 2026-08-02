@@ -2,11 +2,12 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
+import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
 const SPARKLINE_HEIGHT = 200;
-const LAST_WEEK_STROKE = "#C7C7CC";
+const LAST_WEEK_STROKE = "#D1D1D1"; // matches the reference site's last-week line color
 
 const OPEN_MINUTES = 9 * 60 + 30; // 09:30, every day
 const LONG_CLOSE_DAYS = new Set([3, 6]); // Wed, Sat: 21:00 close; other days: 17:30
@@ -320,6 +321,18 @@ export function CongestionCard({
 
         {(daily || lastWeekDaily) && (
           <div className="relative mt-8">
+            {(xy.length > 0 || lastWeekXy.length > 0) && (
+              <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
+                  {monthDayWeekday(todayString())} 오늘
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
+                  {monthDayWeekday(shiftDate(todayString(), -7))} 지난주
+                </span>
+              </div>
+            )}
             <svg
               ref={svgRef}
               data-testid="history-sparkline"
@@ -412,6 +425,7 @@ export function CongestionCard({
             </svg>
             {hoverPoint && hoverXY && (
               <div
+                data-testid="sparkline-tooltip"
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
                   // Follows the dot's actual (possibly edge-snapped) x position

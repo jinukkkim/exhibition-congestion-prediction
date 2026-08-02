@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CongestionCard } from "../src/components/CongestionCard";
@@ -196,8 +196,9 @@ describe("CongestionCard", () => {
 
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.getByText(/\(지난주/)).toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("sparkline-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.getByText(/\(지난주/)).toBeInTheDocument();
   });
 
   it("shows the standalone '지난주' tooltip when hovering with only last-week data", () => {
@@ -216,8 +217,9 @@ describe("CongestionCard", () => {
 
     fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("sparkline-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
 
   it("shows the standalone '지난주' tooltip over a time slot today hasn't reached yet, even though today has earlier data", () => {
@@ -244,7 +246,8 @@ describe("CongestionCard", () => {
     // 15:00 point (~x 240) than to today's only 10:00 point (~x 31).
     fireEvent.mouseMove(hoverTarget, { clientX: 230, clientY: 0 });
 
-    expect(screen.getByText(/지난주/)).toBeInTheDocument();
-    expect(screen.queryByText(/\(지난주/)).not.toBeInTheDocument();
+    const tooltip = within(screen.getByTestId("sparkline-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
   });
 });
