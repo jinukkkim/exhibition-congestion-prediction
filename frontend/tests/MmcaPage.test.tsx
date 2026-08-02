@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MmcaPage } from "../src/pages/MmcaPage";
 import * as api from "../src/api/mmca";
 import type { MmcaRoomStatus } from "../src/api/mmca";
+import { shiftDate, todayString } from "../src/lib/date";
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   return {
@@ -105,16 +106,17 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(fetchMmcaRooms).toHaveBeenCalledTimes(1));
-    // 2, not 1: MmcaPage's own daily fetch plus MmcaDailyLogTable's
-    // independent daily fetch for its date-navigable log view.
-    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledTimes(2));
+    // 3, not 1: MmcaPage's own today + last-week daily fetches, plus
+    // MmcaDailyLogTable's independent daily fetch for its date-navigable
+    // log view.
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledTimes(3));
 
     unmount();
 
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(fetchMmcaRooms).toHaveBeenCalledTimes(1);
-    expect(fetchMmcaDaily).toHaveBeenCalledTimes(2);
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
     expect(consoleError).not.toHaveBeenCalled();
   });
 
@@ -153,11 +155,12 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(3));
-    // 3 chart cards, but only one page-level fetch (plus the independent
-    // fetch always made by MmcaDailyLogTable's own log view, fixed at 2
-    // total) — this is the fix for the pre-expansion N-cards-N-requests
-    // problem: the count does not scale with the number of rooms.
-    expect(fetchMmcaDaily).toHaveBeenCalledTimes(2);
+    // 3 chart cards, but only two page-level fetches — today + last week —
+    // plus the independent fetch always made by MmcaDailyLogTable's own log
+    // view, fixed at 3 total — this is the fix for the pre-expansion
+    // N-cards-N-requests problem: the count does not scale with the number
+    // of rooms.
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
   });
 
   it("renders a single-column layout when the venue has only one room", async () => {
@@ -317,5 +320,33 @@ describe("MmcaPage", () => {
 
     await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
     expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("fetches last week's daily data once per venue, separate from the 60s poll", async () => {
+    const fetchMmcaDaily = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    const today = todayString();
+    const lastWeek = shiftDate(today, -7);
+
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", lastWeek));
+    // MmcaPage's own today fetch + MmcaPage's own last-week fetch +
+    // MmcaDailyLogTable's independent today fetch = 3, fixed regardless of
+    // room count (see the "fetches daily data exactly once" test below).
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // The page's own "today" effect re-polls on the interval (pre-existing
+    // behavior, unchanged by this task) — but the last-week fetch must not
+    // join it.
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
   });
 });

@@ -11,7 +11,7 @@ import {
 } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DailyLogTable } from "../components/DailyLogTable";
-import { todayString } from "../lib/date";
+import { shiftDate, todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 
@@ -19,11 +19,13 @@ export function NationalMuseumPage() {
   const [initial, setInitial] = useState<CurrentCongestion | null>(null);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [daily, setDaily] = useState<DailyLogPoint[] | null>(null);
+  const [lastWeekDaily, setLastWeekDaily] = useState<DailyLogPoint[] | null>(null);
 
   useEffect(() => {
     fetchCurrent().then(setInitial).catch(() => setInitial(null));
     fetchPrediction().then(setPrediction).catch(() => setPrediction(null));
     fetchDaily(todayString()).then(setDaily).catch(() => setDaily(null));
+    fetchDaily(shiftDate(todayString(), -7)).then(setLastWeekDaily).catch(() => setLastWeekDaily(null));
   }, []);
 
   const current = useCongestionStream(initial);
@@ -53,7 +55,7 @@ export function NationalMuseumPage() {
         </header>
 
         <section className="grid gap-6 lg:grid-cols-2">
-          <CongestionCard data={current} daily={daily} />
+          <CongestionCard data={current} daily={daily} lastWeekDaily={lastWeekDaily} />
           <PredictionChart prediction={prediction} />
         </section>
 
