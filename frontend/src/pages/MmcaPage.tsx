@@ -76,7 +76,11 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         if (!ignore) setLastWeekDaily(data);
       })
       .catch(() => {
-        // Silently retry on the next mount — state is already null on first load.
+        // Leave lastWeekDaily as-is on failure, same "don't blank on one
+        // failed fetch" philosophy as the sibling today-effect above — but
+        // unlike that effect, this one has no polling interval, so there's
+        // no automatic retry; a failure here just means the last-week line
+        // stays absent (or stale) until `venue` changes.
       });
 
     return () => {

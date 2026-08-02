@@ -61,7 +61,12 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 type Point = { minutes: number; value: number; isRaw?: boolean };
 
 const BUCKET_MINUTES = 30; // 30 divides both business-hour spans (480min / 690min) evenly, so buckets never fall short
-const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES; // how close a last-week bucket must be to the hovered time to surface in the tooltip
+// Both series resample onto the same bucket grid (same `open` origin, same
+// BUCKET_MINUTES), so a genuine same-bucket match is always distance 0 and
+// the next bucket over is always exactly BUCKET_MINUTES away — a full
+// BUCKET_MINUTES window would let that adjacent (different-time) bucket
+// match instead of correctly finding nothing. Half a bucket only admits 0.
+const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES / 2;
 
 function resample(points: Point[], open: number, bucketMinutes: number): Point[] {
   const buckets = new Map<number, Point[]>();

@@ -141,6 +141,33 @@ Extend `frontend/tests/CongestionCard.test.tsx` and
   `null`/empty but `lastWeekDaily` has points; hovering that chart shows
   the last-week-only tooltip format.
 
+## Post-implementation adjustments (after PR review)
+
+Two details above are stale as written — corrected here rather than
+rewritten in place, since a PR reviewer already read the original text
+against the current code:
+
+- **Grey line color and area fill.** "`smoothPath()` helper: stroke
+  `#C7C7CC`, width 2 ... no area fill" (both `CongestionCard` and
+  `MmcaRoomChartCard` sections) reflects the color chosen during initial
+  brainstorming, before the user asked (in a later turn) to match a
+  reference site's chart styling. The shipped values, sampled directly
+  from that reference's rendered SVG: stroke `#D1D1D1`, and a filled area
+  under the grey line — flat `#D9D9D9` at 20% opacity, painted *before*
+  (i.e. beneath) the grey line and the blue area/line, so blue stays
+  visually on top wherever the two overlap. Both constants live in
+  `frontend/src/lib/chartColors.ts` as `LAST_WEEK_STROKE`/`LAST_WEEK_FILL`,
+  shared by both chart components. A small date-labeled legend was also
+  added above each chart ("8/2(일) 오늘" / "7/26(일) 지난주"), matching the
+  same reference.
+- **Match window is half a bucket, not a full one.** "within one bucket
+  width `BUCKET_MINUTES`" (`CongestionCard` section) undersold the risk: since
+  both series resample onto the identical bucket grid, a genuine same-time
+  match is always distance 0, and the *next* bucket over is always exactly
+  `BUCKET_MINUTES` away. A full-bucket-width window could therefore match
+  the adjacent (different-time) bucket instead of correctly finding no
+  match. Shipped as `BUCKET_MINUTES / 2`, which only ever admits distance 0.
+
 ## Out of scope
 
 - No date picker / configurable comparison window — always exactly 7 days
