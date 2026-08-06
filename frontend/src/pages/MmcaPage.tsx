@@ -108,6 +108,13 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
       ? loadedWithNoReading(lastWeekDaily, room.space_code)
       : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code));
 
+  const inactiveReason = (room: MmcaRoomStatus) =>
+    DISABLED_MMCA_SPACE_CODES.has(room.space_code)
+      ? "서비스 예정"
+      : isOpenToday
+        ? "오늘 정보 없음"
+        : "휴관일";
+
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
 
@@ -152,7 +159,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
               <MmcaRoomInactiveCard
                 key={room.space_code}
                 room={room}
-                reason={DISABLED_MMCA_SPACE_CODES.has(room.space_code) ? "서비스 예정" : "오늘 정보 없음"}
+                reason={inactiveReason(room)}
               />
             ))}
           </section>

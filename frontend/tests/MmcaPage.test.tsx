@@ -207,8 +207,9 @@ describe("MmcaPage", () => {
 
     // A closed day follows the before-opening rule: no last-week curve (the
     // previous Monday was closed too) → small card, never mind the stale
-    // congestion_nm the rooms endpoint still returns.
-    await waitFor(() => expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument());
+    // congestion_nm the rooms endpoint still returns. The label says why.
+    await waitFor(() => expect(screen.getByText("휴관일")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
     unmount();
 
