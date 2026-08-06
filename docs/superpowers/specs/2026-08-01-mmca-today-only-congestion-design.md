@@ -23,6 +23,11 @@ same visual attention as an active room.
   simply before opening or closed for the day keep their existing full-size
   card with the current "영업 시간이 아닙니다" / "휴관일입니다" text —
   unchanged.
+  - **Superseded 2026-08-06**: the `isOpen` gate is gone. A room now gets a
+    full-size card only if it has a curve to show — before opening and on
+    closed days that means last week's same-weekday data, and from opening
+    onward (including after close) today's data. See `MmcaPage.tsx`'s
+    `beforeOpen` / `loadedWithNoReading`.
 - Permanently-disabled rooms (`DISABLED_MMCA_SPACE_CODES`) are folded into
   the same "inactive" small-card treatment instead of keeping their own
   separate card style, since they're already a subset of "no usable data."

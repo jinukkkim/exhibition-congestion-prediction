@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MmcaPage } from "../src/pages/MmcaPage";
 import * as api from "../src/api/mmca";
-import type { MmcaRoomStatus } from "../src/api/mmca";
+import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../src/api/mmca";
 import { shiftDate, todayString } from "../src/lib/date";
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
@@ -329,6 +329,25 @@ describe("MmcaPage", () => {
     expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
   });
 
+  it("keeps cards full-size while the deciding fetch is still in flight", async () => {
+    vi.setSystemTime(new Date("2026-07-28T09:00:00")); // before open → last week decides
+    vi.spyOn(api, "fetchMmcaDaily").mockImplementation(
+      () => new Promise<MmcaDailyLogPoint[]>(() => {}) // never settles
+    );
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    // No data yet ≠ no data: shrinking here would flash small → full once the
+    // fetch lands.
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
   it("after closing, keeps a full-size card only for rooms with today's log", async () => {
     vi.setSystemTime(new Date("2026-07-28T19:00:00")); // Tuesday, past the 18:00 close
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
@@ -340,9 +359,11 @@ describe("MmcaPage", () => {
         ],
       },
     ]);
-    // Nothing is polling after close, so every room's live congestion_nm is null.
+    // /mmca/rooms is day-scoped (backend routes/mmca.py), so after close it
+    // still reports today's last reading — null here only for the room that
+    // was never read today, matching its empty daily log.
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
-      makeRoom({ congestion_nm: null, observed_at: null }),
+      makeRoom({ congestion_nm: "여유" }),
       makeRoom({
         space_code: "MMCA-SPACE-1002",
         space_nm: "2전시실",
