@@ -16,6 +16,7 @@ import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 
 const POLL_INTERVAL_MS = 60_000;
+const COLLECTION_START_DELAY_MINUTES = 10;
 
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
@@ -92,10 +93,14 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   // A room only earns a full-size chart card if it has a curve worth showing.
-  // Before opening — and all day on a closed day — today's log is empty by
-  // definition, so last week's same-weekday curve is the deciding signal;
-  // from opening onward (including after close) it's today's own data.
-  const beforeOpen = !isOpenToday || nowMinutes < open;
+  // Until today's first reading exists, last week's same-weekday curve is the
+  // deciding signal; from then on (including after close) it's today's data.
+  // The collector's first poll of the day lands 10 minutes after the opening
+  // time we display (backend/app/collector.py's `_COLLECTION_START`), so
+  // that window — plus all day on a closed day — goes by last week too.
+  // `<=` not `<`: the poll itself takes a few seconds, and this page only
+  // re-renders once a minute.
+  const beforeFirstPoll = !isOpenToday || nowMinutes <= open + COLLECTION_START_DELAY_MINUTES;
 
   // `null` means the fetch hasn't landed yet: don't shrink a card on the
   // strength of data we haven't received.
@@ -104,7 +109,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
 
   const isRoomInactiveToday = (room: MmcaRoomStatus) =>
     DISABLED_MMCA_SPACE_CODES.has(room.space_code) ||
-    (beforeOpen
+    (beforeFirstPoll
       ? loadedWithNoReading(lastWeekDaily, room.space_code)
       : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code));
 

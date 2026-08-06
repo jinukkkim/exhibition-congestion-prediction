@@ -315,10 +315,30 @@ describe("MmcaPage", () => {
     expect(screen.getByText("1전시실")).toBeInTheDocument();
   });
 
-  it("keeps a full-size card before today's first poll while the live status still has a reading", async () => {
+  it("follows the before-opening rule until the collector's first poll lands", async () => {
     vi.setSystemTime(new Date("2026-07-28T10:05:00")); // Tuesday, open (10:00) but before the 10:10 first poll
-    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]); // nothing collected yet today
-    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaDaily").mockImplementation(async (_venue, date) =>
+      date === "2026-07-21" // last Tuesday
+        ? [
+            {
+              observed_at: "2026-07-21T14:00:00",
+              rooms: [{ space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "여유" }],
+            },
+          ]
+        : []
+    );
+    // /mmca/rooms and /mmca/daily read the same today-scoped rows, so before
+    // the day's first poll every room is null in both — the clock is what
+    // tells us this is "not polled yet" rather than "no data all day".
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ congestion_nm: null, observed_at: null }),
+      makeRoom({
+        space_code: "MMCA-SPACE-1002",
+        space_nm: "2전시실",
+        congestion_nm: null,
+        observed_at: null,
+      }),
+    ]);
 
     render(
       <MemoryRouter>
@@ -326,8 +346,9 @@ describe("MmcaPage", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
-    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument());
+    expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1);
+    expect(screen.getByText("1전시실")).toBeInTheDocument();
   });
 
   it("keeps cards full-size while the deciding fetch is still in flight", async () => {
