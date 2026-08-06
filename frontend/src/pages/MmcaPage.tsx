@@ -91,16 +91,22 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  // Mirrors MmcaRoomChartCard's own isOpen formula — needed here too since
-  // partitioning happens a level above that component.
-  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+  // A room only earns a full-size chart card if it has a curve worth showing.
+  // Before opening — and all day on a closed day — today's log is empty by
+  // definition, so last week's same-weekday curve is the deciding signal;
+  // from opening onward (including after close) it's today's own data.
+  const beforeOpen = !isOpenToday || nowMinutes < open;
 
-  const hasReadingToday = (code: string) =>
-    daily?.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null) ?? false;
+  // `null` means the fetch hasn't landed yet: don't shrink a card on the
+  // strength of data we haven't received.
+  const loadedWithNoReading = (rows: MmcaDailyLogPoint[] | null, code: string) =>
+    rows !== null && !rows.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null);
 
   const isRoomInactiveToday = (room: MmcaRoomStatus) =>
     DISABLED_MMCA_SPACE_CODES.has(room.space_code) ||
-    (isOpen && room.congestion_nm == null && (daily?.length ?? 0) > 0 && !hasReadingToday(room.space_code));
+    (beforeOpen
+      ? loadedWithNoReading(lastWeekDaily, room.space_code)
+      : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code));
 
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
