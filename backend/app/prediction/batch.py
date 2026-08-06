@@ -38,17 +38,17 @@ def run_daily_batch(session_factory=SessionLocal) -> dict:
         baseline_pred = predict_baseline(baseline, weekday, hour)
         if baseline_pred is None:
             baseline_pred = overall_avg
-        model_pred = predict_model(model, weekday, hour)
+        model_pred = predict_model(model, row.observed_at)
 
         baseline_errors.append(abs(baseline_pred - row.population_avg))
         model_errors.append(abs(model_pred - row.population_avg))
 
-    today_weekday = datetime.now().weekday()
+    today = datetime.now()
     curve = [
         {
             "hour": hour,
-            "baseline": predict_baseline(baseline, today_weekday, hour),
-            "model": predict_model(model, today_weekday, hour),
+            "baseline": predict_baseline(baseline, today.weekday(), hour),
+            "model": predict_model(model, today.replace(hour=hour)),
         }
         for hour in range(24)
     ]

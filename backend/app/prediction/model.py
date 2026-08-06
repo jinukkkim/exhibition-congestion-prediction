@@ -1,9 +1,18 @@
+from datetime import datetime
+
+import holidays
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
 
+_KR_HOLIDAYS = holidays.country_holidays("KR")
+
+
+def _features(ts: datetime) -> list[float]:
+    return [ts.weekday(), ts.hour, float(ts.date() in _KR_HOLIDAYS)]
+
 
 def _build_features(rows) -> tuple[np.ndarray, np.ndarray]:
-    X = np.array([[row.observed_at.weekday(), row.observed_at.hour] for row in rows])
+    X = np.array([_features(row.observed_at) for row in rows])
     y = np.array([row.population_avg for row in rows])
     return X, y
 
@@ -15,5 +24,5 @@ def train_model(rows) -> GradientBoostingRegressor:
     return model
 
 
-def predict_model(model: GradientBoostingRegressor, weekday: int, hour: int) -> float:
-    return float(model.predict(np.array([[weekday, hour]]))[0])
+def predict_model(model: GradientBoostingRegressor, ts: datetime) -> float:
+    return float(model.predict(np.array([_features(ts)]))[0])
