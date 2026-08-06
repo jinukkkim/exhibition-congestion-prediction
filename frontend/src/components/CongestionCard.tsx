@@ -1,7 +1,8 @@
 import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
-import { CHART_BLUE, CHART_SKY } from "../lib/chartColors";
+import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
+import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
@@ -60,6 +61,12 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 type Point = { minutes: number; value: number; isRaw?: boolean };
 
 const BUCKET_MINUTES = 30; // 30 divides both business-hour spans (480min / 690min) evenly, so buckets never fall short
+// Both series resample onto the same bucket grid (same `open` origin, same
+// BUCKET_MINUTES), so a genuine same-bucket match is always distance 0 and
+// the next bucket over is always exactly BUCKET_MINUTES away — a full
+// BUCKET_MINUTES window would let that adjacent (different-time) bucket
+// match instead of correctly finding nothing. Half a bucket only admits 0.
+const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES / 2;
 
 function resample(points: Point[], open: number, bucketMinutes: number): Point[] {
   const buckets = new Map<number, Point[]>();
@@ -77,21 +84,31 @@ function resample(points: Point[], open: number, bucketMinutes: number): Point[]
     }));
 }
 
+function nearestWithin(points: Point[], minutes: number, maxDistance: number): Point | undefined {
+  let nearest: Point | undefined;
+  let nearestDist = Infinity;
+  for (const p of points) {
+    const dist = Math.abs(p.minutes - minutes);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = p;
+    }
+  }
+  return nearest && nearestDist <= maxDistance ? nearest : undefined;
+}
+
 function xOf(minutes: number, open: number, close: number): number {
   return ((minutes - open) / (close - open || 1)) * SPARKLINE_WIDTH;
 }
 
 type XY = { x: number; y: number };
+type Range = { min: number; max: number };
 
-function toXY(points: Point[], open: number, close: number): XY[] {
-  const values = points.map((p) => p.value);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1; // ponytail: guards a flat/single-value window; a wider range never hits this
-
+function toXY(points: Point[], open: number, close: number, range: Range): XY[] {
+  const span = range.max - range.min || 1; // ponytail: guards a flat/single-value range; a wider range never hits this
   return points.map(({ minutes, value }) => ({
     x: xOf(minutes, open, close),
-    y: SPARKLINE_HEIGHT - ((value - min) / range) * SPARKLINE_HEIGHT,
+    y: SPARKLINE_HEIGHT - ((value - range.min) / span) * SPARKLINE_HEIGHT,
   }));
 }
 
@@ -142,12 +159,14 @@ function bucketRange(centerMinutes: number, bucketMinutes: number): string {
 export function CongestionCard({
   data,
   daily = null,
+  lastWeekDaily = null,
 }: {
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
+  lastWeekDaily?: DailyLogPoint[] | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
   if (!data) {
     return (
@@ -188,9 +207,27 @@ export function CongestionCard({
       : null;
   const points: Point[] = [...(leadRaw ? [leadRaw] : []), ...resampled, ...(trailRaw ? [trailRaw] : [])];
 
-  const xy = points.length > 0 ? toXY(points, open, close) : [];
+  // Last week is always a fully-elapsed day, so it only ever needs the plain
+  // bucketed series — none of the "reaches the live/closing moment" raw
+  // endpoints above apply to a day that's already over.
+  const lastWeekRawPoints: Point[] = (lastWeekDaily ?? [])
+    .map((row) => ({
+      minutes: minutesOfDay(row.observed_at),
+      value: (row.population_min + row.population_max) / 2,
+    }))
+    .filter((p) => p.minutes >= open && p.minutes <= close);
+  const lastWeekPoints = resample(lastWeekRawPoints, open, BUCKET_MINUTES);
+
+  const hasThisWeek = points.length > 0;
+  const allValues = [...points, ...lastWeekPoints].map((p) => p.value);
+  const range: Range = allValues.length > 0 ? { min: Math.min(...allValues), max: Math.max(...allValues) } : { min: 0, max: 1 };
+
+  const xy = hasThisWeek ? toXY(points, open, close, range) : [];
+  const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close, range) : [];
   const linePath = xy.length > 1 ? smoothPath(xy) : "";
+  const lastWeekLinePath = lastWeekXy.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
+  const lastWeekAreaD = lastWeekXy.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = xy[xy.length - 1];
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
@@ -199,18 +236,50 @@ export function CongestionCard({
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * SPARKLINE_WIDTH;
 
-    let nearest: number | null = null;
-    let nearestDist = Infinity;
+    let thisWeekIndex: number | null = null;
+    let thisWeekDist = Infinity;
     xy.forEach((p, i) => {
       if (points[i].isRaw) return; // 09:30/closing-time points don't show hover info
       const dist = Math.abs(p.x - svgX);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = i;
+      if (dist < thisWeekDist) {
+        thisWeekDist = dist;
+        thisWeekIndex = i;
       }
     });
-    setHoverIndex(nearest);
+
+    let lastWeekIndex: number | null = null;
+    let lastWeekDist = Infinity;
+    lastWeekXy.forEach((p, i) => {
+      const dist = Math.abs(p.x - svgX);
+      if (dist < lastWeekDist) {
+        lastWeekDist = dist;
+        lastWeekIndex = i;
+      }
+    });
+
+    // Whichever series has an actual point closer to the hovered x wins —
+    // not a fixed "does this week have any data at all" switch. Today's
+    // points cluster near the current time, so a hover further along the
+    // axis (a time slot today hasn't reached yet) is genuinely closer to
+    // last week's point there than to today's last real reading, and must
+    // show the standalone last-week tooltip instead of re-anchoring to
+    // today's most recent value.
+    if (thisWeekIndex !== null && (lastWeekIndex === null || thisWeekDist <= lastWeekDist)) {
+      setHover({ isLastWeek: false, index: thisWeekIndex });
+    } else if (lastWeekIndex !== null) {
+      setHover({ isLastWeek: true, index: lastWeekIndex });
+    } else {
+      setHover(null);
+    }
   }
+
+  const hoverSeriesXY = hover ? (hover.isLastWeek ? lastWeekXy : xy) : undefined;
+  const hoverSeriesPoints = hover ? (hover.isLastWeek ? lastWeekPoints : points) : undefined;
+  const hoverPoint = hover && hoverSeriesPoints ? hoverSeriesPoints[hover.index] : undefined;
+  const hoverXY = hover && hoverSeriesXY ? hoverSeriesXY[hover.index] : undefined;
+  const hoverIsThisWeek = hover ? !hover.isLastWeek : false;
+  const hoverLastWeekMatch =
+    hoverIsThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
@@ -255,15 +324,27 @@ export function CongestionCard({
           )}
         </div>
 
-        {daily && (
+        {(daily || lastWeekDaily) && (
           <div className="relative mt-8">
+            {(xy.length > 0 || lastWeekXy.length > 0) && (
+              <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
+                  {monthDayWeekday(todayString())} 오늘
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
+                  {monthDayWeekday(shiftDate(todayString(), -7))} 지난주
+                </span>
+              </div>
+            )}
             <svg
               ref={svgRef}
               data-testid="history-sparkline"
               viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
               className="w-full overflow-visible"
             >
-              {xy.length > 0 && (
+              {(xy.length > 0 || lastWeekXy.length > 0) && (
                 <>
                   <defs>
                     <linearGradient id="sparkline-fill" x1="0" y1="0" x2="0" y2="1">
@@ -277,6 +358,19 @@ export function CongestionCard({
                       </radialGradient>
                     )}
                   </defs>
+                  {lastWeekAreaD && (
+                    <path data-testid="sparkline-last-week-area" d={lastWeekAreaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                  )}
+                  {lastWeekLinePath && (
+                    <path
+                      data-testid="sparkline-last-week-line"
+                      d={lastWeekLinePath}
+                      fill="none"
+                      stroke={LAST_WEEK_STROKE}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                    />
+                  )}
                   {areaD && <path d={areaD} fill="url(#sparkline-fill)" />}
                   {isOpen && lastPoint && (
                     <line
@@ -305,17 +399,24 @@ export function CongestionCard({
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2.5} />
                     </>
                   )}
-                  {hoverIndex !== null && xy[hoverIndex] && (
+                  {hoverXY && (
                     <>
                       <line
-                        x1={xy[hoverIndex].x}
+                        x1={hoverXY.x}
                         y1={0}
-                        x2={xy[hoverIndex].x}
+                        x2={hoverXY.x}
                         y2={SPARKLINE_HEIGHT}
                         stroke="#D2D2D7"
                         strokeWidth={1}
                       />
-                      <circle cx={xy[hoverIndex].x} cy={xy[hoverIndex].y} r={4} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2} />
+                      <circle
+                        cx={hoverXY.x}
+                        cy={hoverXY.y}
+                        r={4}
+                        fill="#FFFFFF"
+                        stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
+                        strokeWidth={2}
+                      />
                     </>
                   )}
                   <rect
@@ -325,32 +426,48 @@ export function CongestionCard({
                     height={SPARKLINE_HEIGHT}
                     fill="transparent"
                     onMouseMove={handleHoverMove}
-                    onMouseLeave={() => setHoverIndex(null)}
+                    onMouseLeave={() => setHover(null)}
                   />
                 </>
               )}
             </svg>
-            {hoverIndex !== null && points[hoverIndex] && (
+            {hoverPoint && hoverXY && (
               <div
+                data-testid="sparkline-tooltip"
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
                   // Follows the dot's actual (possibly edge-snapped) x position
                   // rather than the bucket's true center, so it lines up with
                   // the guide line/dot; clamped so the box never overflows the
                   // card's clipped edges.
-                  left: `${Math.min(Math.max((xy[hoverIndex].x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
+                  left: `${Math.min(Math.max((hoverXY.x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
                 <span className="font-mono tabular-nums text-ink-soft">
-                  {points[hoverIndex].isRaw
-                    ? formatMinutes(points[hoverIndex].minutes)
-                    : bucketRange(points[hoverIndex].minutes, BUCKET_MINUTES)}
+                  {hoverPoint.isRaw ? formatMinutes(hoverPoint.minutes) : bucketRange(hoverPoint.minutes, BUCKET_MINUTES)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
-                <span className="font-mono font-semibold tabular-nums text-ink">
-                  {Math.round(points[hoverIndex].value).toLocaleString()}
-                </span>
-                <span className="text-ink-soft">명</span>
+                {hoverIsThisWeek ? (
+                  <>
+                    <span className="font-mono font-semibold tabular-nums text-ink">
+                      {Math.round(hoverPoint.value).toLocaleString()}
+                    </span>
+                    <span className="text-ink-soft">명</span>
+                    {hoverLastWeekMatch && (
+                      <span className="ml-1 text-ink-soft">
+                        (지난주 <span className="font-mono tabular-nums">{Math.round(hoverLastWeekMatch.value).toLocaleString()}</span>명)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-ink-soft">
+                    지난주{" "}
+                    <span className="font-mono font-semibold tabular-nums text-ink">
+                      {Math.round(hoverPoint.value).toLocaleString()}
+                    </span>
+                    명
+                  </span>
+                )}
               </div>
             )}
             <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">

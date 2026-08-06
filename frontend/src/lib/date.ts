@@ -14,3 +14,10 @@ export function shiftDate(date: string, days: number): string {
   d.setDate(d.getDate() + days);
   return formatDate(d);
 }
+
+const WEEKDAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+
+export function monthDayWeekday(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY_KO[d.getDay()]})`;
+}

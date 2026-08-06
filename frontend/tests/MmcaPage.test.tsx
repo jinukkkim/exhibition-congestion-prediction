@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MmcaPage } from "../src/pages/MmcaPage";
 import * as api from "../src/api/mmca";
 import type { MmcaRoomStatus } from "../src/api/mmca";
+import { shiftDate, todayString } from "../src/lib/date";
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   return {
@@ -105,16 +106,17 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(fetchMmcaRooms).toHaveBeenCalledTimes(1));
-    // 2, not 1: MmcaPage's own daily fetch plus MmcaDailyLogTable's
-    // independent daily fetch for its date-navigable log view.
-    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledTimes(2));
+    // 3, not 1: MmcaPage's own today + last-week daily fetches, plus
+    // MmcaDailyLogTable's independent daily fetch for its date-navigable
+    // log view.
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledTimes(3));
 
     unmount();
 
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(fetchMmcaRooms).toHaveBeenCalledTimes(1);
-    expect(fetchMmcaDaily).toHaveBeenCalledTimes(2);
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
     expect(consoleError).not.toHaveBeenCalled();
   });
 
@@ -153,11 +155,12 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(3));
-    // 3 chart cards, but only one page-level fetch (plus the independent
-    // fetch always made by MmcaDailyLogTable's own log view, fixed at 2
-    // total) — this is the fix for the pre-expansion N-cards-N-requests
-    // problem: the count does not scale with the number of rooms.
-    expect(fetchMmcaDaily).toHaveBeenCalledTimes(2);
+    // 3 chart cards, but only two page-level fetches — today + last week —
+    // plus the independent fetch always made by MmcaDailyLogTable's own log
+    // view, fixed at 3 total — this is the fix for the pre-expansion
+    // N-cards-N-requests problem: the count does not scale with the number
+    // of rooms.
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
   });
 
   it("renders a single-column layout when the venue has only one room", async () => {
@@ -210,5 +213,140 @@ describe("MmcaPage", () => {
 
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
     expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+  });
+
+  it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-2001" }),
+      makeRoom({
+        space_code: "MMCA-SPACE-2008",
+        space_nm: "1층 어린이미술관",
+        congestion_nm: null,
+        observed_at: null,
+      }),
+    ]);
+
+    const { container } = render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
+    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
+    expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
+
+    const sections = container.querySelectorAll("section");
+    const inactiveSection = Array.from(sections).find((s) => s.textContent?.includes("서비스 예정"));
+    expect(inactiveSection?.className).toMatch(/lg:grid-cols-6/);
+  });
+
+  it("groups open rooms with no data collected today into small inactive cards", async () => {
+    vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({
+        space_code: "MMCA-SPACE-1002",
+        space_nm: "2전시실",
+        congestion_nm: null,
+        observed_at: null,
+      }),
+    ]);
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      {
+        observed_at: "2026-07-28T10:10:00",
+        rooms: [{ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: null }],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
+    expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument();
+    // "2전시실" now also appears as a column header in the daily log table
+    // (this test's fetchMmcaDaily mock has a real bucket for that room), so
+    // assert presence rather than uniqueness.
+    expect(screen.getAllByText("2전시실").length).toBeGreaterThan(0);
+  });
+
+  it("keeps a full-size card for a no-data room when the venue isn't open yet", async () => {
+    vi.setSystemTime(new Date("2026-07-28T09:00:00")); // Tuesday, before 10:00 open
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("keeps rooms in the full-size grid before today's first poll, even though congestion_nm is null", async () => {
+    vi.setSystemTime(new Date("2026-07-28T10:05:00")); // Tuesday, open (10:00) but before the 10:10 first poll
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]); // nothing collected yet today
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("keeps the full chart card for a room that had real data earlier today even though its latest poll is null", async () => {
+    vi.setSystemTime(new Date("2026-07-28T15:00:00")); // Tuesday, well within hours
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([
+      {
+        observed_at: "2026-07-28T11:00:00",
+        rooms: [{ space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "여유" }],
+      },
+    ]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom({ congestion_nm: null, observed_at: null })]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+  });
+
+  it("fetches last week's daily data once per venue, separate from the 60s poll", async () => {
+    const fetchMmcaDaily = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    const today = todayString();
+    const lastWeek = shiftDate(today, -7);
+
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", lastWeek));
+    // MmcaPage's own today fetch + MmcaPage's own last-week fetch +
+    // MmcaDailyLogTable's independent today fetch = 3, fixed regardless of
+    // room count (see the "fetches daily data exactly once" test below).
+    expect(fetchMmcaDaily).toHaveBeenCalledTimes(3);
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // The page's own "today" effect re-polls on the interval (pre-existing
+    // behavior, unchanged by this task) — but the last-week fetch must not
+    // join it.
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
   });
 });

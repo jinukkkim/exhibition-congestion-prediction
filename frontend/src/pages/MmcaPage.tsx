@@ -10,14 +10,17 @@ import {
 } from "../api/mmca";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
-import { todayString } from "../lib/date";
+import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { shiftDate, todayString } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
+import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 
 const POLL_INTERVAL_MS = 60_000;
 
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
   const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
+  const [lastWeekDaily, setLastWeekDaily] = useState<MmcaDailyLogPoint[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -65,9 +68,42 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
     };
   }, [venue]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    fetchMmcaDaily(venue, shiftDate(todayString(), -7))
+      .then((data) => {
+        if (!ignore) setLastWeekDaily(data);
+      })
+      .catch(() => {
+        // Leave lastWeekDaily as-is on failure, same "don't blank on one
+        // failed fetch" philosophy as the sibling today-effect above — but
+        // unlike that effect, this one has no polling interval, so there's
+        // no automatic retry; a failure here just means the last-week line
+        // stays absent (or stale) until `venue` changes.
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [venue]);
+
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  // Mirrors MmcaRoomChartCard's own isOpen formula — needed here too since
+  // partitioning happens a level above that component.
+  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+
+  const hasReadingToday = (code: string) =>
+    daily?.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null) ?? false;
+
+  const isRoomInactiveToday = (room: MmcaRoomStatus) =>
+    DISABLED_MMCA_SPACE_CODES.has(room.space_code) ||
+    (isOpen && room.congestion_nm == null && (daily?.length ?? 0) > 0 && !hasReadingToday(room.space_code));
+
+  const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
+  const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -88,17 +124,29 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
-        {rooms && (
-          <section className={`grid gap-6${rooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
-            {rooms.map((room) => (
+        {activeRooms.length > 0 && (
+          <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
+            {activeRooms.map((room) => (
               <MmcaRoomChartCard
                 key={room.space_code}
                 room={room}
                 daily={daily}
+                lastWeekDaily={lastWeekDaily}
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}
                 isOpenToday={isOpenToday}
+              />
+            ))}
+          </section>
+        )}
+        {inactiveRooms.length > 0 && (
+          <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {inactiveRooms.map((room) => (
+              <MmcaRoomInactiveCard
+                key={room.space_code}
+                room={room}
+                reason={DISABLED_MMCA_SPACE_CODES.has(room.space_code) ? "서비스 예정" : "오늘 정보 없음"}
               />
             ))}
           </section>

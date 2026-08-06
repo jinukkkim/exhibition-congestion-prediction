@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
@@ -11,6 +12,12 @@ from app.schemas import MmcaDailyLogPoint, MmcaDailyRoom, MmcaRoomStatus
 
 router = APIRouter()
 
+# observed_at is always stored pinned to Asia/Seoul (see collector.py,
+# mmca_api.py) — a naive datetime.now() would use the server's OS timezone
+# instead, misaligning "today" whenever the server isn't KST (e.g. a UTC
+# container).
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
+
 
 @router.get("/mmca/rooms", response_model=list[MmcaRoomStatus])
 def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
@@ -19,46 +26,67 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
     with SessionLocal() as session:
+        codes_with_history = {
+            row[0]
+            for row in session.query(RawMmcaCongestion.space_code)
+            .filter(RawMmcaCongestion.space_code.in_(codes))
+            .distinct()
+            .all()
+        }
+
+        # Disabled rooms must always render their "서비스 예정" placeholder,
+        # regardless of whether they happen to have historical rows from
+        # before they were disabled — don't let that appear/disappear based
+        # on data retention.
+        codes_to_return = codes_with_history | (set(codes) & MMCA_DISABLED_SPACE_CODES)
+
+        if not codes_with_history:
+            if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
+                # Every room this venue has is permanently disabled (e.g.
+                # Deoksugung's only code, MMCA-SPACE-4001) — collection will
+                # never backfill history for it, so a fresh/empty DB must not
+                # 503 forever. Placeholder rows let the frontend's "서비스 예정"
+                # UI render instead of falling through to a generic error page.
+                return [
+                    MmcaRoomStatus(
+                        space_code=code,
+                        space_nm=MMCA_SPACE_NAMES.get(code),
+                        congestion_nm=None,
+                        observed_at=None,
+                    )
+                    for code in codes
+                ]
+            raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
+
+        # A room can have history from earlier days but nothing yet today
+        # (e.g. business hours just started, before the collector's first
+        # poll) — only ever surface a *today* reading, never fall back to a
+        # stale prior-day value.
+        day_start = datetime.now(_SEOUL_TZ).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+        )
         latest_ids = [
             row[0]
             for row in session.query(func.max(RawMmcaCongestion.id))
-            .filter(RawMmcaCongestion.space_code.in_(codes))
+            .filter(
+                RawMmcaCongestion.space_code.in_(codes_with_history),
+                RawMmcaCongestion.observed_at >= day_start,
+            )
             .group_by(RawMmcaCongestion.space_code)
             .all()
         ]
-        rows = (
-            session.query(RawMmcaCongestion)
-            .filter(RawMmcaCongestion.id.in_(latest_ids))
-            .order_by(RawMmcaCongestion.space_code)
-            .all()
-        )
+        rows = session.query(RawMmcaCongestion).filter(RawMmcaCongestion.id.in_(latest_ids)).all()
 
-    if not rows:
-        if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
-            # Every room this venue has is permanently disabled (e.g.
-            # Deoksugung's only code, MMCA-SPACE-4001) — collection will
-            # never backfill history for it, so a fresh/empty DB must not
-            # 503 forever. Placeholder rows let the frontend's "서비스 예정"
-            # UI render instead of falling through to a generic error page.
-            return [
-                MmcaRoomStatus(
-                    space_code=code,
-                    space_nm=MMCA_SPACE_NAMES.get(code),
-                    congestion_nm=None,
-                    observed_at=None,
-                )
-                for code in codes
-            ]
-        raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
-
+    rows_by_code = {row.space_code: row for row in rows}
     return [
         MmcaRoomStatus(
-            space_code=row.space_code,
-            space_nm=row.space_nm or MMCA_SPACE_NAMES.get(row.space_code),
-            congestion_nm=row.congestion_nm,
-            observed_at=row.observed_at.isoformat(),
+            space_code=code,
+            space_nm=(rows_by_code[code].space_nm if code in rows_by_code else None)
+            or MMCA_SPACE_NAMES.get(code),
+            congestion_nm=rows_by_code[code].congestion_nm if code in rows_by_code else None,
+            observed_at=rows_by_code[code].observed_at.isoformat() if code in rows_by_code else None,
         )
-        for row in rows
+        for code in sorted(codes_to_return)
     ]
 
 
@@ -69,7 +97,9 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
     if date is None:
-        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = datetime.now(_SEOUL_TZ).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+        )
     else:
         try:
             day_start = datetime.strptime(date, "%Y-%m-%d")
