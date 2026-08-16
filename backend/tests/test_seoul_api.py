@@ -26,9 +26,31 @@ FIXTURE = {
                 "PPLTN_RATE_70": "9.8",
                 "RESNT_PPLTN_RATE": "45.1",
                 "NON_RESNT_PPLTN_RATE": "54.9",
+                "FCST_PPLTN": [
+                    {
+                        "FCST_TIME": "2026-07-15 15:00",
+                        "FCST_CONGEST_LVL": "약간 붐빔",
+                        "FCST_PPLTN_MIN": "2500",
+                        "FCST_PPLTN_MAX": "3000",
+                    }
+                ],
             }
         ],
-        "WEATHER_STTS": [{"TEMP": "30.2", "FCST24HOURS": [{"FCST_DT": "202608141100"}]}],
+        "WEATHER_STTS": [
+            {
+                "TEMP": "30.2",
+                "FCST24HOURS": [
+                    {
+                        "FCST_DT": "202607151500",
+                        "TEMP": "31",
+                        "PRECIPITATION": "-",
+                        "PRECPT_TYPE": "없음",
+                        "RAIN_CHANCE": "0",
+                        "SKY_STTS": "구름많음",
+                    }
+                ],
+            }
+        ],
         "LIVE_SUB_PPLTN": {"SUB_ACML_GTON_PPLTN_MIN": "4000"},
         "LIVE_BUS_PPLTN": {"BUS_ACML_GTON_PPLTN_MIN": "150"},
         "CHARGER_STTS": [{"STAT_NM": "국립 중앙 박물관"}],
@@ -85,8 +107,46 @@ def test_fetch_congestion_archives_only_candidate_sections():
     # The weather block is kept, but its 24-hour forecast is not — that belongs
     # in a forecast table keyed by issue time, not re-archived on every poll.
     assert archived["WEATHER_STTS"][0] == {"TEMP": "30.2"}
-    # 서울시's own congestion forecast rides along inside the population block.
     assert archived["LIVE_PPLTN_STTS"][0]["AREA_CONGEST_LVL"] == "보통"
+
+
+def test_fetch_congestion_parses_both_forecast_blocks():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=FIXTURE)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    reading = fetch_congestion(client, "국립중앙박물관", "test-key")
+
+    (congestion,) = reading.congestion_forecasts
+    assert congestion.target_at == datetime(2026, 7, 15, 15, 0)
+    assert congestion.congest_level == "약간 붐빔"
+    assert (congestion.population_min, congestion.population_max) == (2500, 3000)
+
+    (weather,) = reading.weather_forecasts
+    assert weather.target_at == datetime(2026, 7, 15, 15, 0)
+    assert weather.temp == 31.0
+    assert weather.precipitation == "-"
+    assert weather.rain_chance == 0.0
+    assert weather.sky_stts == "구름많음"
+
+
+def test_trimming_the_body_does_not_consume_the_weather_forecast():
+    """_archived_body drops FCST24HOURS; parsing it must still see it.
+
+    Both read the same parsed response, so trimming in place would leave
+    weather_forecasts silently empty depending on evaluation order.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=FIXTURE)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    reading = fetch_congestion(client, "국립중앙박물관", "test-key")
+
+    assert "FCST24HOURS" not in json.loads(reading.raw_response)["WEATHER_STTS"][0]
+    assert len(reading.weather_forecasts) == 1
 
 
 def test_fetch_congestion_defaults_new_fields_when_absent():

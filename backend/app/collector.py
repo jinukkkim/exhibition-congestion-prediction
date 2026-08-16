@@ -1,20 +1,74 @@
 import json
 import logging
+from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.cache import set_latest
 from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
-from app.models import RawCongestion, RawMmcaCongestion
-from app.seoul_api import CongestionReading, fetch_congestion
+from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
+from app.seoul_api import (
+    CongestionForecast,
+    CongestionReading,
+    WeatherForecast,
+    fetch_congestion,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def store_forecast_revisions(
+    session: Session,
+    model: type[ForecastCongestion] | type[ForecastWeather],
+    issued_at: datetime,
+    forecasts: Sequence[CongestionForecast] | Sequence[WeatherForecast],
+) -> int:
+    """Add only the forecasts that differ from the last one stored for their
+    target time.
+
+    The API repeats every forecast on all 288 daily polls, so without this the
+    tables would grow ~40x for no added information. Comparing against the
+    latest stored row (not against everything ever stored) is what keeps a
+    value that flips back to an earlier one recorded as its own revision.
+
+    "Latest" means latest *as of issued_at*, not latest overall. For live
+    collection those are the same thing, but it's what makes replaying old
+    polls over an already-populated table a no-op instead of re-inserting
+    every row — see scripts/backfill_forecasts.py.
+
+    Read-then-insert isn't atomic across processes, so running the backfill
+    against a live DB can duplicate a row. Left unguarded on purpose: the only
+    reachable duplicate is byte-identical (both writers saw the same API
+    response), the ordering above tolerates the tie, and a UNIQUE constraint
+    would instead abort the collector's whole transaction — losing the
+    raw_congestion row too — the first time one poll revised a forecast
+    without the API advancing PPLTN_TIME.
+    """
+    stored = 0
+    for forecast in forecasts:
+        values = asdict(forecast)
+        target_at = values.pop("target_at")
+        latest = (
+            session.query(model)
+            .filter(model.target_at == target_at, model.issued_at <= issued_at)
+            .order_by(model.issued_at.desc(), model.id.desc())
+            .first()
+        )
+        if latest is not None and all(
+            getattr(latest, name) == value for name, value in values.items()
+        ):
+            continue
+        session.add(model(issued_at=issued_at, target_at=target_at, **values))
+        stored += 1
+    return stored
 
 
 def collect_once(session_factory=SessionLocal) -> CongestionReading:
@@ -42,6 +96,15 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
                 non_resnt_ppltn_rate=reading.non_resnt_ppltn_rate,
                 raw_response=reading.raw_response,
             )
+        )
+        # issued_at is the poll's own observed_at rather than wall-clock now:
+        # it's the API's timestamp for this response, so it lines up with
+        # raw_congestion rows and doesn't depend on the server's clock.
+        store_forecast_revisions(
+            session, ForecastCongestion, reading.observed_at, reading.congestion_forecasts
+        )
+        store_forecast_revisions(
+            session, ForecastWeather, reading.observed_at, reading.weather_forecasts
         )
         session.commit()
 
