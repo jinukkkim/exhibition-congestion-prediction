@@ -26,9 +26,9 @@ class RawCongestion(Base):
     ppltn_rate_70: Mapped[float | None] = mapped_column(Float, nullable=True)
     resnt_ppltn_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     non_resnt_ppltn_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # Full /citydata response body, verbatim — see CongestionReading.raw_response.
+    # Trimmed /citydata response body — see CongestionReading.raw_response.
     # deferred: existing read paths (history/daily routes, the daily batch)
-    # select every column and don't use this one, so eagerly loading a ~20KB
+    # select every column and don't use this one, so eagerly loading a ~7KB
     # blob per row on every query would only add cost with no benefit.
     raw_response: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
 
@@ -46,6 +46,5 @@ class RawMmcaCongestion(Base):
     space_nm: Mapped[str | None] = mapped_column(String, nullable=True)
     agnc_nm: Mapped[str | None] = mapped_column(String, nullable=True)
     congestion_nm: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Full /congestion response body, verbatim — same deferred-load rationale
-    # as RawCongestion.raw_response.
-    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    # No raw_response here — see MmcaCongestionReading. The column that used to
+    # hold it is dropped by scripts/migrate_drop_mmca_raw_response.py.
