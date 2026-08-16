@@ -73,8 +73,12 @@ def test_history_returns_points_within_window(client):
     test_client, session_factory = client
 
     from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
 
-    now = datetime.now()
+    # observed_at holds the Open API's KST wall-clock, so the fixture has to
+    # be stamped the same way the collector stamps it. A host-local now() only
+    # matched the route's window while the host happened to be on KST.
+    now = datetime.now(ZoneInfo("Asia/Seoul")).replace(tzinfo=None)
     with session_factory() as session:
         session.add_all(
             [

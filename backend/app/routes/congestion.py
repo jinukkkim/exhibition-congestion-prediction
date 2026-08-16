@@ -42,7 +42,11 @@ def current_congestion() -> CurrentCongestion:
 def congestion_history(
     hours: int = Query(default=6, ge=1, le=24)
 ) -> list[CongestionHistoryPoint]:
-    cutoff = datetime.now() - timedelta(hours=hours)
+    # Same Seoul pinning as congestion_daily below — observed_at holds the
+    # Open API's KST wall-clock times, so a naive now() would compare them
+    # against the server's clock (Etc/UTC in production) and widen the window
+    # by the offset: "last 6 hours" would return the last 15.
+    cutoff = datetime.now(_SEOUL_TZ).replace(tzinfo=None) - timedelta(hours=hours)
     with SessionLocal() as session:
         rows = (
             session.query(RawCongestion)

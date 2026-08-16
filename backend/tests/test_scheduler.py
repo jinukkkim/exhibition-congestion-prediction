@@ -129,3 +129,27 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         assert congestion_job.next_run_time.second == 0
     finally:
         scheduler.shutdown(wait=False)
+
+
+def test_daily_batch_fires_at_3am_seoul_not_server_time():
+    """Production runs on Etc/UTC, where an unpinned cron put "3am" at noon KST.
+
+    Asserted through the trigger's own resolution rather than the configured
+    timezone, so it still holds if the jobs ever move to per-trigger zones.
+    """
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from app.scheduler import build_scheduler
+
+    seoul = ZoneInfo("Asia/Seoul")
+    scheduler = build_scheduler()
+    trigger = {job.id: job.trigger for job in scheduler.get_jobs()}["daily_batch"]
+
+    # Midnight KST on a fixed date, expressed in UTC so the host's own zone
+    # can't leak into the fixture.
+    previous = datetime(2026, 8, 12, 15, 0, tzinfo=timezone.utc)
+    fire = trigger.get_next_fire_time(None, previous)
+
+    assert fire.astimezone(seoul).hour == 3
+    assert fire.astimezone(timezone.utc).hour == 18  # 03:00 KST == 18:00 UTC

@@ -1,5 +1,6 @@
 from datetime import datetime
 from statistics import mean
+from zoneinfo import ZoneInfo
 
 from app.cache import set_prediction
 from app.db import SessionLocal
@@ -8,6 +9,8 @@ from app.prediction.baseline import compute_baseline, predict_baseline
 from app.prediction.model import predict_model, train_model
 
 MIN_DAYS_REQUIRED = 14
+
+_SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 def run_daily_batch(session_factory=SessionLocal) -> dict:
@@ -43,7 +46,11 @@ def run_daily_batch(session_factory=SessionLocal) -> dict:
         baseline_errors.append(abs(baseline_pred - row.population_avg))
         model_errors.append(abs(model_pred - row.population_avg))
 
-    today = datetime.now()
+    # weekday() picks which day's baseline the curve is built from, and
+    # observed_at is KST wall-clock, so this has to be too — production runs
+    # on Etc/UTC, where a naive now() lands on the previous day for the whole
+    # KST morning.
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None)
     curve = [
         {
             "hour": hour,
