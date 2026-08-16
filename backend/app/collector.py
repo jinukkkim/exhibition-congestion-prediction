@@ -196,7 +196,6 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
                     space_nm=reading.space_nm,
                     agnc_nm=reading.agnc_nm,
                     congestion_nm=reading.congestion_nm,
-                    raw_response=reading.raw_response,
                 )
             )
         session.commit()

@@ -28,6 +28,14 @@ FIXTURE = {
                 "NON_RESNT_PPLTN_RATE": "54.9",
             }
         ],
+        "WEATHER_STTS": [{"TEMP": "30.2", "FCST24HOURS": [{"FCST_DT": "202608141100"}]}],
+        "LIVE_SUB_PPLTN": {"SUB_ACML_GTON_PPLTN_MIN": "4000"},
+        "LIVE_BUS_PPLTN": {"BUS_ACML_GTON_PPLTN_MIN": "150"},
+        "CHARGER_STTS": [{"STAT_NM": "국립 중앙 박물관"}],
+        "ROAD_TRAFFIC_STTS": {"AVG_ROAD_DATA": {"ROAD_TRAFFIC_IDX": "원활"}},
+        "PRK_STTS": [{"PRK_NM": "가족공원 부설주차장"}],
+        "EVENT_STTS": [{"EVENT_NM": "뮤지컬"}],
+        "ACDNT_CNTRL_STTS": [],
     }
 }
 
@@ -56,7 +64,29 @@ def test_fetch_congestion_parses_response():
     assert reading.ppltn_rate_70 == 9.8
     assert reading.resnt_ppltn_rate == 45.1
     assert reading.non_resnt_ppltn_rate == 54.9
-    assert json.loads(reading.raw_response) == FIXTURE
+
+
+def test_fetch_congestion_archives_only_candidate_sections():
+    """Sections that can't become model features never reach the DB."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=FIXTURE)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    archived = json.loads(fetch_congestion(client, "국립중앙박물관", "test-key").raw_response)
+
+    assert set(archived) == {
+        "LIVE_PPLTN_STTS",
+        "WEATHER_STTS",
+        "LIVE_SUB_PPLTN",
+        "LIVE_BUS_PPLTN",
+    }
+    # The weather block is kept, but its 24-hour forecast is not — that belongs
+    # in a forecast table keyed by issue time, not re-archived on every poll.
+    assert archived["WEATHER_STTS"][0] == {"TEMP": "30.2"}
+    # 서울시's own congestion forecast rides along inside the population block.
+    assert archived["LIVE_PPLTN_STTS"][0]["AREA_CONGEST_LVL"] == "보통"
 
 
 def test_fetch_congestion_defaults_new_fields_when_absent():
