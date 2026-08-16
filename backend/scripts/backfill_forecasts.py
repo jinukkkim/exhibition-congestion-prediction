@@ -1,10 +1,11 @@
 """One-off backfill: rebuild forecast_congestion / forecast_weather from the
 forecast blocks already archived inside raw_congestion.raw_response.
 
-RUN THIS BEFORE scripts/trim_existing_raw_responses.py. That script strips
-FCST24HOURS out of stored bodies, so once it has run the historical weather
-forecasts are gone for good. 서울시's congestion forecast survives either way —
-it sits inside LIVE_PPLTN_STTS, which the trim keeps.
+Ordering against scripts/trim_existing_raw_responses.py matters: that script
+strips FCST24HOURS out of stored bodies, so running it first would lose the
+historical weather forecasts for good. It calls this module before trimming
+anything, so there's nothing to sequence by hand. 서울시's congestion forecast
+survives either way — it sits inside LIVE_PPLTN_STTS, which the trim keeps.
 
 Not in deploy.sh — a data backfill, not a schema migration. Re-running is safe:
 rows are replayed in observed_at order through the same revision-only rule the
