@@ -3,6 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, time
+from time import sleep
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -71,9 +72,40 @@ def store_forecast_revisions(
     return stored
 
 
+# The Seoul Open API intermittently answers a 200 with a non-JSON body, which
+# surfaces as JSONDecodeError rather than an HTTP error — the same data.go.kr
+# behaviour collect_mmca_once already guards against per room. Six polls hit it
+# in the week of 2026-08-11, and each one was isolated: the 5-minute polls on
+# either side succeeded, so a retry a couple of seconds later recovers the
+# reading instead of leaving a hole in the series.
+#
+# No equivalent retry for collect_mmca_once: 15 rooms * 66 rounds/day already
+# sits at 990 of the MMCA API's 1,000-call/day cap, so retries there would
+# spend quota the schedule doesn't have. Losing one room of fifteen is also a
+# far smaller hole than losing the only call of a round.
+_FETCH_ATTEMPTS = 3
+_FETCH_RETRY_SECONDS = 2
+
+
+def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        try:
+            return fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            # Still raised once the attempts run out: a sustained outage should
+            # reach the scheduler's error listener, unlike a single flake.
+            if attempt == _FETCH_ATTEMPTS:
+                raise
+            logger.warning(
+                "Seoul fetch attempt %d/%d failed, retrying: %r", attempt, _FETCH_ATTEMPTS, exc
+            )
+            sleep(_FETCH_RETRY_SECONDS)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def collect_once(session_factory=SessionLocal) -> CongestionReading:
     with httpx.Client() as client:
-        reading = fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
+        reading = _fetch_congestion_with_retry(client)
 
     with session_factory() as session:
         session.add(

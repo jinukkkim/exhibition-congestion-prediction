@@ -49,18 +49,59 @@ def test_collect_once_stores_and_caches(monkeypatch, session_factory):
 
 
 def test_collect_once_propagates_api_error(monkeypatch, session_factory):
+    """A sustained outage still reaches the scheduler's error listener."""
     import app.collector as collector_module
 
+    calls = []
+
     def raise_error(client, area, key):
+        calls.append(1)
         raise httpx.HTTPError("boom")
 
     monkeypatch.setattr(collector_module, "fetch_congestion", raise_error)
+    monkeypatch.setattr(collector_module, "_FETCH_RETRY_SECONDS", 0)
 
     with pytest.raises(httpx.HTTPError):
         collector_module.collect_once(session_factory=session_factory)
 
+    assert len(calls) == collector_module._FETCH_ATTEMPTS
     with session_factory() as session:
         assert session.query(RawCongestion).count() == 0
+
+
+def test_collect_once_retries_a_non_json_body(monkeypatch, session_factory):
+    """The Seoul API answers 200 with a non-JSON body on isolated polls.
+
+    Observed six times in the week of 2026-08-11, always as a single poll with
+    healthy neighbours — so the retry is what keeps that slot out of the gap.
+    """
+    import json
+
+    import app.collector as collector_module
+
+    fake_reading = CongestionReading(
+        observed_at=datetime(2026, 8, 11, 13, 0),
+        congest_level="보통",
+        population_min=1000,
+        population_max=2000,
+    )
+    calls = []
+
+    def flake_once(client, area, key):
+        calls.append(1)
+        if len(calls) == 1:
+            raise json.JSONDecodeError("Expecting value", "", 0)
+        return fake_reading
+
+    monkeypatch.setattr(collector_module, "fetch_congestion", flake_once)
+    monkeypatch.setattr(collector_module, "_FETCH_RETRY_SECONDS", 0)
+
+    result = collector_module.collect_once(session_factory=session_factory)
+
+    assert len(calls) == 2
+    assert result.congest_level == "보통"
+    with session_factory() as session:
+        assert session.query(RawCongestion).count() == 1
 
 
 def test_collect_once_stores_population_breakdown_fields(monkeypatch, session_factory):
