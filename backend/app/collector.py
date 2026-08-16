@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
@@ -7,18 +8,29 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.cache import set_latest
 from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
-from app.seoul_api import CongestionReading, fetch_congestion
+from app.seoul_api import (
+    CongestionForecast,
+    CongestionReading,
+    WeatherForecast,
+    fetch_congestion,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def store_forecast_revisions(session, model, issued_at, forecasts) -> int:
+def store_forecast_revisions(
+    session: Session,
+    model: type[ForecastCongestion] | type[ForecastWeather],
+    issued_at: datetime,
+    forecasts: Sequence[CongestionForecast] | Sequence[WeatherForecast],
+) -> int:
     """Add only the forecasts that differ from the last one stored for their
     target time.
 
@@ -31,6 +43,14 @@ def store_forecast_revisions(session, model, issued_at, forecasts) -> int:
     collection those are the same thing, but it's what makes replaying old
     polls over an already-populated table a no-op instead of re-inserting
     every row — see scripts/backfill_forecasts.py.
+
+    Read-then-insert isn't atomic across processes, so running the backfill
+    against a live DB can duplicate a row. Left unguarded on purpose: the only
+    reachable duplicate is byte-identical (both writers saw the same API
+    response), the ordering above tolerates the tie, and a UNIQUE constraint
+    would instead abort the collector's whole transaction — losing the
+    raw_congestion row too — the first time one poll revised a forecast
+    without the API advancing PPLTN_TIME.
     """
     stored = 0
     for forecast in forecasts:
