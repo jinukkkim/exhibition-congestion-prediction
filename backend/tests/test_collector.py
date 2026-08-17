@@ -75,8 +75,6 @@ def test_collect_once_retries_a_non_json_body(monkeypatch, session_factory):
     Observed six times in the week of 2026-08-11, always as a single poll with
     healthy neighbours — so the retry is what keeps that slot out of the gap.
     """
-    import json
-
     import app.collector as collector_module
 
     fake_reading = CongestionReading(
