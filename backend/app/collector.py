@@ -79,19 +79,25 @@ def store_forecast_revisions(
 # either side succeeded, so a retry a couple of seconds later recovers the
 # reading instead of leaving a hole in the series.
 #
-# No equivalent retry for collect_mmca_once: 15 rooms * 66 rounds/day already
-# sits at 990 of the MMCA API's 1,000-call/day cap, so retries there would
-# spend quota the schedule doesn't have. Losing one room of fifteen is also a
-# far smaller hole than losing the only call of a round.
+# No equivalent retry for collect_mmca_once: losing one room of fifteen is a
+# far smaller hole than losing the only call of a round, and the schedule is
+# sized against a quota ceiling (see _COLLECTION_START) that retries would eat
+# into on exactly the days it's tightest.
 _FETCH_ATTEMPTS = 3
 _FETCH_RETRY_SECONDS = 2
+
+# KeyError joins the two network-shaped failures because the API can answer
+# 200 with well-formed JSON that simply lacks CITYDATA — seoul_api and mmca_api
+# both index straight into the payload, so a shape change surfaces as a
+# KeyError that neither httpx nor json would ever raise.
+_FETCH_FAILURES = (httpx.HTTPError, json.JSONDecodeError, KeyError)
 
 
 def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
     for attempt in range(1, _FETCH_ATTEMPTS + 1):
         try:
             return fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
-        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+        except _FETCH_FAILURES as exc:
             # Still raised once the attempts run out: a sustained outage should
             # reach the scheduler's error listener, unlike a single flake.
             if attempt == _FETCH_ATTEMPTS:
@@ -153,7 +159,10 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # the frontend shows as "open") — congestion right at opening is reliably
 # 여유, so skipping that one poll buys back a 10-minute slot/day. That's
 # what keeps the 15-room, 10-minute schedule under the MMCA API's
-# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990.
+# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990. That's
+# the ceiling, not the norm — the empty-room skip below takes real usage to
+# roughly 400-550 calls/day (measured over 2026-08-09..13), so the headroom
+# only disappears if most rooms are running exhibitions at once.
 _COLLECTION_START = time(10, 10)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
@@ -268,7 +277,7 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         for space_code in space_codes:
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
-            except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            except _FETCH_FAILURES as exc:
                 # data.go.kr can return a non-JSON (e.g. XML error) body with a
                 # 200 status on key/quota errors — response.json() then raises
                 # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
@@ -281,6 +290,15 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             # /mmca/daily bucket together instead of splitting across two.
             reading.observed_at = round_time
             readings.append(reading)
+
+    # A round that lost rooms still returns successfully, so without this line
+    # a partially-collected round is indistinguishable from a full one in the
+    # logs — the per-room warnings above only say something failed, never how
+    # much of the round survived.
+    if len(readings) < len(space_codes):
+        logger.warning(
+            "MMCA round %s collected %d/%d rooms", round_time, len(readings), len(space_codes)
+        )
 
     with session_factory() as session:
         for reading in readings:
