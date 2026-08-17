@@ -5,9 +5,11 @@ set -euo pipefail
 
 # The systemd unit lives on the server, not in this repo, so the port is an
 # assumption here — override if the unit ever moves off uvicorn's default.
+# The wait budget (~30s) is likewise overridable, for whenever startup grows
+# something slower than init_db() and the scheduler.
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
-HEALTH_ATTEMPTS=15
-HEALTH_INTERVAL=2
+HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
+HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
 
 cd /home/ubuntu/exhibition-traffic
 
