@@ -11,7 +11,9 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
 
-cd /home/ubuntu/exhibition-traffic
+APP_DIR=/home/ubuntu/exhibition-traffic
+
+cd "$APP_DIR"
 
 git fetch origin
 git reset --hard HEAD
@@ -56,6 +58,16 @@ for attempt in $(seq 1 "$HEALTH_ATTEMPTS"); do
   fi
   sleep "$HEALTH_INTERVAL"
 done
+
+# Caddy routes every backend path explicitly and falls back to the SPA for
+# anything else, so a path missing from its config answers 200 with index.html
+# instead of 404 — which is how /health went unnoticed as unroutable. Shipping
+# the file from the repo keeps that config reviewable instead of living only on
+# the server. `validate` first: reload leaves the running config in place if the
+# new one is rejected, but failing here is clearer than a silent no-op.
+sudo cp "$APP_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
 
 # Publish the already-built bundle last: an old frontend against the new
 # backend is the safe intermediate state, the reverse is not.
