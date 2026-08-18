@@ -111,7 +111,6 @@ def test_raw_mmca_congestion_round_trip():
             space_nm="1전시실",
             agnc_nm="국립현대미술관 서울관",
             congestion_nm="보통",
-            raw_response='{"data": {"congestionNm": "보통"}}',
         )
         session.add(row)
         session.commit()

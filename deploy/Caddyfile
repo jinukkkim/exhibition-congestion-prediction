@@ -1,0 +1,27 @@
+# Production reverse proxy, installed to /etc/caddy/Caddyfile by deploy.sh.
+# Caddy terminates TLS for the duckdns hostname and serves the built frontend;
+# everything the backend owns has to be routed here explicitly, because the
+# catch-all below falls back to the SPA.
+exhibition-traffic.duckdns.org {
+	handle /congestion/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle /mmca/* {
+		reverse_proxy localhost:8000
+	}
+
+	# /health* rather than /health/*, so both the liveness endpoint and
+	# /health/collection match. Without this the SPA fallback answers 200 with
+	# index.html for both, which an uptime monitor reads as a healthy backend
+	# no matter how long collection has been dead.
+	handle /health* {
+		reverse_proxy localhost:8000
+	}
+
+	handle {
+		root * /var/www/exhibition-traffic
+		try_files {path} /index.html
+		file_server
+	}
+}

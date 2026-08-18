@@ -1,25 +1,117 @@
 import json
 import logging
+from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import datetime, time
+from time import sleep
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.cache import set_latest
 from app.config import MMCA_DISABLED_SPACE_CODES, settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
-from app.models import RawCongestion, RawMmcaCongestion
-from app.seoul_api import CongestionReading, fetch_congestion
+from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
+from app.seoul_api import (
+    CongestionForecast,
+    CongestionReading,
+    WeatherForecast,
+    fetch_congestion,
+)
 
 logger = logging.getLogger(__name__)
 
 
+def store_forecast_revisions(
+    session: Session,
+    model: type[ForecastCongestion] | type[ForecastWeather],
+    issued_at: datetime,
+    forecasts: Sequence[CongestionForecast] | Sequence[WeatherForecast],
+) -> int:
+    """Add only the forecasts that differ from the last one stored for their
+    target time.
+
+    The API repeats every forecast on all 288 daily polls, so without this the
+    tables would grow ~40x for no added information. Comparing against the
+    latest stored row (not against everything ever stored) is what keeps a
+    value that flips back to an earlier one recorded as its own revision.
+
+    "Latest" means latest *as of issued_at*, not latest overall. For live
+    collection those are the same thing, but it's what makes replaying old
+    polls over an already-populated table a no-op instead of re-inserting
+    every row — see scripts/backfill_forecasts.py.
+
+    Read-then-insert isn't atomic across processes, so running the backfill
+    against a live DB can duplicate a row. Left unguarded on purpose: the only
+    reachable duplicate is byte-identical (both writers saw the same API
+    response), the ordering above tolerates the tie, and a UNIQUE constraint
+    would instead abort the collector's whole transaction — losing the
+    raw_congestion row too — the first time one poll revised a forecast
+    without the API advancing PPLTN_TIME.
+    """
+    stored = 0
+    for forecast in forecasts:
+        values = asdict(forecast)
+        target_at = values.pop("target_at")
+        latest = (
+            session.query(model)
+            .filter(model.target_at == target_at, model.issued_at <= issued_at)
+            .order_by(model.issued_at.desc(), model.id.desc())
+            .first()
+        )
+        if latest is not None and all(
+            getattr(latest, name) == value for name, value in values.items()
+        ):
+            continue
+        session.add(model(issued_at=issued_at, target_at=target_at, **values))
+        stored += 1
+    return stored
+
+
+# The Seoul Open API intermittently answers a 200 with a non-JSON body, which
+# surfaces as JSONDecodeError rather than an HTTP error — the same data.go.kr
+# behaviour collect_mmca_once already guards against per room. Six polls hit it
+# in the week of 2026-08-11, and each one was isolated: the 5-minute polls on
+# either side succeeded, so a retry a couple of seconds later recovers the
+# reading instead of leaving a hole in the series.
+#
+# No equivalent retry for collect_mmca_once: losing one room of fifteen is a
+# far smaller hole than losing the only call of a round, and the schedule is
+# sized against a quota ceiling (see _COLLECTION_START) that retries would eat
+# into on exactly the days it's tightest.
+_FETCH_ATTEMPTS = 3
+_FETCH_RETRY_SECONDS = 2
+
+# KeyError joins the two network-shaped failures because the API can answer
+# 200 with well-formed JSON that simply lacks CITYDATA — seoul_api and mmca_api
+# both index straight into the payload, so a shape change surfaces as a
+# KeyError that neither httpx nor json would ever raise.
+_FETCH_FAILURES = (httpx.HTTPError, json.JSONDecodeError, KeyError)
+
+
+def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        try:
+            return fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
+        except _FETCH_FAILURES as exc:
+            # Still raised once the attempts run out: a sustained outage should
+            # reach the scheduler's error listener, unlike a single flake.
+            if attempt == _FETCH_ATTEMPTS:
+                raise
+            logger.warning(
+                "Seoul fetch attempt %d/%d failed, retrying: %r", attempt, _FETCH_ATTEMPTS, exc
+            )
+            sleep(_FETCH_RETRY_SECONDS)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def collect_once(session_factory=SessionLocal) -> CongestionReading:
     with httpx.Client() as client:
-        reading = fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
+        reading = _fetch_congestion_with_retry(client)
 
     with session_factory() as session:
         session.add(
@@ -43,6 +135,15 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
                 raw_response=reading.raw_response,
             )
         )
+        # issued_at is the poll's own observed_at rather than wall-clock now:
+        # it's the API's timestamp for this response, so it lines up with
+        # raw_congestion rows and doesn't depend on the server's clock.
+        store_forecast_revisions(
+            session, ForecastCongestion, reading.observed_at, reading.congestion_forecasts
+        )
+        store_forecast_revisions(
+            session, ForecastWeather, reading.observed_at, reading.weather_forecasts
+        )
         session.commit()
 
     set_latest(reading)
@@ -58,7 +159,10 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # the frontend shows as "open") — congestion right at opening is reliably
 # 여유, so skipping that one poll buys back a 10-minute slot/day. That's
 # what keeps the 15-room, 10-minute schedule under the MMCA API's
-# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990.
+# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990. That's
+# the ceiling, not the norm — the empty-room skip below takes real usage to
+# roughly 400-550 calls/day (measured over 2026-08-09..13), so the headroom
+# only disappears if most rooms are running exhibitions at once.
 _COLLECTION_START = time(10, 10)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
@@ -173,7 +277,7 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         for space_code in space_codes:
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
-            except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            except _FETCH_FAILURES as exc:
                 # data.go.kr can return a non-JSON (e.g. XML error) body with a
                 # 200 status on key/quota errors — response.json() then raises
                 # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
@@ -187,6 +291,15 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             reading.observed_at = round_time
             readings.append(reading)
 
+    # A round that lost rooms still returns successfully, so without this line
+    # a partially-collected round is indistinguishable from a full one in the
+    # logs — the per-room warnings above only say something failed, never how
+    # much of the round survived.
+    if len(readings) < len(space_codes):
+        logger.warning(
+            "MMCA round %s collected %d/%d rooms", round_time, len(readings), len(space_codes)
+        )
+
     with session_factory() as session:
         for reading in readings:
             session.add(
@@ -196,7 +309,6 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
                     space_nm=reading.space_nm,
                     agnc_nm=reading.agnc_nm,
                     congestion_nm=reading.congestion_nm,
-                    raw_response=reading.raw_response,
                 )
             )
         session.commit()

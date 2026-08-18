@@ -8,3 +8,4 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # so test modules that transitively import it don't fail on a checkout
 # without a local .env file.
 os.environ.setdefault("SEOUL_API_KEY", "test-key")
+os.environ.setdefault("MMCA_API_KEY", "test-key")

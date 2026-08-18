@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -41,7 +40,6 @@ def test_fetch_congestion_parses_response():
     assert reading.agnc_nm == "국립현대미술관 서울관"
     assert reading.space_nm == "1전시실"
     assert before <= reading.observed_at <= datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    assert json.loads(reading.raw_response)["data"]["congestionNm"] == "보통"
 
 
 def test_fetch_congestion_handles_empty_data():

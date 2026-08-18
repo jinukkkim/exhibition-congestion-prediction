@@ -16,6 +16,7 @@ import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 
 const POLL_INTERVAL_MS = 60_000;
+const COLLECTION_START_DELAY_MINUTES = 10;
 
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
   const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
@@ -91,16 +92,33 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  // Mirrors MmcaRoomChartCard's own isOpen formula — needed here too since
-  // partitioning happens a level above that component.
-  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+  // A room only earns a full-size chart card if it has a curve worth showing.
+  // Until today's first reading exists, last week's same-weekday curve is the
+  // deciding signal; from then on (including after close) it's today's data.
+  // The collector's first poll of the day lands 10 minutes after the opening
+  // time we display (backend/app/collector.py's `_COLLECTION_START`), so
+  // that window — plus all day on a closed day — goes by last week too.
+  // `<=` not `<`: the poll itself takes a few seconds, and this page only
+  // re-renders once a minute.
+  const beforeFirstPoll = !isOpenToday || nowMinutes <= open + COLLECTION_START_DELAY_MINUTES;
 
-  const hasReadingToday = (code: string) =>
-    daily?.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null) ?? false;
+  // `null` means the fetch hasn't landed yet: don't shrink a card on the
+  // strength of data we haven't received.
+  const loadedWithNoReading = (rows: MmcaDailyLogPoint[] | null, code: string) =>
+    rows !== null && !rows.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null);
 
   const isRoomInactiveToday = (room: MmcaRoomStatus) =>
     DISABLED_MMCA_SPACE_CODES.has(room.space_code) ||
-    (isOpen && room.congestion_nm == null && (daily?.length ?? 0) > 0 && !hasReadingToday(room.space_code));
+    (beforeFirstPoll
+      ? loadedWithNoReading(lastWeekDaily, room.space_code)
+      : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code));
+
+  const inactiveReason = (room: MmcaRoomStatus) =>
+    DISABLED_MMCA_SPACE_CODES.has(room.space_code)
+      ? "서비스 예정"
+      : isOpenToday
+        ? "오늘 정보 없음"
+        : "휴관일";
 
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
@@ -146,7 +164,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
               <MmcaRoomInactiveCard
                 key={room.space_code}
                 room={room}
-                reason={DISABLED_MMCA_SPACE_CODES.has(room.space_code) ? "서비스 예정" : "오늘 정보 없음"}
+                reason={inactiveReason(room)}
               />
             ))}
           </section>

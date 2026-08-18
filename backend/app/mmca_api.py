@@ -18,9 +18,9 @@ class MmcaCongestionReading:
     space_nm: str | None
     agnc_nm: str | None
     congestion_nm: str | None
-    # Full /congestion response body, verbatim, same rationale as
-    # CongestionReading.raw_response in seoul_api.py.
-    raw_response: str | None = None
+    # No raw_response counterpart to CongestionReading's: /congestion returns
+    # only agncNm/spaceNm/congestionNm, so the columns above already hold the
+    # entire body and archiving it again was pure duplication.
 
 
 def fetch_congestion(client: httpx.Client, space_code: str, api_key: str) -> MmcaCongestionReading:
@@ -52,5 +52,4 @@ def fetch_congestion(client: httpx.Client, space_code: str, api_key: str) -> Mmc
         space_nm=data.get("spaceNm"),
         agnc_nm=data.get("agncNm"),
         congestion_nm=data.get("congestionNm"),
-        raw_response=response.text,
     )
