@@ -172,6 +172,9 @@ def test_mmca_is_not_stale_in_the_first_minutes_after_opening(client):
 
 
 def test_an_empty_database_reads_as_stale(client):
+    """Both sources, not just Seoul — a wiped DB during opening hours is not
+    the same situation as the off-hours case above, where MMCA having nothing
+    recent is expected."""
     test_client, _, monkeypatch = client
     _freeze(monkeypatch, OPEN_HOURS)
 
@@ -181,3 +184,6 @@ def test_an_empty_database_reads_as_stale(client):
     assert response.status_code == 503
     assert body["seoul"]["last_observed_at"] is None
     assert body["seoul"]["stale"] is True
+    assert body["mmca"]["last_observed_at"] is None
+    assert body["mmca"]["stale"] is True
+    assert body["mmca"]["rooms_in_last_round"] == 0
