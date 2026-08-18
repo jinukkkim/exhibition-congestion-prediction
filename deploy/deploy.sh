@@ -63,10 +63,12 @@ done
 # anything else, so a path missing from its config answers 200 with index.html
 # instead of 404 — which is how /health went unnoticed as unroutable. Shipping
 # the file from the repo keeps that config reviewable instead of living only on
-# the server. `validate` first: reload leaves the running config in place if the
-# new one is rejected, but failing here is clearer than a silent no-op.
+# the server. Validate the repo's copy *before* overwriting the live one: a
+# reload of a rejected config is a no-op against the running process, but a
+# copy that lands first leaves broken config on disk, and the next unrelated
+# `systemctl restart caddy` or reboot would then fail to bring Caddy up at all.
+sudo caddy validate --config "$APP_DIR/deploy/Caddyfile"
 sudo cp "$APP_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 
 # Publish the already-built bundle last: an old frontend against the new
