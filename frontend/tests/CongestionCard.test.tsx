@@ -77,6 +77,13 @@ describe("CongestionCard", () => {
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
   });
 
+  it("says it failed, not that it is loading, when the fetch errored with nothing to show", () => {
+    render(<CongestionCard data={null} daily={null} error />);
+    expect(screen.getByText(/불러오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/재시도 중/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
+  });
+
   it("draws a curve through points within business hours (09:30 onward)", () => {
     render(
       <CongestionCard

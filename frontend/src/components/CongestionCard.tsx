@@ -153,18 +153,27 @@ export function CongestionCard({
   data,
   daily = null,
   lastWeekDaily = null,
+  error = false,
 }: {
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
+  error?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
   if (!data) {
     return (
-      <div className="flex min-h-[420px] items-center justify-center rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
-        불러오는 중...
+      <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
+        {error ? (
+          <>
+            <span>불러오지 못했습니다.</span>
+            <span className="text-xs text-ink-soft/70">재시도 중...</span>
+          </>
+        ) : (
+          <span>불러오는 중...</span>
+        )}
       </div>
     );
   }
