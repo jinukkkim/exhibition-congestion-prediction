@@ -16,3 +16,7 @@ const FALLBACK: StatusTokens = { core: "#8E8E93", text: "#6E6E73", wash: "rgba(1
 export function statusOf(level: string): StatusTokens {
   return STATUS[level] ?? FALLBACK;
 }
+
+// 혼잡도 낮은 순 → 높은 순. STATUS의 정의 순서를 그대로 따라가므로 레벨 목록이
+// 두 군데로 갈라지지 않는다 (문자열 키 객체의 키 순서는 삽입 순서).
+export const STATUS_LEVELS = Object.keys(STATUS);
