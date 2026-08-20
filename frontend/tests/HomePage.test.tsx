@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as congestionApi from "../src/api/congestion";
+import type { CurrentCongestion } from "../src/api/congestion";
 import * as mmcaApi from "../src/api/mmca";
 import type { MmcaRoomStatus, MmcaVenue } from "../src/api/mmca";
 import { HomePage } from "../src/pages/HomePage";
@@ -107,6 +108,45 @@ describe("HomePage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("서비스 예정")).toBeInTheDocument());
+  });
+
+  it("ignores a slow response from an earlier poll", async () => {
+    // 폴링은 이전 tick의 요청을 취소하지 않으므로, 느린 tick N 응답이 tick N+1
+    // 뒤에 도착하면 화면이 과거 값으로 되돌아갈 수 있다.
+    let resolveStale: ((value: CurrentCongestion) => void) | undefined;
+    const stalePending = new Promise<CurrentCongestion>((resolve) => {
+      resolveStale = resolve;
+    });
+    vi.spyOn(congestionApi, "fetchCurrent")
+      .mockReturnValueOnce(stalePending)
+      .mockResolvedValue({
+        observed_at: "2026-08-20T14:21:00",
+        congest_level: "붐빔",
+        population_avg: 3000,
+      });
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    const museumCard = screen.getByRole("link", { name: /국립중앙박물관/ });
+    await vi.advanceTimersByTimeAsync(60_000); // 다음 tick이 먼저 도착
+    await waitFor(() => expect(museumCard).toHaveTextContent("붐빔"));
+
+    // act로 감싸야 React가 늦게 도착한 응답의 상태 갱신을 실제로 DOM까지 흘린다
+    // — 이걸 빼면 갱신이 스케줄만 되고 남아 통과하는 무력한 테스트가 된다.
+    await act(async () => {
+      resolveStale?.({
+        observed_at: "2026-08-20T14:20:00",
+        congest_level: "여유",
+        population_avg: 100,
+      });
+    });
+
+    expect(museumCard).toHaveTextContent("붐빔");
+    expect(museumCard).not.toHaveTextContent("여유");
   });
 
   it("falls back to an unavailable label only for the venue whose fetch failed", async () => {

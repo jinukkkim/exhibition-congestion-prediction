@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchCurrent } from "../api/congestion";
@@ -28,12 +28,17 @@ function LevelText({ level, count }: { level: string; count?: number }) {
 
 export function HomePage() {
   const [summaries, setSummaries] = useState<Record<string, VenueSummary>>({});
+  // 폴링은 이전 tick의 요청을 취소하지 않는다. tick N의 응답이 tick N+1보다 늦게
+  // 도착하면 화면이 과거 값으로 되돌아가므로, 발사 시점의 tick 번호를 들고 있다가
+  // 최신 tick의 응답만 반영한다.
+  const pollSeq = useRef(0);
 
   useEffect(() => {
     let ignore = false;
 
     function load() {
       const now = new Date();
+      const seq = ++pollSeq.current;
       // 관별로 따로 띄운다 — allSettled로 묶으면 가장 느린 관이 나머지 세 카드의
       // 첫 렌더를 붙잡는다.
       for (const venue of VENUES) {
@@ -44,13 +49,15 @@ export function HomePage() {
 
         request
           .then((summary) => {
-            if (!ignore) setSummaries((prev) => ({ ...prev, [venue.id]: summary }));
+            if (!ignore && seq === pollSeq.current) {
+              setSummaries((prev) => ({ ...prev, [venue.id]: summary }));
+            }
           })
           .catch(() => {
             // 한 관의 실패가 다른 카드를 비우지 않게 관별로 따로 처리한다.
             // 직전 요약이 있으면 그대로 두고 (다음 폴이 갱신한다), 처음부터
             // 못 받았을 때만 안내 문구로 떨어진다.
-            if (!ignore) {
+            if (!ignore && seq === pollSeq.current) {
               setSummaries((prev) =>
                 prev[venue.id]
                   ? prev
