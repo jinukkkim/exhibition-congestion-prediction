@@ -1,5 +1,9 @@
 import type { CurrentCongestion } from "../api/congestion";
+import type { MmcaRoomStatus, MmcaVenue } from "../api/mmca";
+import { mmcaBusinessHours } from "./mmcaBusinessHours";
+import { DISABLED_MMCA_SPACE_CODES } from "./mmcaDisabledRooms";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
+import { STATUS_LEVELS } from "./status";
 
 export type VenueSummary =
   | { kind: "inactive"; label: string }
@@ -35,5 +39,53 @@ export function nationalMuseumSummary(
     level: current.congest_level,
     population: current.population_avg,
     observedAt: current.observed_at,
+  };
+}
+
+export function mmcaSummary(
+  venue: MmcaVenue,
+  rooms: MmcaRoomStatus[] | null,
+  now: Date
+): VenueSummary {
+  if (rooms === null) return { kind: "inactive", label: "불러오는 중" };
+
+  const active = rooms.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code));
+  // 시각 판정보다 위 — 덕수궁관은 시간과 무관하게 영구히 수집 대상이 아니므로,
+  // 밤에 "운영 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
+  if (active.length === 0) return { kind: "inactive", label: "서비스 예정" };
+
+  const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
+  if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
+  const closed = closedLabel(now, open, close);
+  if (closed) return { kind: "inactive", label: closed };
+
+  const read = active.filter(
+    (room): room is MmcaRoomStatus & { congestion_nm: string; observed_at: string } =>
+      room.congestion_nm !== null && room.observed_at !== null
+  );
+  // /mmca/rooms는 당일 판독만 돌려주고 수집기의 첫 폴은 개관 10분 뒤에 돈다
+  // (backend/app/collector.py의 _COLLECTION_START) — 그 창은 오류가 아니다.
+  if (read.length === 0) return { kind: "inactive", label: "집계 중" };
+
+  const tally = new Map<string, number>();
+  for (const room of read) {
+    tally.set(room.congestion_nm, (tally.get(room.congestion_nm) ?? 0) + 1);
+  }
+
+  // 아는 레벨을 혼잡도순으로 먼저 쏟고, 목록에 없는 레벨은 등장 순서대로 뒤에
+  // 붙인다 (statusOf가 회색 fallback으로 그려 준다).
+  const unknown = [...tally.keys()].filter((level) => !STATUS_LEVELS.includes(level));
+  const counts = [...STATUS_LEVELS, ...unknown]
+    .filter((level) => tally.has(level))
+    .map((level) => ({ level, count: tally.get(level) as number }));
+
+  return {
+    kind: "counts",
+    counts,
+    // ISO 문자열은 같은 포맷이면 사전순 = 시간순.
+    observedAt: read.reduce(
+      (latest, room) => (room.observed_at > latest ? room.observed_at : latest),
+      read[0].observed_at
+    ),
   };
 }
