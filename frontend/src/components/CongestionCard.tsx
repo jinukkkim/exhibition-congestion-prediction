@@ -3,18 +3,11 @@ import { useRef, useState, type MouseEvent } from "react";
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
 const SPARKLINE_HEIGHT = 200;
-
-const OPEN_MINUTES = 9 * 60 + 30; // 09:30, every day
-const LONG_CLOSE_DAYS = new Set([3, 6]); // Wed, Sat: 21:00 close; other days: 17:30
-
-function businessHours(date: Date): { open: number; close: number } {
-  const close = LONG_CLOSE_DAYS.has(date.getDay()) ? 21 * 60 : 17 * 60 + 30;
-  return { open: OPEN_MINUTES, close };
-}
 
 function minutesOfDay(isoString: string): number {
   return Number(isoString.slice(11, 13)) * 60 + Number(isoString.slice(14, 16));
@@ -178,7 +171,7 @@ export function CongestionCard({
 
   const status = statusOf(data.congest_level);
   const now = new Date();
-  const { open, close } = businessHours(now);
+  const { open, close } = nationalMuseumBusinessHours(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const isOpen = nowMinutes >= open && nowMinutes <= close;
   const openBadge = isOpen ? "실시간" : nowMinutes < open ? "영업 전" : "영업 종료";
