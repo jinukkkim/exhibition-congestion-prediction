@@ -45,6 +45,10 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
   const lastWeekDaily = lastWeekPoll.data;
+  // 오늘/지난주 로그는 전시실 전체가 공유하는 fetch 한 건이다. 실패하면 방
+  // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
+  // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
+  const trendError = dailyPoll.error || lastWeekPoll.error;
 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
@@ -98,6 +102,9 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
+        )}
+        {trendError && rooms !== null && (
+          <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
         )}
         {activeRooms.length > 0 && (
           <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
