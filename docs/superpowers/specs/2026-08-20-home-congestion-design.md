@@ -88,15 +88,19 @@ export type VenueSummary =
   | { kind: "counts"; counts: { level: string; count: number }[]; observedAt: string };
 
 export function nationalMuseumSummary(
-  current: CurrentCongestion | null, error: boolean, now: Date
+  current: CurrentCongestion | null, now: Date
 ): VenueSummary;
 
 export function mmcaSummary(
-  venue: MmcaVenue, rooms: MmcaRoomStatus[] | null, error: boolean, now: Date
+  venue: MmcaVenue, rooms: MmcaRoomStatus[] | null, now: Date
 ): VenueSummary;
 ```
 
 `now`는 인자로 받는다 — 시각 의존 분기를 테스트에서 고정하기 위해서.
+
+`정보 없음`은 이 함수들이 판정하지 않는다. fetch 실패는 호출부(`HomePage`)의
+`catch`가 알고 있는 사실이므로 거기서 `{ kind: "inactive", label: "정보 없음" }`을
+직접 넣는다 — 순수 함수에 쓰이지도 않는 `error` 인자를 끼우지 않기 위해서.
 
 ### `lib/nationalMuseumBusinessHours.ts` (신규, 이동)
 
@@ -119,11 +123,15 @@ export function mmcaSummary(
 
 ### `HomePage.tsx`
 
-- `useEffect` 하나에서 `Promise.allSettled([fetchCurrent(), fetchMmcaRooms×3])`,
-  60초 폴링 (`MmcaPage`의 `POLL_INTERVAL_MS`와 동일 주기).
-- 결과를 venue id를 키로 하는 레코드에 담는다. 관별로 데이터·에러가 독립이라
-  한 관의 실패가 다른 카드를 비우지 않는다.
-- 실패한 관은 직전 값을 유지하고, 값이 아예 없을 때만 `정보 없음`으로 떨어진다.
+- `useEffect` 하나에서 `VENUES`를 훑어 관별로 독립적인 fetch를 띄운다
+  (`fetchCurrent()` 1건 + `fetchMmcaRooms()` 3건), 60초 폴링
+  (`MmcaPage`의 `POLL_INTERVAL_MS`와 동일 주기).
+- `Promise.allSettled`로 묶지 않는다 — 묶으면 가장 느린 관이 나머지 세 카드의
+  첫 렌더를 붙잡는다. 관별로 도착하는 대로 그린다.
+- 상태는 venue id를 키로 하는 `Record<string, VenueSummary>` 하나. 요약은 응답이
+  도착한 시점에 계산해 넣는다.
+- 실패한 관은 직전 요약을 유지하고, 그 관 요약이 아예 없을 때만 `정보 없음`을
+  넣는다.
 - 카드는 기존 `Link` 안에 요약 줄과 기준 시각을 덧붙인다. 그리드·라운드·호버
   스타일은 지금 것을 유지한다.
 
