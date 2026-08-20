@@ -1,34 +1,37 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import {
-  fetchCurrent,
-  fetchDaily,
-  fetchPrediction,
-  type CurrentCongestion,
-  type DailyLogPoint,
-  type PredictionResult,
-} from "../api/congestion";
+import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DailyLogTable } from "../components/DailyLogTable";
 import { shiftDate, todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
+import { usePolledFetch } from "../hooks/usePolledFetch";
+
+const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
 export function NationalMuseumPage() {
-  const [initial, setInitial] = useState<CurrentCongestion | null>(null);
-  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
-  const [daily, setDaily] = useState<DailyLogPoint[] | null>(null);
-  const [lastWeekDaily, setLastWeekDaily] = useState<DailyLogPoint[] | null>(null);
+  const today = todayString();
+  const lastWeek = shiftDate(today, -7);
 
-  useEffect(() => {
-    fetchCurrent().then(setInitial).catch(() => setInitial(null));
-    fetchPrediction().then(setPrediction).catch(() => setPrediction(null));
-    fetchDaily(todayString()).then(setDaily).catch(() => setDaily(null));
-    fetchDaily(shiftDate(todayString(), -7)).then(setLastWeekDaily).catch(() => setLastWeekDaily(null));
-  }, []);
+  // 계속 폴링: 새 판독이 실제로 쌓이는 값. current 는 SSE 가 주 경로지만,
+  // 스트림이 죽어도 갱신이 멈추지 않도록 폴링을 폴백으로 둔다.
+  const initial = usePolledFetch(fetchCurrent, { intervalMs: POLL_INTERVAL_MS });
+  const daily = usePolledFetch(() => fetchDaily(today), { intervalMs: POLL_INTERVAL_MS }, [today]);
 
-  const current = useCongestionStream(initial);
+  // 성공하면 정지: 다시 요청해도 같은 답이 오는 값. 실패했을 때만 다음 tick 에
+  // 재시도한다 (지난주 로그는 지나간 날의 확정 데이터, 예측은 일 1회 배치).
+  const prediction = usePolledFetch(fetchPrediction, {
+    intervalMs: POLL_INTERVAL_MS,
+    stopWhenLoaded: true,
+  });
+  const lastWeekDaily = usePolledFetch(
+    () => fetchDaily(lastWeek),
+    { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
+    [lastWeek]
+  );
+
+  const current = useCongestionStream(initial.data);
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -55,8 +58,13 @@ export function NationalMuseumPage() {
         </header>
 
         <section className="grid gap-6 lg:grid-cols-2">
-          <CongestionCard data={current} daily={daily} lastWeekDaily={lastWeekDaily} />
-          <PredictionChart prediction={prediction} />
+          <CongestionCard
+            data={current}
+            daily={daily.data}
+            lastWeekDaily={lastWeekDaily.data}
+            error={initial.error}
+          />
+          <PredictionChart prediction={prediction.data} error={prediction.error} />
         </section>
 
         <section className="mt-6">
