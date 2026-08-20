@@ -63,6 +63,7 @@ export function NationalMuseumPage() {
             daily={daily.data}
             lastWeekDaily={lastWeekDaily.data}
             error={initial.error}
+            chartError={daily.error || lastWeekDaily.error}
           />
           <PredictionChart prediction={prediction.data} error={prediction.error} />
         </section>

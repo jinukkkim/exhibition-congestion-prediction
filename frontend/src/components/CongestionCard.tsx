@@ -154,11 +154,15 @@ export function CongestionCard({
   daily = null,
   lastWeekDaily = null,
   error = false,
+  chartError = false,
 }: {
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
   error?: boolean;
+  // 추이 데이터만 실패한 경우. 현재 혼잡도는 정상이라 카드 전체를 에러로
+  // 바꾸지 않고, 차트 자리에만 안내를 남긴다.
+  chartError?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
@@ -325,6 +329,12 @@ export function CongestionCard({
             <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
           )}
         </div>
+
+        {chartError && !daily && !lastWeekDaily && (
+          <p className="mt-8 text-xs text-ink-soft/70">
+            추이를 불러오지 못했습니다. 재시도 중...
+          </p>
+        )}
 
         {(daily || lastWeekDaily) && (
           <div className="relative mt-8">
