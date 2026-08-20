@@ -96,13 +96,12 @@ Expected: PASS (2 tests)
 
 `frontend/src/components/CongestionCard.tsx`:
 
-1. 6행 `import { statusOf } from "../lib/status";` 아래(import 블록 마지막)에 추가:
+1. import를 추가한다. 기존 파일이 경로 알파벳순이므로 5행 `../lib/date` 다음,
+6행 `../lib/status` **앞**에 끼운다 (즉 새 6행):
 
 ```ts
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 ```
-
-(import 순서는 기존 파일이 경로 알파벳순이므로 `../lib/date` 다음, `../lib/status` 앞에 넣는다.)
 
 2. 11-17행의 `OPEN_MINUTES`, `LONG_CLOSE_DAYS`, `businessHours` 정의를 삭제한다. 삭제 대상은 정확히 이 블록:
 
