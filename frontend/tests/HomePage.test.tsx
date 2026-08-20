@@ -22,7 +22,7 @@ describe("HomePage", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면
     // 테스트가 실행 시간대에 따라 붙었다 떨어진다.
-    vi.setSystemTime(new Date("2026-08-20T14:20:00")); // 목요일, 두 관 모두 운영 중
+    vi.setSystemTime(new Date("2026-08-20T14:20:00")); // 목요일, 두 관 모두 영업 중
     vi.spyOn(congestionApi, "fetchCurrent").mockResolvedValue({
       observed_at: "2026-08-20T14:20:00",
       congest_level: "보통",

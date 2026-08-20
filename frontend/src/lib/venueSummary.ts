@@ -14,13 +14,13 @@ function minutesOfDay(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
-// 운영시간 밖에서는 레벨을 감춘다 — /congestion/current는 폐관 뒤에도 마지막
+// 영업시간 밖에서는 레벨을 감춘다 — /congestion/current는 폐관 뒤에도 마지막
 // 판독을 계속 돌려주므로, 그대로 적으면 밤에도 지금 값인 것처럼 읽힌다.
 // (CongestionCard의 openBadge와 같은 판정)
 function closedLabel(now: Date, open: number, close: number): string | null {
   const nowMinutes = minutesOfDay(now);
-  if (nowMinutes < open) return "운영 전";
-  if (nowMinutes > close) return "운영 종료";
+  if (nowMinutes < open) return "영업 전";
+  if (nowMinutes > close) return "영업 종료";
   return null;
 }
 
@@ -51,7 +51,7 @@ export function mmcaSummary(
 
   const active = rooms.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code));
   // 시각 판정보다 위 — 덕수궁관은 시간과 무관하게 영구히 수집 대상이 아니므로,
-  // 밤에 "운영 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
+  // 밤에 "영업 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
   if (active.length === 0) return { kind: "inactive", label: "서비스 예정" };
 
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);

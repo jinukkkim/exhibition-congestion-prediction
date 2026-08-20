@@ -16,7 +16,7 @@
 - 새 npm 의존성 없음.
 - 커밋 메시지는 Conventional Commits (`CONTRIBUTING.md`): `type(scope): subject`, scope는 `fe`, subject는 소문자 명령형, 마침표 없음.
 - 브랜치는 이미 `feat/home-congestion`. `main`/`develop`에 직접 커밋 금지.
-- 표시 문구는 스펙에 적힌 그대로 쓴다: `불러오는 중`, `정보 없음`, `서비스 예정`, `휴관일`, `운영 전`, `운영 종료`, `집계 중`.
+- 표시 문구는 스펙에 적힌 그대로 쓴다: `불러오는 중`, `정보 없음`, `서비스 예정`, `휴관일`, `영업 전`, `영업 종료`, `집계 중`.
 - 무데이터 카드는 `opacity-60`으로 흐리게 하되 `Link`는 유지한다.
 - 테스트 실행: `cd frontend && npm test`. 타입 검사: `cd frontend && npm run type-check`. 둘 다 통과해야 커밋한다.
 - 시각에 따라 분기하는 테스트는 반드시 `vi.setSystemTime()`으로 시각을 고정한다 (`tests/MmcaPage.test.tsx`의 기존 패턴).
@@ -202,11 +202,11 @@ describe("nationalMuseumSummary", () => {
   it("reports before-open and after-close instead of a stale level", () => {
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 전",
+      label: "영업 전",
     });
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T18:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 종료",
+      label: "영업 종료",
     });
   });
 
@@ -254,13 +254,13 @@ function minutesOfDay(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
-// 운영시간 밖에서는 레벨을 감춘다 — /congestion/current는 폐관 뒤에도 마지막
+// 영업시간 밖에서는 레벨을 감춘다 — /congestion/current는 폐관 뒤에도 마지막
 // 판독을 계속 돌려주므로, 그대로 적으면 밤에도 지금 값인 것처럼 읽힌다.
 // (CongestionCard의 openBadge와 같은 판정)
 function closedLabel(now: Date, open: number, close: number): string | null {
   const nowMinutes = minutesOfDay(now);
-  if (nowMinutes < open) return "운영 전";
-  if (nowMinutes > close) return "운영 종료";
+  if (nowMinutes < open) return "영업 전";
+  if (nowMinutes > close) return "영업 종료";
   return null;
 }
 
@@ -316,7 +316,7 @@ MMCA 관은 방 목록을 레벨별 개수로 접는다. 판정 순서와 제외
 | `rooms === null` | `불러오는 중` |
 | disabled 아닌 방이 0개 | `서비스 예정` |
 | `!isOpenToday` | `휴관일` |
-| `now < open` / `now > close` | `운영 전` / `운영 종료` |
+| `now < open` / `now > close` | `영업 전` / `영업 종료` |
 | 판독(`congestion_nm != null`) 있는 활성 방이 0개 | `집계 중` |
 | 그 외 | `counts` |
 
@@ -342,7 +342,7 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   };
 }
 
-// MMCA 운영시간은 10:00-18:00 (수·토는 21:00), 2026-08-20은 목요일
+// MMCA 영업시간은 10:00-18:00 (수·토는 21:00), 2026-08-20은 목요일
 const MMCA_MIDDAY = new Date("2026-08-20T14:20:00");
 
 describe("mmcaSummary", () => {
@@ -440,11 +440,11 @@ describe("mmcaSummary", () => {
 
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 전",
+      label: "영업 전",
     });
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T19:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 종료",
+      label: "영업 종료",
     });
   });
 
@@ -489,7 +489,7 @@ export function mmcaSummary(
 
   const active = rooms.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code));
   // 시각 판정보다 위 — 덕수궁관은 시간과 무관하게 영구히 수집 대상이 아니므로,
-  // 밤에 "운영 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
+  // 밤에 "영업 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
   if (active.length === 0) return { kind: "inactive", label: "서비스 예정" };
 
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
@@ -588,7 +588,7 @@ describe("HomePage", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면
     // 테스트가 실행 시간대에 따라 붙었다 떨어진다.
-    vi.setSystemTime(new Date("2026-08-20T14:20:00")); // 목요일, 두 관 모두 운영 중
+    vi.setSystemTime(new Date("2026-08-20T14:20:00")); // 목요일, 두 관 모두 영업 중
     vi.spyOn(congestionApi, "fetchCurrent").mockResolvedValue({
       observed_at: "2026-08-20T14:20:00",
       congest_level: "보통",

@@ -40,11 +40,11 @@ describe("nationalMuseumSummary", () => {
   it("reports before-open and after-close instead of a stale level", () => {
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 전",
+      label: "영업 전",
     });
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T18:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 종료",
+      label: "영업 종료",
     });
   });
 
@@ -69,7 +69,7 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   };
 }
 
-// MMCA 운영시간은 10:00-18:00 (수·토는 21:00), 2026-08-20은 목요일
+// MMCA 영업시간은 10:00-18:00 (수·토는 21:00), 2026-08-20은 목요일
 const MMCA_MIDDAY = new Date("2026-08-20T14:20:00");
 
 describe("mmcaSummary", () => {
@@ -167,11 +167,11 @@ describe("mmcaSummary", () => {
 
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 전",
+      label: "영업 전",
     });
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T19:00:00"))).toEqual({
       kind: "inactive",
-      label: "운영 종료",
+      label: "영업 종료",
     });
   });
 
