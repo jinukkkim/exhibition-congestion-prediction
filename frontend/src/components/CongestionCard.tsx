@@ -330,7 +330,10 @@ export function CongestionCard({
           )}
         </div>
 
-        {chartError && !daily && !lastWeekDaily && (
+        {/* 배열의 null 여부가 아니라 그릴 점이 있는지로 판단한다 — 한쪽이
+            [] 로 정상 도착해도(자정~그날 첫 판독) 다른 쪽 실패는 여전히
+            알려야 한다. */}
+        {chartError && !daily?.length && !lastWeekDaily?.length && (
           <p className="mt-8 text-xs text-ink-soft/70">
             추이를 불러오지 못했습니다. 재시도 중...
           </p>
