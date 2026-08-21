@@ -72,9 +72,74 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/1,500/)).not.toBeInTheDocument();
   });
 
+  it("says the trend failed instead of silently dropping the chart", () => {
+    // current 는 도착했는데 daily 만 계속 실패하면, 차트 블록이 조건부라
+    // 스파크라인이 아무 안내 없이 사라진 채로 남는다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.getByText("보통")).toBeInTheDocument();
+    expect(screen.getByText(/추이를 불러오지 못했습니다/)).toBeInTheDocument();
+  });
+
+  it("still notes the failure when the other series loaded but came back empty", () => {
+    // 자정~그날 첫 판독 사이에는 오늘 로그가 [] 로 정상 도착한다. 배열의
+    // null 여부로만 판단하면 그 구간에 지난주 fetch 가 실패해도 안내가 사라져,
+    // 시간축만 있는 빈 차트가 이유 없이 남는다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[]}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.getByText(/추이를 불러오지 못했습니다/)).toBeInTheDocument();
+  });
+
+  it("prefers the chart over the failure note once either series has data", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.queryByText(/추이를 불러오지 못했습니다/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
+  });
+
+  it("says it failed, not that it is loading, when the fetch errored with nothing to show", () => {
+    render(<CongestionCard data={null} daily={null} error />);
+    expect(screen.getByText(/불러오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/재시도 중/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
   });
 
   it("draws a curve through points within business hours (09:30 onward)", () => {

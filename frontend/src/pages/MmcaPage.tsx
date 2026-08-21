@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -11,6 +10,7 @@ import {
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { usePolledFetch } from "../hooks/usePolledFetch";
 import { shiftDate, todayString } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
@@ -19,75 +19,36 @@ const POLL_INTERVAL_MS = 60_000;
 const COLLECTION_START_DELAY_MINUTES = 10;
 
 export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
-  const [rooms, setRooms] = useState<MmcaRoomStatus[] | null>(null);
-  const [daily, setDaily] = useState<MmcaDailyLogPoint[] | null>(null);
-  const [lastWeekDaily, setLastWeekDaily] = useState<MmcaDailyLogPoint[] | null>(null);
-  const [error, setError] = useState(false);
+  const today = todayString();
+  const lastWeek = shiftDate(today, -7);
 
-  useEffect(() => {
-    let ignore = false;
+  // 계속 폴링: 6분 주기 수집이 새 판독을 쌓는 값.
+  const roomsPoll = usePolledFetch(() => fetchMmcaRooms(venue), { intervalMs: POLL_INTERVAL_MS }, [
+    venue,
+  ]);
+  const dailyPoll = usePolledFetch(
+    () => fetchMmcaDaily(venue, today),
+    { intervalMs: POLL_INTERVAL_MS },
+    [venue, today]
+  );
 
-    function load() {
-      fetchMmcaRooms(venue)
-        .then((data) => {
-          if (ignore) return;
-          setRooms(data);
-          setError(false);
-        })
-        .catch(() => {
-          if (!ignore) setError(true);
-        });
-    }
+  // 성공하면 정지: 지나간 날의 확정 데이터라 다시 물어볼 이유가 없다. 다만
+  // 실패했을 때 재시도가 없으면 회색 비교선이 그 페이지 세션 내내 사라지므로,
+  // 값이 도착할 때까지는 다음 tick 에 다시 시도한다.
+  const lastWeekPoll = usePolledFetch(
+    () => fetchMmcaDaily(venue, lastWeek),
+    { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
+    [venue, lastWeek]
+  );
 
-    load();
-    const timer = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      ignore = true;
-      clearInterval(timer);
-    };
-  }, [venue]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    function load() {
-      fetchMmcaDaily(venue, todayString())
-        .then((data) => {
-          if (!ignore) setDaily(data);
-        })
-        .catch(() => {
-          // Silently retry — keep showing whatever we already have rather
-          // than blanking every card on one failed poll.
-        });
-    }
-
-    load();
-    const timer = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      ignore = true;
-      clearInterval(timer);
-    };
-  }, [venue]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    fetchMmcaDaily(venue, shiftDate(todayString(), -7))
-      .then((data) => {
-        if (!ignore) setLastWeekDaily(data);
-      })
-      .catch(() => {
-        // Leave lastWeekDaily as-is on failure, same "don't blank on one
-        // failed fetch" philosophy as the sibling today-effect above — but
-        // unlike that effect, this one has no polling interval, so there's
-        // no automatic retry; a failure here just means the last-week line
-        // stays absent (or stale) until `venue` changes.
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [venue]);
+  const rooms = roomsPoll.data;
+  const error = roomsPoll.error;
+  const daily = dailyPoll.data;
+  const lastWeekDaily = lastWeekPoll.data;
+  // 오늘/지난주 로그는 전시실 전체가 공유하는 fetch 한 건이다. 실패하면 방
+  // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
+  // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
+  const trendError = dailyPoll.error || lastWeekPoll.error;
 
   const now = new Date();
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
@@ -141,6 +102,9 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
         {error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
+        )}
+        {trendError && rooms !== null && (
+          <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
         )}
         {activeRooms.length > 0 && (
           <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
