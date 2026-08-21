@@ -28,6 +28,9 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 const OPEN = 10 * 60;
 const CLOSE = 18 * 60;
 const WITHIN_HOURS = 14 * 60 + 30; // 14:30
+// nowMinutes 와 같은 시계 — MmcaPage 는 둘을 하나의 new Date() 에서 뽑는다.
+const NOW = new Date("2026-07-15T14:30:00");
+const AFTER_CLOSE_NOW = new Date("2026-07-15T20:00:00");
 
 describe("MmcaRoomChartCard", () => {
   it("renders the room name and current status headline when open", () => {
@@ -38,6 +41,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -54,6 +58,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={20 * 60}
+        now={AFTER_CLOSE_NOW}
         isOpenToday
       />
     );
@@ -70,6 +75,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday={false}
       />
     );
@@ -91,6 +97,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -106,6 +113,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -124,6 +132,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -146,6 +155,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -167,6 +177,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -187,6 +198,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -206,6 +218,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -234,6 +247,7 @@ describe("MmcaRoomChartCard", () => {
       open: OPEN,
       close: CLOSE,
       nowMinutes: WITHIN_HOURS,
+      now: NOW,
     };
 
     const { container, rerender } = render(<MmcaRoomChartCard {...props} isOpenToday />);
@@ -259,6 +273,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -280,6 +295,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -294,6 +310,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -312,6 +329,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -332,6 +350,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -368,6 +387,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -397,6 +417,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -430,6 +451,7 @@ describe("MmcaRoomChartCard", () => {
         open={OPEN}
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
+        now={NOW}
         isOpenToday
       />
     );
@@ -447,5 +469,38 @@ describe("MmcaRoomChartCard", () => {
     const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
     expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
+  });
+});
+
+describe("MmcaRoomChartCard freshness badge", () => {
+  function renderWithReading(observedAt: string | null) {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ observed_at: observedAt })}
+        daily={null}
+        lastWeekDaily={null}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+  }
+
+  it("keeps the live badge for a recent reading", () => {
+    renderWithReading("2026-07-15T14:18:00"); // 12분 전, 임계값 25분 이내
+    expect(screen.getByText("실시간")).toBeInTheDocument();
+  });
+
+  it("says the reading has gone stale instead of claiming it is live", () => {
+    renderWithReading("2026-07-15T13:50:00"); // 40분 전, 임계값 초과
+    expect(screen.getByText("갱신 지연")).toBeInTheDocument();
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+  });
+
+  it("does not claim live when today has no reading at all", () => {
+    renderWithReading(null);
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
   });
 });

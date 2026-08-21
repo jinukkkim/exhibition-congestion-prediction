@@ -130,6 +130,53 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
   });
 
+  it("keeps the live badge while the reading is within the freshness window", () => {
+    render(
+      <CongestionCard
+        data={{
+          // 14:30 기준 시각 고정, 서울 API 발행 지연을 감안한 34분 전 판독
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("실시간")).toBeInTheDocument();
+  });
+
+  it("says the reading has gone stale instead of claiming it is live", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:00:00", // 90분 전 — 임계값 45분 초과
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("갱신 지연")).toBeInTheDocument();
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+  });
+
+  it("explains that the national museum feed is published with a delay", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
