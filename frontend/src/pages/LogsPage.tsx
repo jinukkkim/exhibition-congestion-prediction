@@ -32,7 +32,7 @@ export function LogsPage() {
             수집 원본 데이터
           </h1>
           <p className="mt-3 text-sm text-ink-soft">
-            10분 간격으로 수집해 보관 중인 판독 전체. 열 이름은 공공 API 의 필드 이름 그대로입니다.
+            수집해 보관 중인 판독 전체. 열 이름은 공공 API 의 필드 이름 그대로입니다.
           </p>
         </header>
 
