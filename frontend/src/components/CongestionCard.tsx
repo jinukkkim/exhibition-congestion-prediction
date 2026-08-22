@@ -156,10 +156,15 @@ export function CongestionCard({
   lastWeekDaily = null,
   error = false,
   chartError = false,
+  viewDate,
 }: {
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
+  // 차트가 그리는 날짜. 생략하면 오늘. 오늘이 아니면 이 카드는 지나간 날의
+  // 기록만 그리므로 실시간 헤드라인·신선도 배지를 그리지 않는다 — 지나간
+  // 곡선 옆의 "실시간"은 무엇을 보는지 알 수 없게 만든다.
+  viewDate?: string;
   error?: boolean;
   // 추이 데이터만 실패한 경우. 현재 혼잡도는 정상이라 카드 전체를 에러로
   // 바꾸지 않고, 차트 자리에만 안내를 남긴다.
@@ -168,7 +173,12 @@ export function CongestionCard({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
-  if (!data) {
+  const chartDate = viewDate ?? todayString();
+  const isTodayView = chartDate === todayString();
+
+  // 지나간 날의 차트는 실시간 값에 의존하지 않는다 — current fetch 가 실패해도
+  // 그 날의 곡선은 그릴 수 있어야 한다.
+  if (!data && isTodayView) {
     // 영업시간 밖이라는 사실은 판독 없이도 확정된다 — 데이터를 기다렸다가
     // 답하면 페이지를 열 때마다 "불러오는 중"이 한 번 스쳐 지나간다.
     const placeholderNow = new Date();
@@ -194,14 +204,18 @@ export function CongestionCard({
     );
   }
 
-  const status = statusOf(data.congest_level);
+  const status = statusOf(data?.congest_level ?? "");
   const now = new Date();
-  const { open, close } = nationalMuseumBusinessHours(now);
+  // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00, 그 외는 17:30 폐관이라
+  // 요일에 따라 축의 오른쪽 끝이 달라진다.
+  const { open, close } = nationalMuseumBusinessHours(
+    isTodayView ? now : new Date(`${chartDate}T00:00:00`)
+  );
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = nowMinutes >= open && nowMinutes <= close;
+  const isOpen = isTodayView && nowMinutes >= open && nowMinutes <= close;
   // 영업시간만 보고 "실시간"이라 적으면 수집기나 상류가 죽어도 초록 점이
   // 계속 뛴다. 표시 중인 판독 자체의 나이로 판정한다.
-  const stale = isStale(data.observed_at, now, SEOUL_STALE_MINUTES);
+  const stale = isStale(data?.observed_at ?? null, now, SEOUL_STALE_MINUTES);
   const isLive = isOpen && !stale;
   const openBadge = isOpen
     ? stale
@@ -323,28 +337,36 @@ export function CongestionCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
-              국립중앙박물관 · 현재 혼잡도
+              {isTodayView
+                ? "국립중앙박물관 · 현재 혼잡도"
+                : `국립중앙박물관 · ${monthDayWeekday(chartDate)} 실제`}
             </p>
             <p className="mt-1 text-[11px] text-ink-soft/70">
-              오늘 영업시간 {formatMinutes(open)}–{formatMinutes(close)}
+              {isTodayView ? "오늘 " : ""}영업시간 {formatMinutes(open)}–{formatMinutes(close)}
             </p>
             {/* 기준 시각이 현재보다 한참 이전인 것이 정상이라는 사실을 옆에
-                적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. */}
-            <p className="mt-0.5 text-[11px] text-ink-soft/70">
-              서울시 실시간 도시데이터 제공 특성상 약 30분 지연된 측정값
-            </p>
+                적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. 지나간 날의
+                기록에는 해당하지 않는다. */}
+            {isTodayView && (
+              <p className="mt-0.5 text-[11px] text-ink-soft/70">
+                서울시 실시간 도시데이터 제공 특성상 약 30분 지연된 측정값
+              </p>
+            )}
           </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-              style={{ backgroundColor: isLive ? status.core : "#C7C7CC" }}
-            />
-            {openBadge}
-          </span>
+          {isTodayView && (
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
+                style={{ backgroundColor: isLive ? status.core : "#C7C7CC" }}
+              />
+              {openBadge}
+            </span>
+          )}
         </div>
 
+        {isTodayView && (
         <div className="mt-4">
-          {isOpen ? (
+          {isOpen && data ? (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <span className="text-7xl font-bold tracking-tight text-ink">{data.congest_level}</span>
               <span className="text-base text-ink-soft">
@@ -356,6 +378,7 @@ export function CongestionCard({
             <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
           )}
         </div>
+        )}
 
         {/* 배열의 null 여부가 아니라 그릴 점이 있는지로 판단한다 — 한쪽이
             [] 로 정상 도착해도(자정~그날 첫 판독) 다른 쪽 실패는 여전히
@@ -369,15 +392,20 @@ export function CongestionCard({
         {(daily || lastWeekDaily) && (
           <div className="relative mt-8">
             {(xy.length > 0 || lastWeekXy.length > 0) && (
+              // 범례는 그리는 날짜를 따라간다 — todayString() 에 고정하면 지나간
+              // 날의 곡선 옆에 오늘 날짜가 적힌다. 비교선은 데이터가 있을 때만.
               <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
                 <span className="flex items-center gap-1.5">
                   <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
-                  {monthDayWeekday(todayString())} 오늘
+                  {monthDayWeekday(chartDate)}
+                  {isTodayView ? " 오늘" : ""}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
-                  {monthDayWeekday(shiftDate(todayString(), -7))} 지난주
-                </span>
+                {lastWeekXy.length > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
+                    {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
+                  </span>
+                )}
               </div>
             )}
             <svg

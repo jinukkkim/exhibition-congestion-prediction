@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { PredictionChart } from "../src/components/PredictionChart";
@@ -69,23 +69,24 @@ const READY_WITH_DAYS = {
   ],
 };
 
-describe("PredictionChart date tabs", () => {
-  it("renders one tab per day and starts on today", () => {
-    render(<PredictionChart prediction={READY_WITH_DAYS} />);
-
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(screen.getByRole("tab", { name: "오늘 (일)" })).toHaveAttribute("aria-selected", "true");
+describe("PredictionChart selected day", () => {
+  it("draws the curve for the given date", () => {
+    const { rerender } = render(
+      <PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-23" />
+    );
+    const today = screen.getByTestId("prediction-svg").innerHTML;
     expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
+
+    rerender(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-24" />);
+
+    expect(screen.getByTestId("prediction-svg").innerHTML).not.toBe(today);
+    expect(screen.getByText(/8\/24\(월\)의 시간대별 예측/)).toBeInTheDocument();
   });
 
-  it("draws the selected day's curve", () => {
-    render(<PredictionChart prediction={READY_WITH_DAYS} />);
+  it("does not render tabs of its own", () => {
+    render(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-23" />);
 
-    const before = screen.getByTestId("prediction-svg").innerHTML;
-    fireEvent.click(screen.getByRole("tab", { name: "월 8/24" }));
-
-    expect(screen.getByTestId("prediction-svg").innerHTML).not.toBe(before);
-    expect(screen.getByText(/8\/24\(월\)의 시간대별 예측/)).toBeInTheDocument();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
   });
 
   it("falls back to the legacy curve when the payload has no days", () => {
@@ -98,29 +99,19 @@ describe("PredictionChart date tabs", () => {
           model_mae: 95.2,
           curve: curveOf(1000),
         }}
+        selectedDate="2026-08-24"
       />
     );
 
-    expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.getByTestId("prediction-svg")).toBeInTheDocument();
+    expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
   });
 
-  it("keeps rendering when the selected day disappears from a later payload", () => {
-    // 자정을 넘겨 폴링이 갱신되면 어제였던 항목이 사라진다. 없는 날짜를 선택한
-    // 상태로 빈 차트를 그리지 않고 첫 항목으로 돌아가야 한다.
-    const { rerender } = render(<PredictionChart prediction={READY_WITH_DAYS} />);
+  it("falls back when the selected date is not in the payload", () => {
+    // 자정을 넘겨 폴링이 갱신되면 어제였던 항목이 사라진다.
+    render(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-09-01" />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "월 8/24" }));
-    rerender(
-      <PredictionChart
-        prediction={{
-          ...READY_WITH_DAYS,
-          days: [{ date: "2026-08-25", is_holiday: false, curve: curveOf(3000) }],
-        }}
-      />
-    );
-
-    expect(screen.getAllByRole("tab")).toHaveLength(1);
-    expect(screen.getByRole("tab", { name: "오늘 (화)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("prediction-svg")).toBeInTheDocument();
+    expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
   });
 });

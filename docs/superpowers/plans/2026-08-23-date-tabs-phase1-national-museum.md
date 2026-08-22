@@ -709,6 +709,12 @@ git commit -m "feat(fe): add a date tab strip and upcoming-date helper"
 
 ### Task 5: 예측 카드에 날짜 탭 배선
 
+> **설계 변경됨 (2026-08-23).** 탭을 예측 카드 안에 두면 왼쪽은 오늘, 오른쪽은
+> 선택 날짜인 화면이 만들어진다. 탭을 헤더와 카드 그리드 사이(페이지 레벨)로
+> 올리고 두 카드가 함께 그 날짜를 말하도록 바꿨다. 실제 구현은 스펙의
+> "`NationalMuseumPage` — 탭은 페이지 레벨" 절을 따랐다. 아래 단계는 탭을
+> 카드 안에 두던 원안이며 기록으로 남긴다.
+
 **Files:**
 - Modify: `frontend/src/api/congestion.ts` (`PredictionResult` 타입)
 - Modify: `frontend/src/components/PredictionChart.tsx`
