@@ -66,9 +66,28 @@ describe("HomePage", () => {
       "href",
       "/venues/mmca-gwacheon"
     );
-    expect(screen.getByRole("link", { name: /국립현대미술관 덕수궁관/ })).toHaveAttribute(
+    // 덕수궁관은 갈 곳이 없어 링크가 아니다 — 아래 별도 케이스 참고
+    expect(screen.queryByRole("link", { name: /국립현대미술관 덕수궁관/ })).not.toBeInTheDocument();
+  });
+
+  it("renders Deoksugung as an unclickable card, name and reason still visible", async () => {
+    // 서비스가 재개될 기약이 없으므로 빈 페이지로 보내는 링크를 없앤다. 비활성
+    // 링크가 아니라 링크 자체를 두지 않는다 — aria-disabled 를 붙인 링크는
+    // 스크린리더가 여전히 링크로 읽어 혼란스럽다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("link", { name: /덕수궁관/ })).not.toBeInTheDocument();
+    expect(screen.getByText("국립현대미술관 덕수궁관")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("서비스 예정")).toBeInTheDocument());
+
+    // 나머지 관은 그대로 링크
+    expect(screen.getByRole("link", { name: /국립현대미술관 과천관/ })).toHaveAttribute(
       "href",
-      "/venues/mmca-deoksugung"
+      "/venues/mmca-gwacheon"
     );
   });
 
