@@ -182,3 +182,35 @@ test("shows every collected field on the raw log page", async ({ page }) => {
   await expect(page.getByRole("cell", { name: "30.2" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "여유" })).toBeVisible();
 });
+
+test("keeps the time column in place while the log scrolls sideways", async ({ page }) => {
+  // 43개 필드를 가로로 늘어놓으면 오른쪽 끝 값이 어느 시각의 것인지 알 수 없다.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  const fields: Record<string, string> = { AREA_CONGEST_LVL: "여유" };
+  for (let i = 0; i < 30; i++) fields[`FIELD_${i}`] = `v${i}`;
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({ json: [{ observed_at: "2026-07-15T09:00:00", fields }] })
+  );
+
+  await page.goto("/logs");
+
+  const timeCell = page.getByRole("cell", { name: "09:00" });
+  await timeCell.waitFor();
+  const before = await timeCell.boundingBox();
+
+  const scroller = page.getByTestId("log-scroll");
+  const lastColumn = page.getByRole("columnheader", { name: "FIELD_29", exact: true });
+  const lastBefore = await lastColumn.boundingBox();
+
+  await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+
+  const lastAfter = await lastColumn.boundingBox();
+  // 실제로 가로로 움직였는지 먼저 확인한다 — 안 움직였으면 아래 단언은 공짜로 통과한다.
+  expect(lastAfter!.x).toBeLessThan(lastBefore!.x - 100);
+
+  const after = await timeCell.boundingBox();
+  expect(after!.x).toBeCloseTo(before!.x, 0);
+  await expect(timeCell).toBeVisible();
+});

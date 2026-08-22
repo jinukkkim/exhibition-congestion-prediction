@@ -19,6 +19,13 @@ function columnsOf(rows: RawLogPoint[]): string[] {
 // 혼잡도만 색을 입힌다. 나머지는 수치라 색으로 구분할 것이 없다.
 const LEVEL_KEY = "AREA_CONGEST_LVL";
 
+// 필드가 40개를 넘어 가로로 스크롤되면 오른쪽 끝 값이 어느 시각의 것인지 알 수
+// 없으므로 시각 열을 왼쪽에 고정한다. 스크롤된 셀이 비쳐 보이면 안 되니 불투명
+// 배경을 깔고, 경계선은 border 대신 box-shadow — border-collapse 인 표에서는
+// 셀에 준 border 가 셀과 함께 붙어 있지 않고 같이 밀려난다.
+const STICKY_TIME_CELL =
+  "sticky left-0 whitespace-nowrap bg-white shadow-[1px_0_0_rgba(210,210,215,0.6)]";
+
 function cellValue(value: string | number | null | undefined): string {
   // 0 은 값이다 — falsy 로 묶어 비우면 안 된다.
   return value === null || value === undefined ? "" : String(value);
@@ -79,11 +86,11 @@ export function DailyLogTable() {
           가상 스크롤로 올려야 한다. 지하철·버스 승하차처럼 행마다 배열인
           값도 여기 컬럼으로는 못 담는다 — 행 펼치기로 붙일 자리. */}
       {!error && displayRows && displayRows.length > 0 && (
-        <div className="max-h-[28rem] overflow-auto">
+        <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
           <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="sticky top-0 z-10 bg-white/85 backdrop-blur-xl">
+            <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
               <tr>
-                <th className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
                   시각
                 </th>
                 {columns.map((key) => (
@@ -99,7 +106,7 @@ export function DailyLogTable() {
             <tbody>
               {displayRows.map((row) => (
                 <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
-                  <td className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink">
+                  <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
                     {row.observed_at.slice(11, 16)}
                   </td>
                   {columns.map((key) => (
