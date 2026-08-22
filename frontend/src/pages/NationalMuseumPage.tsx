@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
-import { DailyLogTable } from "../components/DailyLogTable";
 import { shiftDate, todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
@@ -62,10 +61,6 @@ export function NationalMuseumPage() {
             chartError={daily.error || lastWeekDaily.error}
           />
           <PredictionChart prediction={prediction.data} error={prediction.error} />
-        </section>
-
-        <section className="mt-6">
-          <DailyLogTable />
         </section>
       </main>
     </div>

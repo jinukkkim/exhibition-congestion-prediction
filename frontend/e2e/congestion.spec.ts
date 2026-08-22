@@ -72,7 +72,6 @@ test("renders current congestion and prediction chart from the API", async ({ pa
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
   await expect(page.getByTestId("history-sparkline")).toBeVisible();
-  await expect(page.getByText("09:00")).toBeVisible();
 });
 
 test("navigates from the home picker to each venue page", async ({ page }) => {
@@ -154,4 +153,32 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await page.getByRole("link", { name: "국립중앙박물관" }).click();
   await expect(page).toHaveURL(/\/venues\/national-museum$/);
   await expect(page.getByText("보통")).toBeVisible();
+});
+
+
+test("shows every collected field on the raw log page", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          observed_at: "2026-07-15T09:00:00",
+          fields: {
+            AREA_CONGEST_LVL: "여유",
+            AREA_PPLTN_MIN: 800,
+            // 파싱된 컬럼이 아니라 raw_response 에서 흘러온 필드 — 이 페이지의 존재 이유.
+            TEMP: "30.2",
+          },
+        },
+      ],
+    })
+  );
+
+  await page.goto("/logs");
+
+  // exact: 기본 부분일치라 SENSIBLE_TEMP 같은 이웃 컬럼까지 잡는다.
+  await expect(page.getByRole("columnheader", { name: "TEMP", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "30.2" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "여유" })).toBeVisible();
 });
