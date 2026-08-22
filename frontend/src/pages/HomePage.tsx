@@ -9,8 +9,6 @@ import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
-const LOADING: VenueSummary = { kind: "inactive", label: "불러오는 중" };
-
 // 레벨 하나를 점 + 이름(+ MMCA는 방 개수)으로. 색은 상세 페이지와 같은 토큰.
 function LevelText({ level, count }: { level: string; count?: number }) {
   const status = statusOf(level);
@@ -76,6 +74,16 @@ export function HomePage() {
     };
   }, []);
 
+  // 응답이 아직 없는 카드도 시계로 답할 수 있는 만큼은 답한다 (영업 전/종료,
+  // 휴관일). 고정 "불러오는 중" 문구를 쓰면 홈에 돌아올 때마다 그게 한 번
+  // 스쳐 지나간다.
+  const now = new Date();
+  const summaryOf = (venue: (typeof VENUES)[number]): VenueSummary =>
+    summaries[venue.id] ??
+    (venue.mmcaVenue
+      ? mmcaSummary(venue.mmcaVenue, null, now)
+      : nationalMuseumSummary(null, now));
+
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
@@ -90,7 +98,7 @@ export function HomePage() {
 
         <section className="grid gap-6 sm:grid-cols-2">
           {VENUES.map((venue) => {
-            const summary = summaries[venue.id] ?? LOADING;
+            const summary = summaryOf(venue);
             return (
               <Link
                 key={venue.id}

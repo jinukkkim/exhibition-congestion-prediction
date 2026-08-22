@@ -72,6 +72,25 @@ describe("HomePage", () => {
     );
   });
 
+  it("answers from the clock instead of flashing a loading placeholder", async () => {
+    // 다른 페이지에서 홈으로 돌아오면 컴포넌트가 새로 마운트되어 응답을 다시
+    // 기다린다. 영업시간 밖이라는 사실은 시계만으로 알 수 있으므로, 그 왕복
+    // 동안 "불러오는 중"을 먼저 보여줄 이유가 없다.
+    vi.setSystemTime(new Date("2026-08-20T07:00:00")); // 목요일 07:00, 두 관 모두 개관 전
+    vi.spyOn(congestionApi, "fetchCurrent").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(mmcaApi, "fetchMmcaRooms").mockReturnValue(new Promise(() => {}));
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("link", { name: /국립중앙박물관/ })).toHaveTextContent("영업 전");
+    expect(screen.getByRole("link", { name: /국립현대미술관 서울관/ })).toHaveTextContent("영업 전");
+    expect(screen.queryByText("불러오는 중")).not.toBeInTheDocument();
+  });
+
   it("shows the national museum level with its population", async () => {
     render(
       <MemoryRouter>

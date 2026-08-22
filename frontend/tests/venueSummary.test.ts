@@ -37,6 +37,19 @@ describe("nationalMuseumSummary", () => {
     });
   });
 
+  it("answers from the clock before the data arrives when it can", () => {
+    // 영업시간 밖은 시계만으로 확정되는 답이다. 데이터를 기다렸다가 답하면
+    // 이미 아는 답 대신 로딩 문구를 먼저 보여주게 된다.
+    expect(nationalMuseumSummary(null, new Date("2026-08-20T07:00:00"))).toEqual({
+      kind: "inactive",
+      label: "영업 전",
+    });
+    expect(nationalMuseumSummary(null, new Date("2026-08-20T22:00:00"))).toEqual({
+      kind: "inactive",
+      label: "영업 종료",
+    });
+  });
+
   it("reports before-open and after-close instead of a stale level", () => {
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
@@ -130,6 +143,18 @@ describe("mmcaSummary", () => {
     expect(mmcaSummary("seoul", null, MMCA_MIDDAY)).toEqual({
       kind: "inactive",
       label: "불러오는 중",
+    });
+  });
+
+  it("answers from the clock before the rooms arrive when it can", () => {
+    expect(mmcaSummary("seoul", null, new Date("2026-08-20T07:00:00"))).toEqual({
+      kind: "inactive",
+      label: "영업 전",
+    });
+    // 2026-08-17 월요일 — 덕수궁관 휴관일
+    expect(mmcaSummary("deoksugung", null, new Date("2026-08-17T14:00:00"))).toEqual({
+      kind: "inactive",
+      label: "휴관일",
     });
   });
 

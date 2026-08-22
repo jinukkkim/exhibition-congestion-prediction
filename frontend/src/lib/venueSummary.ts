@@ -28,11 +28,14 @@ export function nationalMuseumSummary(
   current: CurrentCongestion | null,
   now: Date
 ): VenueSummary {
-  if (current === null) return { kind: "inactive", label: "불러오는 중" };
-
+  // 시계만으로 확정되는 답을 데이터 도착보다 먼저 낸다. 순서를 뒤집으면
+  // 페이지를 다시 열 때마다 이미 아는 답 대신 "불러오는 중"이 한 번 스쳐
+  // 지나간다 (홈 카드는 마운트마다 fetch 를 다시 시작한다).
   const { open, close } = nationalMuseumBusinessHours(now);
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };
+
+  if (current === null) return { kind: "inactive", label: "불러오는 중" };
 
   return {
     kind: "level",
@@ -47,17 +50,22 @@ export function mmcaSummary(
   rooms: MmcaRoomStatus[] | null,
   now: Date
 ): VenueSummary {
-  if (rooms === null) return { kind: "inactive", label: "불러오는 중" };
-
-  const active = rooms.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code));
   // 시각 판정보다 위 — 덕수궁관은 시간과 무관하게 영구히 수집 대상이 아니므로,
-  // 밤에 "영업 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다.
-  if (active.length === 0) return { kind: "inactive", label: "서비스 예정" };
+  // 밤에 "영업 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다. 다만 이 판정만은
+  // 방 목록이 있어야 가능하므로, 목록이 없는 동안은 아래 시계 판정에 맡긴다.
+  const active = rooms?.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code)) ?? null;
+  if (active !== null && active.length === 0) {
+    return { kind: "inactive", label: "서비스 예정" };
+  }
 
+  // 나머지 시계 판정은 데이터 없이도 확정된다 — nationalMuseumSummary 와 같은
+  // 이유로 데이터 검사보다 위에 둔다.
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };
+
+  if (active === null) return { kind: "inactive", label: "불러오는 중" };
 
   const read = active.filter(
     (room): room is MmcaRoomStatus & { congestion_nm: string; observed_at: string } =>

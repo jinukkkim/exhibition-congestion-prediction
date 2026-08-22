@@ -169,9 +169,20 @@ export function CongestionCard({
   const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
   if (!data) {
+    // 영업시간 밖이라는 사실은 판독 없이도 확정된다 — 데이터를 기다렸다가
+    // 답하면 페이지를 열 때마다 "불러오는 중"이 한 번 스쳐 지나간다.
+    const placeholderNow = new Date();
+    const { open: placeholderOpen, close: placeholderClose } =
+      nationalMuseumBusinessHours(placeholderNow);
+    const placeholderMinutes = placeholderNow.getHours() * 60 + placeholderNow.getMinutes();
+    const outsideHours =
+      placeholderMinutes < placeholderOpen || placeholderMinutes > placeholderClose;
+
     return (
       <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
-        {error ? (
+        {outsideHours ? (
+          <span className="text-lg font-semibold text-ink-soft">영업 시간이 아닙니다</span>
+        ) : error ? (
           <>
             <span>불러오지 못했습니다.</span>
             <span className="text-xs text-ink-soft/70">재시도 중...</span>

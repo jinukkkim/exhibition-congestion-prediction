@@ -177,6 +177,17 @@ describe("CongestionCard", () => {
     expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
   });
 
+  it("says the museum is closed rather than loading when the clock already answers", () => {
+    // 관 페이지에 진입할 때도 같은 깜빡임이 있었다 — 영업시간 밖이라는 사실은
+    // 판독 없이도 확정된다.
+    vi.setSystemTime(new Date("2026-07-15T07:00:00"));
+
+    render(<CongestionCard data={null} daily={null} />);
+
+    expect(screen.getByText(/영업 시간이 아닙니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
