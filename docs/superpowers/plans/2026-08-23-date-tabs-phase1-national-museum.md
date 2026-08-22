@@ -135,10 +135,11 @@ Expected: FAIL — `run_daily_batch() got an unexpected keyword argument 'today'
 1. 상단 import를 바꾼다:
 
 ```python
-from datetime import date as date_type, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 ```
 
-`model.py`의 공휴일 목록을 가져온다 (파일 상단 import 블록에 추가):
+`model.py`의 공휴일 목록을 가져온다 (파일 상단 import 블록에서 기존
+`predict_model, train_model` 줄에 더한다):
 
 ```python
 from app.prediction.model import _KR_HOLIDAYS, predict_model, train_model
@@ -147,7 +148,7 @@ from app.prediction.model import _KR_HOLIDAYS, predict_model, train_model
 2. 시그니처를 바꾼다:
 
 ```python
-def run_daily_batch(session_factory=SessionLocal, today: date_type | None = None) -> dict:
+def run_daily_batch(session_factory=SessionLocal, today: date | None = None) -> dict:
 ```
 
 3. 53-62행의 `today` 계산과 `curve` 생성을 아래로 교체한다. 기존 코드는 이 블록이다:
@@ -172,7 +173,7 @@ def run_daily_batch(session_factory=SessionLocal, today: date_type | None = None
     # 전날로 떨어진다.
     first_day = today or datetime.now(_SEOUL_TZ).date()
 
-    def day_curve(day: date_type) -> list[dict]:
+    def day_curve(day: date) -> list[dict]:
         return [
             {
                 "hour": hour,
@@ -184,20 +185,16 @@ def run_daily_batch(session_factory=SessionLocal, today: date_type | None = None
 
     # 오늘 + 6일. 피처가 (weekday, hour, is_holiday) 뿐이라 8일째부터는 곡선이
     # 그대로 반복되므로 7일이 중복 없는 최대치다.
-    days = [
-        {
-            "date": (day := first_day + timedelta(days=offset)).isoformat(),
-            "is_holiday": day in _KR_HOLIDAYS,
-            "curve": day_curve(day),
-        }
-        for offset in range(7)
-    ]
-```
-
-`time` 을 import 에 더한다:
-
-```python
-from datetime import date as date_type, datetime, time, timedelta
+    days = []
+    for offset in range(7):
+        day = first_day + timedelta(days=offset)
+        days.append(
+            {
+                "date": day.isoformat(),
+                "is_holiday": day in _KR_HOLIDAYS,
+                "curve": day_curve(day),
+            }
+        )
 ```
 
 4. 결과 dict에 `days`를 넣고 `curve`를 `days[0]`에서 가져온다. 기존:
@@ -504,7 +501,7 @@ git commit -m "fix(be): run the prediction batch just after midnight"
 ```ts
 import { describe, expect, it } from "vitest";
 
-import { upcomingDates } from "../src/lib/date";
+import { monthDay, monthDayWeekday, upcomingDates, weekdayKo } from "../src/lib/date";
 
 describe("upcomingDates", () => {
   it("lists the given day and the following ones in order", () => {
@@ -527,6 +524,24 @@ describe("upcomingDates", () => {
     ]);
   });
 });
+
+describe("monthDay / weekdayKo / monthDayWeekday", () => {
+  it("splits the pieces the tab strip reorders", () => {
+    // 2026-08-24 는 월요일
+    expect(monthDay("2026-08-24")).toBe("8/24");
+    expect(weekdayKo("2026-08-24")).toBe("월");
+  });
+
+  it("keeps the combined format unchanged for existing callers", () => {
+    expect(monthDayWeekday("2026-08-24")).toBe("8/24(월)");
+  });
+});
+```
+
+`date.test.ts` 상단 import를 늘린다:
+
+```ts
+import { monthDay, monthDayWeekday, upcomingDates, weekdayKo } from "../src/lib/date";
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -534,21 +549,48 @@ describe("upcomingDates", () => {
 Run: `cd frontend && npx vitest run tests/date.test.ts`
 Expected: FAIL — `upcomingDates` export 없음
 
-- [ ] **Step 3: `upcomingDates` 구현**
+- [ ] **Step 3: `upcomingDates` 와 표시 헬퍼 구현**
 
-`frontend/src/lib/date.ts` 파일 끝에 추가:
+`frontend/src/lib/date.ts`에서 기존 `monthDayWeekday`를 아래 셋으로 바꾼다.
+탭 라벨이 `월 8/24`처럼 요일과 날짜의 순서를 바꿔 쓰므로, `"8/24(월)"` 문자열을
+다시 잘라 쓰지 않도록 조각을 각각 내보낸다. 기존 코드:
 
 ```ts
+export function monthDayWeekday(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY_KO[d.getDay()]})`;
+}
+```
+
+새 코드:
+
+```ts
+export function monthDay(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+export function weekdayKo(date: string): string {
+  return WEEKDAY_KO[new Date(`${date}T00:00:00`).getDay()];
+}
+
+export function monthDayWeekday(date: string): string {
+  return `${monthDay(date)}(${weekdayKo(date)})`;
+}
+
 // 날짜 탭용. shiftDate 를 그대로 써서 월·연 경계 계산을 한곳에 둔다.
 export function upcomingDates(from: string, count: number): string[] {
   return Array.from({ length: count }, (_, offset) => shiftDate(from, offset));
 }
 ```
 
+`monthDayWeekday`의 반환값은 그대로이므로 기존 호출부(`CongestionCard`,
+`MmcaRoomChartCard`)는 손대지 않는다.
+
 - [ ] **Step 4: 통과 확인**
 
 Run: `cd frontend && npx vitest run tests/date.test.ts`
-Expected: PASS (2건)
+Expected: PASS (4건)
 
 - [ ] **Step 5: `DateTabs` 실패 테스트 작성**
 
@@ -606,13 +648,11 @@ Expected: FAIL — `Failed to resolve import "../src/components/DateTabs"`
 `frontend/src/components/DateTabs.tsx` (신규):
 
 ```tsx
-import { monthDayWeekday } from "../lib/date";
+import { monthDay, weekdayKo } from "../lib/date";
 
-// "8/24(월)" → "월 8/24". 탭에서는 요일이 먼저 읽히는 편이 고르기 쉽다.
+// 탭에서는 요일이 먼저 읽히는 편이 고르기 쉬워 "월 8/24" 순서로 쓴다.
 function tabLabel(date: string, isFirst: boolean): string {
-  const formatted = monthDayWeekday(date); // 예: "8/24(월)"
-  const weekday = formatted.slice(formatted.indexOf("(") + 1, formatted.indexOf(")"));
-  return isFirst ? `오늘 (${weekday})` : `${weekday} ${formatted.slice(0, formatted.indexOf("("))}`;
+  return isFirst ? `오늘 (${weekdayKo(date)})` : `${weekdayKo(date)} ${monthDay(date)}`;
 }
 
 export function DateTabs({
@@ -653,7 +693,7 @@ export function DateTabs({
 - [ ] **Step 8: 통과 확인**
 
 Run: `cd frontend && npx vitest run tests/DateTabs.test.tsx tests/date.test.ts`
-Expected: PASS (5건)
+Expected: PASS (7건)
 
 - [ ] **Step 9: 타입 검사와 커밋**
 
@@ -825,13 +865,16 @@ import { DateTabs } from "./DateTabs";
 import { monthDayWeekday } from "../lib/date";
 ```
 
-2. `prediction.status === "collecting"` 분기 **뒤**, `const curve = prediction.curve ?? [];` 자리에 아래를 넣는다. 기존 한 줄을 교체한다:
+2. 컴포넌트 함수 첫 줄(구조 분해 직후, `if (!prediction)` **앞**)에 상태를
+선언한다. 훅은 조기 반환보다 앞에 있어야 하고, `if (!prediction)`과 `collecting`
+분기가 그 아래에 있다:
 
 ```tsx
-  const curve = prediction.curve ?? [];
+  const [selected, setSelected] = useState<string | null>(null);
 ```
 
-새 코드:
+3. `collecting` 분기 **뒤**의 `const curve = prediction.curve ?? [];` 한 줄을
+아래로 교체한다:
 
 ```tsx
   const days = prediction.days ?? [];
@@ -839,19 +882,14 @@ import { monthDayWeekday } from "../lib/date";
   // 갱신되면 어제였던 항목이 사라지므로, 없는 날짜가 선택된 채로 빈 차트를
   // 그리는 상태가 생기지 않는다.
   const activeDate =
-    selected && days.some((day) => day.date === selected) ? selected : days[0]?.date;
+    selected !== null && days.some((day) => day.date === selected)
+      ? selected
+      : days[0]?.date;
   const activeDay = days.find((day) => day.date === activeDate);
+  // days 가 없는 응답(구 백엔드, 또는 days 도입 전 캐시)에서는 기존 curve 로 떨어진다.
   const curve = activeDay?.curve ?? prediction.curve ?? [];
-  const isToday = activeDate === undefined || activeDate === days[0]?.date;
+  const isFutureDay = activeDate !== undefined && activeDate !== days[0]?.date;
 ```
-
-3. 컴포넌트 함수 첫 줄(구조 분해 직후, `if (!prediction)` 앞)에 상태를 선언한다:
-
-```tsx
-  const [selected, setSelected] = useState<string | null>(null);
-```
-
-훅은 조기 반환보다 앞에 있어야 한다 — `if (!prediction)`과 `collecting` 분기가 아래에 있으므로 이 위치가 맞다.
 
 4. 카드 제목을 선택 날짜에 맞추고 탭을 넣는다. 기존:
 
@@ -866,13 +904,20 @@ import { monthDayWeekday } from "../lib/date";
 ```tsx
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
-          {isToday ? "오늘" : monthDayWeekday(activeDate as string)}의 시간대별 예측
+          {isFutureDay && activeDate ? monthDayWeekday(activeDate) : "오늘"}의 시간대별 예측
         </p>
-        {days.length > 0 && activeDate !== undefined && (
-          <DateTabs dates={days.map((day) => day.date)} selected={activeDate} onSelect={setSelected} />
+        {activeDate !== undefined && days.length > 0 && (
+          <DateTabs
+            dates={days.map((day) => day.date)}
+            selected={activeDate}
+            onSelect={setSelected}
+          />
         )}
       </div>
 ```
+
+`isFutureDay && activeDate`로 좁혀서 `as` 캐스트를 쓰지 않는다 — 캐스트는
+타입 검사를 끄는 것이고, 여기서는 좁히기로 충분하다.
 
 - [ ] **Step 5: 테스트 통과 확인**
 
