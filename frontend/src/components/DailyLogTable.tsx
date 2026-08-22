@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { shiftDate, todayString } from "../lib/date";
 import { fetchDailyRaw, type RawLogPoint } from "../api/congestion";
 import { statusOf } from "../lib/status";
+import { STICKY_TIME_CELL } from "../lib/stickyTimeColumn";
 
 const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
 
@@ -18,13 +19,6 @@ function columnsOf(rows: RawLogPoint[]): string[] {
 
 // 혼잡도만 색을 입힌다. 나머지는 수치라 색으로 구분할 것이 없다.
 const LEVEL_KEY = "AREA_CONGEST_LVL";
-
-// 필드가 40개를 넘어 가로로 스크롤되면 오른쪽 끝 값이 어느 시각의 것인지 알 수
-// 없으므로 시각 열을 왼쪽에 고정한다. 스크롤된 셀이 비쳐 보이면 안 되니 불투명
-// 배경을 깔고, 경계선은 border 대신 box-shadow — border-collapse 인 표에서는
-// 셀에 준 border 가 셀과 함께 붙어 있지 않고 같이 밀려난다.
-const STICKY_TIME_CELL =
-  "sticky left-0 whitespace-nowrap bg-white shadow-[1px_0_0_rgba(210,210,215,0.6)]";
 
 function cellValue(value: string | number | null | undefined): string {
   // 0 은 값이다 — falsy 로 묶어 비우면 안 된다.

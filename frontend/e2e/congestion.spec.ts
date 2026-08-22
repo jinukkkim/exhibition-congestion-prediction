@@ -214,3 +214,38 @@ test("keeps the time column in place while the log scrolls sideways", async ({ p
   expect(after!.x).toBeCloseTo(before!.x, 0);
   await expect(timeCell).toBeVisible();
 });
+
+test("keeps the time column in place in the MMCA log too", async ({ page }) => {
+  // 전시실 15개는 데스크톱 폭에서는 다 들어가지만 모바일에서는 넘친다.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  const rooms = Array.from({ length: 15 }, (_, i) => ({
+    space_code: `MMCA-SPACE-10${String(i).padStart(2, "0")}`,
+    space_nm: `${i + 1}전시실`,
+    congestion_nm: "여유",
+  }));
+
+  await page.route("**/mmca/daily*", (route) =>
+    route.fulfill({ json: [{ observed_at: "2026-07-15T09:00:00", rooms }] })
+  );
+
+  await page.goto("/logs?venue=mmca-seoul");
+
+  const timeCell = page.getByRole("cell", { name: "09:00" });
+  await timeCell.waitFor();
+  const before = await timeCell.boundingBox();
+
+  const scroller = page.getByTestId("log-scroll");
+  const lastColumn = page.getByRole("columnheader", { name: "15전시실", exact: true });
+  const lastBefore = await lastColumn.boundingBox();
+
+  await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+
+  const lastAfter = await lastColumn.boundingBox();
+  expect(lastAfter!.x).toBeLessThan(lastBefore!.x - 100);
+
+  const after = await timeCell.boundingBox();
+  expect(after!.x).toBeCloseTo(before!.x, 0);
+  await expect(timeCell).toBeVisible();
+});
