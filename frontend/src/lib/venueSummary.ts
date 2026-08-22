@@ -1,7 +1,7 @@
 import type { CurrentCongestion } from "../api/congestion";
 import type { MmcaRoomStatus, MmcaVenue } from "../api/mmca";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
-import { DISABLED_MMCA_SPACE_CODES } from "./mmcaDisabledRooms";
+import { DISABLED_MMCA_SPACE_CODES, DISABLED_MMCA_VENUES } from "./mmcaDisabledRooms";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
 import { STATUS_LEVELS } from "./status";
 
@@ -55,6 +55,12 @@ export function mmcaSummary(
   // 방 목록이 있어야 가능하므로, 목록이 없는 동안은 아래 시계 판정에 맡긴다.
   const active = rooms?.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code)) ?? null;
   if (active !== null && active.length === 0) {
+    return { kind: "inactive", label: "서비스 예정" };
+  }
+
+  // 목록을 기다리는 동안에도 결론이 정해진 관은 미리 답한다 (덕수궁관). 시계
+  // 답을 먼저 보여주면 곧 "서비스 예정"으로 바뀌는 값을 한 번 스쳐 보이게 된다.
+  if (active === null && DISABLED_MMCA_VENUES.has(venue)) {
     return { kind: "inactive", label: "서비스 예정" };
   }
 

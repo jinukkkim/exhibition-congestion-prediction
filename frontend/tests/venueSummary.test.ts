@@ -146,16 +146,50 @@ describe("mmcaSummary", () => {
     });
   });
 
+  it("answers service-pending for Deoksugung before its rooms arrive", () => {
+    // 덕수궁관은 전시실이 MMCA-SPACE-4001 하나뿐이고 그 방이 disabled 라,
+    // 방 목록을 받아봐야 답은 언제나 "서비스 예정"이다. 목록을 기다리는 동안
+    // 시계 답("영업 전")을 보여주면 곧 바뀔 답을 한 번 스쳐 보이게 된다.
+    expect(mmcaSummary("deoksugung", null, new Date("2026-08-20T07:00:00"))).toEqual({
+      kind: "inactive",
+      label: "서비스 예정",
+    });
+    expect(mmcaSummary("deoksugung", null, MMCA_MIDDAY)).toEqual({
+      kind: "inactive",
+      label: "서비스 예정",
+    });
+  });
+
+  it("lets arriving rooms override the Deoksugung default if service resumes", () => {
+    // 하드코딩은 데이터가 없는 동안의 기본 답일 뿐이어야 한다. 덮어쓰기면
+    // 수집이 재개돼도 프론트가 계속 "서비스 예정"이라 우기게 된다.
+    const rooms = [makeRoom({ space_code: "MMCA-SPACE-4002", congestion_nm: "여유" })];
+
+    expect(mmcaSummary("deoksugung", rooms, MMCA_MIDDAY)).toEqual({
+      kind: "counts",
+      counts: [{ level: "여유", count: 1 }],
+      observedAt: "2026-08-20T14:20:00",
+    });
+  });
+
+  it("does not apply the Deoksugung default to other venues", () => {
+    expect(mmcaSummary("seoul", null, new Date("2026-08-20T07:00:00"))).toEqual({
+      kind: "inactive",
+      label: "영업 전",
+    });
+  });
+
   it("answers from the clock before the rooms arrive when it can", () => {
     expect(mmcaSummary("seoul", null, new Date("2026-08-20T07:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 전",
     });
-    // 2026-08-17 월요일 — 덕수궁관 휴관일
-    expect(mmcaSummary("deoksugung", null, new Date("2026-08-17T14:00:00"))).toEqual({
+    expect(mmcaSummary("seoul", null, new Date("2026-08-20T19:00:00"))).toEqual({
       kind: "inactive",
-      label: "휴관일",
+      label: "영업 종료",
     });
+    // 휴관일은 덕수궁관에만 있고 그 관은 "서비스 예정"이 먼저 이기므로, 방
+    // 목록이 도착한 뒤에만 관측된다 — 위의 "reports the Monday closure" 참고.
   });
 
   it("reports service-pending when every room is disabled", () => {
