@@ -15,10 +15,18 @@ router = APIRouter()
 
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
-# collect_once polls every 5 minutes around the clock, so two missed cycles
-# means collection has stopped rather than merely stuttered — the same budget
-# cache.LATEST_TTL_SECONDS allows before a cached reading is considered cold.
-SEOUL_STALE_MINUTES = 15
+# Seoul's observed_at is the Open API's own PPLTN_TIME — the measurement time
+# it publishes, NOT when we polled (contrast mmca_api.py, which stamps
+# datetime.now()). Publication lags roughly 30 minutes, so a healthy system's
+# newest reading is already that old: measured 34.1 minutes on 2026-08-22 while
+# the same day's readings were a gapless 5-minute series. A threshold below
+# that can never be satisfied, which is how this endpoint sat at a permanent
+# 503 and made the uptime monitor it exists for useless.
+#
+# 45 = ~30 publication lag + 5 minute granularity + two missed 5-minute cycles.
+# Widen it rather than tightening if false alarms appear; measuring our own
+# collection gap directly would need a separate collected_at column.
+SEOUL_STALE_MINUTES = 45
 
 # collect_mmca_once polls every 10 minutes, but only while a venue is open, so
 # this threshold only applies inside opening hours.

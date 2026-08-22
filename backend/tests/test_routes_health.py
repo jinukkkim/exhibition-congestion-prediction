@@ -105,12 +105,33 @@ def test_reports_ok_while_both_sources_are_current(client):
     assert body["mmca"]["calls_today"] == 3
 
 
+def test_upstream_publication_lag_is_not_treated_as_stale(client):
+    """국중박 observed_at 은 서울 API 가 준 PPLTN_TIME, 즉 우리가 폴링한 시각이
+    아니라 상류가 발행한 측정 시각이다. 발행이 약 30분 지연되므로(2026-08-22
+    프로덕션 실측 34.1분, 같은 시각 판독 간격은 5분 결손 0) 정상 수집 중에도
+    나이가 30분을 넘는다. 임계값을 그보다 낮게 잡으면 이 엔드포인트가 상시
+    503 이 되어 업타임 모니터가 무력해진다."""
+    test_client, session_factory, monkeypatch = client
+    _freeze(monkeypatch, OPEN_HOURS)
+    _add(
+        session_factory,
+        seoul=OPEN_HOURS - timedelta(minutes=35),
+        mmca=[OPEN_HOURS - timedelta(minutes=8)],
+    )
+
+    response = test_client.get("/health/collection")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["seoul"]["stale"] is False
+
+
 def test_reports_503_when_seoul_collection_stops(client):
     test_client, session_factory, monkeypatch = client
     _freeze(monkeypatch, OPEN_HOURS)
     _add(
         session_factory,
-        seoul=OPEN_HOURS - timedelta(minutes=40),
+        seoul=OPEN_HOURS - timedelta(minutes=60),
         mmca=[OPEN_HOURS - timedelta(minutes=8)],
     )
 

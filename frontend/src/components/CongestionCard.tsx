@@ -3,18 +3,12 @@ import { useRef, useState, type MouseEvent } from "react";
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { SEOUL_STALE_MINUTES, isStale } from "../lib/freshness";
+import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { statusOf } from "../lib/status";
 
 const SPARKLINE_WIDTH = 480;
 const SPARKLINE_HEIGHT = 200;
-
-const OPEN_MINUTES = 9 * 60 + 30; // 09:30, every day
-const LONG_CLOSE_DAYS = new Set([3, 6]); // Wed, Sat: 21:00 close; other days: 17:30
-
-function businessHours(date: Date): { open: number; close: number } {
-  const close = LONG_CLOSE_DAYS.has(date.getDay()) ? 21 * 60 : 17 * 60 + 30;
-  return { open: OPEN_MINUTES, close };
-}
 
 function minutesOfDay(isoString: string): number {
   return Number(isoString.slice(11, 13)) * 60 + Number(isoString.slice(14, 16));
@@ -160,28 +154,62 @@ export function CongestionCard({
   data,
   daily = null,
   lastWeekDaily = null,
+  error = false,
+  chartError = false,
 }: {
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
+  error?: boolean;
+  // 추이 데이터만 실패한 경우. 현재 혼잡도는 정상이라 카드 전체를 에러로
+  // 바꾸지 않고, 차트 자리에만 안내를 남긴다.
+  chartError?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
 
   if (!data) {
+    // 영업시간 밖이라는 사실은 판독 없이도 확정된다 — 데이터를 기다렸다가
+    // 답하면 페이지를 열 때마다 "불러오는 중"이 한 번 스쳐 지나간다.
+    const placeholderNow = new Date();
+    const { open: placeholderOpen, close: placeholderClose } =
+      nationalMuseumBusinessHours(placeholderNow);
+    const placeholderMinutes = placeholderNow.getHours() * 60 + placeholderNow.getMinutes();
+    const outsideHours =
+      placeholderMinutes < placeholderOpen || placeholderMinutes > placeholderClose;
+
     return (
-      <div className="flex min-h-[420px] items-center justify-center rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
-        불러오는 중...
+      <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
+        {outsideHours ? (
+          <span className="text-lg font-semibold text-ink-soft">영업 시간이 아닙니다</span>
+        ) : error ? (
+          <>
+            <span>불러오지 못했습니다.</span>
+            <span className="text-xs text-ink-soft/70">재시도 중...</span>
+          </>
+        ) : (
+          <span>불러오는 중...</span>
+        )}
       </div>
     );
   }
 
   const status = statusOf(data.congest_level);
   const now = new Date();
-  const { open, close } = businessHours(now);
+  const { open, close } = nationalMuseumBusinessHours(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const isOpen = nowMinutes >= open && nowMinutes <= close;
-  const openBadge = isOpen ? "실시간" : nowMinutes < open ? "영업 전" : "영업 종료";
+  // 영업시간만 보고 "실시간"이라 적으면 수집기나 상류가 죽어도 초록 점이
+  // 계속 뛴다. 표시 중인 판독 자체의 나이로 판정한다.
+  const stale = isStale(data.observed_at, now, SEOUL_STALE_MINUTES);
+  const isLive = isOpen && !stale;
+  const openBadge = isOpen
+    ? stale
+      ? "갱신 지연"
+      : "실시간"
+    : nowMinutes < open
+      ? "영업 전"
+      : "영업 종료";
   const rawPoints: Point[] = (daily ?? [])
     .map((row) => ({
       minutes: minutesOfDay(row.observed_at),
@@ -300,11 +328,16 @@ export function CongestionCard({
             <p className="mt-1 text-[11px] text-ink-soft/70">
               오늘 영업시간 {formatMinutes(open)}–{formatMinutes(close)}
             </p>
+            {/* 기준 시각이 현재보다 한참 이전인 것이 정상이라는 사실을 옆에
+                적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. */}
+            <p className="mt-0.5 text-[11px] text-ink-soft/70">
+              서울시 실시간 도시데이터 제공 특성상 약 30분 지연된 측정값
+            </p>
           </div>
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
             <span
-              className={`h-1.5 w-1.5 rounded-full ${isOpen ? "motion-safe:animate-pulse-live" : ""}`}
-              style={{ backgroundColor: isOpen ? status.core : "#C7C7CC" }}
+              className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
+              style={{ backgroundColor: isLive ? status.core : "#C7C7CC" }}
             />
             {openBadge}
           </span>
@@ -323,6 +356,15 @@ export function CongestionCard({
             <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
           )}
         </div>
+
+        {/* 배열의 null 여부가 아니라 그릴 점이 있는지로 판단한다 — 한쪽이
+            [] 로 정상 도착해도(자정~그날 첫 판독) 다른 쪽 실패는 여전히
+            알려야 한다. */}
+        {chartError && !daily?.length && !lastWeekDaily?.length && (
+          <p className="mt-8 text-xs text-ink-soft/70">
+            추이를 불러오지 못했습니다. 재시도 중...
+          </p>
+        )}
 
         {(daily || lastWeekDaily) && (
           <div className="relative mt-8">

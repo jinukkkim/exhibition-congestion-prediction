@@ -72,9 +72,132 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/1,500/)).not.toBeInTheDocument();
   });
 
+  it("says the trend failed instead of silently dropping the chart", () => {
+    // current 는 도착했는데 daily 만 계속 실패하면, 차트 블록이 조건부라
+    // 스파크라인이 아무 안내 없이 사라진 채로 남는다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.getByText("보통")).toBeInTheDocument();
+    expect(screen.getByText(/추이를 불러오지 못했습니다/)).toBeInTheDocument();
+  });
+
+  it("still notes the failure when the other series loaded but came back empty", () => {
+    // 자정~그날 첫 판독 사이에는 오늘 로그가 [] 로 정상 도착한다. 배열의
+    // null 여부로만 판단하면 그 구간에 지난주 fetch 가 실패해도 안내가 사라져,
+    // 시간축만 있는 빈 차트가 이유 없이 남는다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[]}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.getByText(/추이를 불러오지 못했습니다/)).toBeInTheDocument();
+  });
+
+  it("prefers the chart over the failure note once either series has data", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={null}
+        chartError
+      />
+    );
+
+    expect(screen.queryByText(/추이를 불러오지 못했습니다/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
+  });
+
+  it("keeps the live badge while the reading is within the freshness window", () => {
+    render(
+      <CongestionCard
+        data={{
+          // 14:30 기준 시각 고정, 서울 API 발행 지연을 감안한 34분 전 판독
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("실시간")).toBeInTheDocument();
+  });
+
+  it("says the reading has gone stale instead of claiming it is live", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:00:00", // 90분 전 — 임계값 45분 초과
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("갱신 지연")).toBeInTheDocument();
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+  });
+
+  it("explains that the national museum feed is published with a delay", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
+  });
+
+  it("says the museum is closed rather than loading when the clock already answers", () => {
+    // 관 페이지에 진입할 때도 같은 깜빡임이 있었다 — 영업시간 밖이라는 사실은
+    // 판독 없이도 확정된다.
+    vi.setSystemTime(new Date("2026-07-15T07:00:00"));
+
+    render(<CongestionCard data={null} daily={null} />);
+
+    expect(screen.getByText(/영업 시간이 아닙니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
+  });
+
+  it("says it failed, not that it is loading, when the fetch errored with nothing to show", () => {
+    render(<CongestionCard data={null} daily={null} error />);
+    expect(screen.getByText(/불러오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/재시도 중/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
   });
 
   it("draws a curve through points within business hours (09:30 onward)", () => {

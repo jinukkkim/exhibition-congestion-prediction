@@ -12,7 +12,10 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
     space_code: "MMCA-SPACE-1001",
     space_nm: "1전시실",
     congestion_nm: "여유",
-    observed_at: "2026-07-24T10:00:00",
+    // 고정 시각(2026-07-28T11:00)과 같은 날의 최근 판독 — /mmca/rooms 는
+    // 당일 판독만 반환하므로 며칠 전 날짜는 실제로 올 수 없는 값이고,
+    // 신선도 배지가 그걸 지연으로 보는 것이 옳다.
+    observed_at: "2026-07-28T10:55:00",
     ...overrides,
   };
 }
@@ -450,5 +453,62 @@ describe("MmcaPage", () => {
     // behavior, unchanged by this task) — but the last-week fetch must not
     // join it.
     expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1);
+  });
+
+  it("notes a failed trend fetch once for the venue, not once per room card", async () => {
+    // 오늘/지난주 로그는 전시실 전체가 공유하는 fetch 한 건이다. 실패해도 방
+    // 카드는 빈 SVG 만 그린 채 조용히 남으므로 안내가 필요하지만, 방마다
+    // 같은 문구를 반복하면 실패 하나를 여러 건처럼 보이게 한다.
+    vi.spyOn(api, "fetchMmcaDaily").mockRejectedValue(new Error("network error"));
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "보통" }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByText(/추이를 불러오지 못했습니다/)).toHaveLength(1)
+    );
+    // 방 카드 자체는 현재 상태를 계속 보여준다
+    expect(screen.getByText("1전시실")).toBeInTheDocument();
+    expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2);
+  });
+
+  it("retries last week's daily data on the next tick when it fails", async () => {
+    const today = todayString();
+    const lastWeek = shiftDate(today, -7);
+    // 한 번 실패하면 재시도가 없어 회색 비교선이 그 페이지 세션 내내 사라졌다.
+    let lastWeekSucceeded = false;
+    const fetchMmcaDaily = vi
+      .spyOn(api, "fetchMmcaDaily")
+      .mockImplementation((_venue, date) =>
+        date === lastWeek && !lastWeekSucceeded
+          ? Promise.reject(new Error("network error"))
+          : Promise.resolve([])
+      );
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(1)
+    );
+
+    lastWeekSucceeded = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(2);
+
+    // 성공한 뒤에는 다시 조르지 않는다
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(2);
   });
 });
