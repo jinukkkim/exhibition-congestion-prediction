@@ -58,6 +58,29 @@ describe("DailyLogTable", () => {
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 
+  it("explains a column it knows and leaves one it does not alone", async () => {
+    vi.spyOn(api, "fetchDailyRaw").mockResolvedValue([
+      {
+        observed_at: "2026-07-16T09:00:00",
+        fields: { AREA_PPLTN_MIN: 800, FUTURE_FIELD: "x" },
+      },
+    ]);
+
+    render(<DailyLogTable />);
+
+    const known = await waitFor(() =>
+      screen.getByRole("columnheader", { name: "AREA_PPLTN_MIN" })
+    );
+    expect(known.getAttribute("title")).toContain("하한");
+    expect(known).toHaveTextContent("ⓘ");
+
+    // 설명이 없는 필드도 열로는 나온다 — 설명 사전이 컬럼 목록을 좌우하면
+    // 응답에서 컬럼을 만드는 성질이 깨진다.
+    const unknown = screen.getByRole("columnheader", { name: "FUTURE_FIELD" });
+    expect(unknown).not.toHaveAttribute("title");
+    expect(unknown).not.toHaveTextContent("ⓘ");
+  });
+
   it("shows an empty-state message when there is no data for the day", async () => {
     vi.spyOn(api, "fetchDailyRaw").mockResolvedValue([]);
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { shiftDate, todayString } from "../lib/date";
 import { fetchDailyRaw, type RawLogPoint } from "../api/congestion";
 import { statusOf } from "../lib/status";
+import { SEOUL_FIELD_NOTES } from "../lib/seoulFieldNotes";
 import { STICKY_TIME_CELL } from "../lib/stickyTimeColumn";
 
 const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
@@ -87,14 +88,30 @@ export function DailyLogTable() {
                 <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
                   시각
                 </th>
-                {columns.map((key) => (
-                  <th
-                    key={key}
-                    className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
-                  >
-                    {key}
-                  </th>
-                ))}
+                {columns.map((key) => {
+                  const note = SEOUL_FIELD_NOTES[key];
+                  return (
+                    <th
+                      key={key}
+                      // title 은 th 에 둔다 — ⓘ 위에서만 뜨는 것보다 머리글
+                      // 어디에 올려도 뜨는 편이 찾기 쉽고, 스크린리더도 이걸
+                      // 열 설명으로 읽는다. ⓘ 는 설명이 있다는 표시일 뿐이라
+                      // 접근성 이름에서 빼둔다.
+                      title={note}
+                      className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
+                    >
+                      {key}
+                      {note && (
+                        <span
+                          aria-hidden
+                          className="ml-1 cursor-help align-super text-[9px] text-ink-soft/60"
+                        >
+                          ⓘ
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
