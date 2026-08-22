@@ -117,6 +117,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}
+                now={now}
                 isOpenToday={isOpenToday}
               />
             ))}

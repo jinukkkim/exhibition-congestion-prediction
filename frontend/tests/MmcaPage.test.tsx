@@ -12,7 +12,10 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
     space_code: "MMCA-SPACE-1001",
     space_nm: "1전시실",
     congestion_nm: "여유",
-    observed_at: "2026-07-24T10:00:00",
+    // 고정 시각(2026-07-28T11:00)과 같은 날의 최근 판독 — /mmca/rooms 는
+    // 당일 판독만 반환하므로 며칠 전 날짜는 실제로 올 수 없는 값이고,
+    // 신선도 배지가 그걸 지연으로 보는 것이 옳다.
+    observed_at: "2026-07-28T10:55:00",
     ...overrides,
   };
 }

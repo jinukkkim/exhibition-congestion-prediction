@@ -36,7 +36,7 @@ export function NationalMuseumPage() {
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
-        <header className="mb-12 flex items-end justify-between gap-6 border-b border-hairline/70 pb-8">
+        <header className="mb-12 border-b border-hairline/70 pb-8">
           <div>
             <Link
               to="/"
@@ -51,10 +51,6 @@ export function NationalMuseumPage() {
               전시 혼잡도 예측
             </h1>
           </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-soft">
-            <span className="h-2 w-2 rounded-full bg-[#34C759] motion-safe:animate-pulse-live" />
-            Live
-          </span>
         </header>
 
         <section className="grid gap-6 lg:grid-cols-2">

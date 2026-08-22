@@ -55,6 +55,15 @@ describe("NationalMuseumPage", () => {
     await waitFor(() => expect(screen.getByText("보통")).toBeInTheDocument());
   });
 
+  it("does not show a page-level live badge that nothing can falsify", async () => {
+    // 헤더의 하드코딩된 초록 점은 스트림·수집 상태와 무관하게 항상 떠 있었다.
+    // 신선도 판정을 든 카드 배지가 있으므로 중복이기도 하다.
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("보통")).toBeInTheDocument());
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+  });
+
   it("shows the failure in the congestion card instead of a permanent loading state", async () => {
     vi.spyOn(api, "fetchCurrent").mockRejectedValue(new Error("network error"));
 

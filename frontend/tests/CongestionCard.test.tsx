@@ -130,6 +130,64 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
   });
 
+  it("keeps the live badge while the reading is within the freshness window", () => {
+    render(
+      <CongestionCard
+        data={{
+          // 14:30 기준 시각 고정, 서울 API 발행 지연을 감안한 34분 전 판독
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("실시간")).toBeInTheDocument();
+  });
+
+  it("says the reading has gone stale instead of claiming it is live", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:00:00", // 90분 전 — 임계값 45분 초과
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("갱신 지연")).toBeInTheDocument();
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+  });
+
+  it("explains that the national museum feed is published with a delay", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T13:56:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
+  });
+
+  it("says the museum is closed rather than loading when the clock already answers", () => {
+    // 관 페이지에 진입할 때도 같은 깜빡임이 있었다 — 영업시간 밖이라는 사실은
+    // 판독 없이도 확정된다.
+    vi.setSystemTime(new Date("2026-07-15T07:00:00"));
+
+    render(<CongestionCard data={null} daily={null} />);
+
+    expect(screen.getByText(/영업 시간이 아닙니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();

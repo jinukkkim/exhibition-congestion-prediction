@@ -3,6 +3,7 @@ import { useRef, useState, type MouseEvent } from "react";
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { MMCA_STALE_MINUTES, isStale } from "../lib/freshness";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
@@ -135,6 +136,7 @@ export function MmcaRoomChartCard({
   open,
   close,
   nowMinutes,
+  now,
   isOpenToday,
 }: {
   room: MmcaRoomStatus;
@@ -143,6 +145,9 @@ export function MmcaRoomChartCard({
   open: number;
   close: number;
   nowMinutes: number;
+  // nowMinutes 와 같은 시계에서 나온 값 (MmcaPage 가 하나의 new Date() 로 둘을
+  // 만든다). 판독 나이를 재려면 분 단위가 아닌 실제 시각이 필요하다.
+  now: Date;
   isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -180,10 +185,16 @@ export function MmcaRoomChartCard({
 
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
+  // 영업시간만 보고 "실시간"이라 적으면 수집이 멈춰도 초록 점이 계속 뛴다.
+  // 표시 중인 판독 자체의 나이로 판정한다.
+  const stale = isStale(room.observed_at, now, MMCA_STALE_MINUTES);
+  const isLive = isOpen && !stale;
   const openBadge = !isOpenToday
     ? "휴관일"
     : isOpen
-      ? "실시간"
+      ? stale
+        ? "갱신 지연"
+        : "실시간"
       : nowMinutes < open
         ? "영업 전"
         : "영업 종료";
@@ -254,8 +265,8 @@ export function MmcaRoomChartCard({
           </div>
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
             <span
-              className={`h-1.5 w-1.5 rounded-full ${isOpen ? "motion-safe:animate-pulse-live" : ""}`}
-              style={{ backgroundColor: isOpen ? currentStatus.core : "#C7C7CC" }}
+              className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
+              style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
             />
             {openBadge}
           </span>
