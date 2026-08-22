@@ -1,4 +1,8 @@
+import { useState } from "react";
+
 import type { PredictionResult } from "../api/congestion";
+import { monthDayWeekday } from "../lib/date";
+import { DateTabs } from "./DateTabs";
 
 const WIDTH = 480;
 const HEIGHT = 160;
@@ -24,6 +28,8 @@ export function PredictionChart({
   prediction: PredictionResult | null;
   error?: boolean;
 }) {
+  const [selected, setSelected] = useState<string | null>(null);
+
   // 수집 진행도는 서버 응답에만 있다. 응답이 없는 동안 "0/14일"로 적으면
   // 아무것도 모으지 않았다고 단정하는 셈이라, 상태를 그대로 말한다.
   if (!prediction) {
@@ -54,16 +60,34 @@ export function PredictionChart({
     );
   }
 
-  const curve = prediction.curve ?? [];
+  const days = prediction.days ?? [];
+  // 선택 상태를 effect 로 되돌리지 않고 매 렌더에 검증한다. 자정을 넘겨 폴링이
+  // 갱신되면 어제였던 항목이 사라지므로, 없는 날짜가 선택된 채로 빈 차트를
+  // 그리는 상태가 생기지 않는다.
+  const activeDate =
+    selected !== null && days.some((day) => day.date === selected) ? selected : days[0]?.date;
+  const activeDay = days.find((day) => day.date === activeDate);
+  // days 가 없는 응답(구 백엔드, 또는 days 도입 전 캐시)에서는 기존 curve 로 떨어진다.
+  const curve = activeDay?.curve ?? prediction.curve ?? [];
+  const isFutureDay = activeDate !== undefined && activeDate !== days[0]?.date;
   const baselineValues = curve.map((point) => point.baseline ?? point.model);
   const modelValues = curve.map((point) => point.model);
   const maxValue = Math.max(...baselineValues, ...modelValues, 1);
 
   return (
     <div className="rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
-        오늘의 시간대별 예측
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
+          {isFutureDay && activeDate ? monthDayWeekday(activeDate) : "오늘"}의 시간대별 예측
+        </p>
+        {activeDate !== undefined && days.length > 0 && (
+          <DateTabs
+            dates={days.map((day) => day.date)}
+            selected={activeDate}
+            onSelect={setSelected}
+          />
+        )}
+      </div>
 
       <div className="mt-4 flex gap-8">
         <div>
