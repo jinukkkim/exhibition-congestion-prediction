@@ -1,10 +1,5 @@
 import { monthDay, weekdayKo } from "../lib/date";
 
-// 탭에서는 요일이 먼저 읽히는 편이 고르기 쉬워 "월 8/24" 순서로 쓴다.
-function tabLabel(date: string, isFirst: boolean): string {
-  return isFirst ? `오늘 (${weekdayKo(date)})` : `${weekdayKo(date)} ${monthDay(date)}`;
-}
-
 export function DateTabs({
   dates,
   selected,
@@ -15,7 +10,7 @@ export function DateTabs({
   onSelect: (date: string) => void;
 }) {
   return (
-    <div role="tablist" className="flex flex-wrap gap-1.5">
+    <div role="tablist" className="flex flex-wrap gap-2">
       {dates.map((date, index) => {
         const isSelected = date === selected;
         return (
@@ -25,11 +20,24 @@ export function DateTabs({
             role="tab"
             aria-selected={isSelected}
             onClick={() => onSelect(date)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
-              isSelected ? "bg-ink text-white" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
+            className={`flex min-w-[64px] flex-col items-center gap-0.5 rounded-2xl px-4 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
+              isSelected
+                ? "bg-ink text-white"
+                : "text-ink-soft hover:bg-ink/5 hover:text-ink"
             }`}
           >
-            {tabLabel(date, index === 0)}
+            {/* 혼잡도를 결정하는 것은 요일이고(모델 피처가 요일·시간·공휴일뿐)
+                사람이 계획하는 것은 날짜이므로, 둘을 상하로 나눠 위계를 준다. */}
+            <span className={`text-[11px] font-medium ${isSelected ? "text-white/70" : ""}`}>
+              {index === 0 ? "오늘" : weekdayKo(date)}
+            </span>
+            <span
+              className={`font-mono text-sm font-semibold tabular-nums ${
+                isSelected ? "text-white" : "text-ink"
+              }`}
+            >
+              {monthDay(date)}
+            </span>
           </button>
         );
       })}

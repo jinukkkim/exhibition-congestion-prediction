@@ -180,7 +180,7 @@ describe("NationalMuseumPage date tabs", () => {
     );
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
-    expect(screen.getByRole("tab", { name: "오늘 (목)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "오늘 8/20" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("moves both cards to the chosen date", async () => {
