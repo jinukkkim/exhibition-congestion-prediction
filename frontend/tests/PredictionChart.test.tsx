@@ -83,6 +83,41 @@ describe("PredictionChart selected day", () => {
     expect(screen.getByText(/8\/24\(월\)의 시간대별 예측/)).toBeInTheDocument();
   });
 
+  it("names the peak and quiet hours in the svg label", () => {
+    // polyline 은 좌표뿐이라 낭독될 텍스트가 없다. 라벨이 곡선의 요약을 대신 진다.
+    const curve = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      baseline: 100,
+      model: hour === 14 ? 900 : hour === 18 ? 10 : 300,
+    }));
+
+    render(
+      <PredictionChart
+        prediction={{ status: "ready", baseline_mae: 1, model_mae: 1, curve }}
+      />
+    );
+
+    expect(screen.getByTestId("prediction-svg")).toHaveAttribute(
+      "aria-label",
+      "시간대별 혼잡도 예측. 가장 붐비는 시간 14시, 가장 한산한 시간 18시."
+    );
+    expect(screen.getByRole("img")).toBeInTheDocument();
+  });
+
+  it("drops the peak claim when the curve is empty", () => {
+    // curve ?? [] 로 떨어지면 indexOf 가 -1 이 되어 "undefined시" 를 읽게 된다.
+    render(
+      <PredictionChart
+        prediction={{ status: "ready", baseline_mae: 1, model_mae: 1, curve: [] }}
+      />
+    );
+
+    expect(screen.getByTestId("prediction-svg")).toHaveAttribute(
+      "aria-label",
+      "시간대별 혼잡도 예측"
+    );
+  });
+
   it("does not render tabs of its own", () => {
     render(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-23" />);
 
