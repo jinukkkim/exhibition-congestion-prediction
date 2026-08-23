@@ -24,21 +24,23 @@ const LEVEL_KEY = "AREA_CONGEST_LVL";
 
 interface Tip {
   note: string;
-  left: number;
-  top: number;
+  bottom: number;
+  left?: number;
+  right?: number;
 }
 
-const TIP_WIDTH = 320; // max-w-[20rem] 과 같은 값
-
 // 표가 overflow-auto 안에 있어 그 안에 그린 툴팁은 오른쪽 열에서 잘린다.
-// position: fixed 로 컨테이너 밖에 띄우고, 머리글 칸의 화면 좌표에 맞춘다.
-// 마우스를 따라가지 않고 칸에 붙이는 이유는 흔들리지 않기 때문이고, 오른쪽
-// 끝에서는 화면 밖으로 나가지 않게 왼쪽으로 당긴다.
-function tipPosition(header: DOMRect): { left: number; top: number } {
-  return {
-    left: Math.max(8, Math.min(header.left, window.innerWidth - TIP_WIDTH - 8)),
-    top: header.bottom + 6,
-  };
+// position: fixed 로 컨테이너 밖에 띄우고 ⓘ 의 화면 좌표에 맞춘다. 마우스를
+// 따라가지 않고 ⓘ 에 붙이는 이유는 흔들리지 않기 때문이다.
+//
+// top/left 대신 bottom 과, 화면 오른쪽 절반이면 right 로 잡는다. 그러면 툴팁의
+// 실제 크기를 몰라도 ⓘ 바로 위에 붙고 화면 밖으로도 안 나간다 — 왼쪽 정렬만
+// 하고 밀려나지 않게 당기면 넓게 잡은 최대 너비만큼 ⓘ 에서 멀어진다.
+function tipPosition(icon: DOMRect): Omit<Tip, "note"> {
+  const bottom = window.innerHeight - icon.top + 8;
+  return icon.left > window.innerWidth / 2
+    ? { bottom, right: Math.max(8, window.innerWidth - icon.right - 12) }
+    : { bottom, left: Math.max(8, icon.left - 12) };
 }
 
 function cellValue(value: string | number | null | undefined): string {
@@ -157,21 +159,24 @@ export function DailyLogTable() {
                         // 있다는 표시일 뿐이라 접근성 이름에서 빼두고, title 은
                         // 스크린리더가 읽는 열 설명으로 남긴다.
                         title={note}
-                        onMouseEnter={(event) =>
-                          note &&
-                          setTip({
-                            note,
-                            ...tipPosition(event.currentTarget.getBoundingClientRect()),
-                          })
-                        }
-                        onMouseLeave={() => setTip(null)}
                         className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
                       >
                         {key}
                         {note && (
                           <span
                             aria-hidden
-                            className="ml-1 cursor-help align-super text-[9px] text-ink-soft/60"
+                            data-testid="column-note"
+                            // 9px 글자를 정확히 겨냥하기는 어려우므로 글자보다
+                            // 넓은 판을 두고, 그 여백만큼 -m 으로 되돌려 열
+                            // 너비는 그대로 둔다.
+                            onMouseEnter={(event) =>
+                              setTip({
+                                note,
+                                ...tipPosition(event.currentTarget.getBoundingClientRect()),
+                              })
+                            }
+                            onMouseLeave={() => setTip(null)}
+                            className="-my-1 ml-0.5 inline-block cursor-help px-1 py-1 align-super text-[9px] text-ink-soft/60"
                           >
                             ⓘ
                           </span>
@@ -194,8 +199,8 @@ export function DailyLogTable() {
         createPortal(
           <div
             role="tooltip"
-            className="pointer-events-none fixed z-50 max-w-[20rem] rounded-2xl bg-ink px-3.5 py-2.5 text-xs leading-relaxed text-canvas shadow-apple"
-            style={{ left: tip.left, top: tip.top }}
+            className="pointer-events-none fixed z-50 max-w-[20rem] rounded-2xl border border-hairline/60 bg-white px-3.5 py-2.5 text-xs leading-relaxed text-ink shadow-apple"
+            style={{ left: tip.left, right: tip.right, bottom: tip.bottom }}
           >
             {tip.note}
           </div>,

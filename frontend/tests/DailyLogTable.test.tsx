@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DailyLogTable } from "../src/components/DailyLogTable";
@@ -73,20 +73,23 @@ describe("DailyLogTable", () => {
     );
     expect(known).toHaveTextContent("ⓘ");
 
-    // 설명은 머리글에 올렸을 때 그 자리에 뜬다. 네이티브 title 은 포인터가
-    // 완전히 멈춰 있어야 뜨고 리렌더에 취소되므로 직접 그린다.
+    // 설명은 ⓘ 에 올렸을 때만 뜬다 — 머리글 전체가 반응하면 표를 훑는 동안
+    // 원하지 않아도 계속 튀어나온다.
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     fireEvent.mouseEnter(known);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    const icon = within(known).getByTestId("column-note");
+    fireEvent.mouseEnter(icon);
     expect(screen.getByRole("tooltip")).toHaveTextContent("하한");
-    fireEvent.mouseLeave(known);
+    fireEvent.mouseLeave(icon);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
     // 설명이 없는 필드도 열로는 나온다 — 설명 사전이 컬럼 목록을 좌우하면
     // 응답에서 컬럼을 만드는 성질이 깨진다.
     const unknown = screen.getByRole("columnheader", { name: "FUTURE_FIELD" });
     expect(unknown).not.toHaveTextContent("ⓘ");
-    fireEvent.mouseEnter(unknown);
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(within(unknown).queryByTestId("column-note")).not.toBeInTheDocument();
   });
 
   it("shows an empty-state message when there is no data for the day", async () => {

@@ -250,7 +250,7 @@ test("keeps the time column in place in the MMCA log too", async ({ page }) => {
   await expect(timeCell).toBeVisible();
 });
 
-test("puts the column explanation under the column, not off in a corner", async ({ page }) => {
+test("pops the column explanation right above its ⓘ, not off in a corner", async ({ page }) => {
   // 카드에 backdrop-blur 가 걸려 있어 position: fixed 의 기준이 화면이 아니라
   // 카드가 된다. body 로 portal 하지 않으면 좌표가 통째로 어긋나는데, jsdom 은
   // 그 차이를 못 본다.
@@ -271,16 +271,23 @@ test("puts the column explanation under the column, not off in a corner", async 
 
   const header = page.getByRole("columnheader", { name: "RESNT_PPLTN_RATE", exact: true });
   await header.waitFor();
-  const headerBox = (await header.boundingBox())!;
+  const icon = header.getByTestId("column-note");
+  const iconBox = (await icon.boundingBox())!;
 
+  // 머리글 전체가 아니라 ⓘ 에서만 뜬다.
   await header.hover();
+  await expect(page.getByRole("tooltip")).toBeHidden();
+
+  await icon.hover();
   const tooltip = page.getByRole("tooltip");
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toHaveText(/상주인구/);
 
   const tipBox = (await tooltip.boundingBox())!;
-  // 머리글 바로 아래에 붙어 있어야 한다.
-  expect(Math.abs(tipBox.y - (headerBox.y + headerBox.height))).toBeLessThan(20);
+  // ⓘ 바로 위에 붙어 있어야 한다 — 세로로도, 가로로도.
+  expect(Math.abs(iconBox.y - (tipBox.y + tipBox.height))).toBeLessThan(20);
+  expect(tipBox.x).toBeLessThanOrEqual(iconBox.x + 20);
+  expect(tipBox.x + tipBox.width).toBeGreaterThanOrEqual(iconBox.x);
   // 화면 안에 온전히 들어와야 한다.
   expect(tipBox.x).toBeGreaterThanOrEqual(0);
   expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
