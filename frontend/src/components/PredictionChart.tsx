@@ -70,6 +70,15 @@ export function PredictionChart({
   const modelValues = curve.map((point) => point.model);
   const maxValue = Math.max(...baselineValues, ...modelValues, 1);
 
+  // 순수 polyline 은 텍스트 노드가 없어 스크린리더에 아무것도 남지 않는다.
+  // 축 라벨이 없어 시각 사용자도 모양만 읽으니, 요약 한 문장이면 정보량이 대등하다.
+  const peakHour = curve[modelValues.indexOf(Math.max(...modelValues))]?.hour;
+  const quietHour = curve[modelValues.indexOf(Math.min(...modelValues))]?.hour;
+  const chartLabel =
+    peakHour === undefined
+      ? "시간대별 혼잡도 예측"
+      : `시간대별 혼잡도 예측. 가장 붐비는 시간 ${peakHour}시, 가장 한산한 시간 ${quietHour}시.`;
+
   return (
     <div className="rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
@@ -97,7 +106,13 @@ export function PredictionChart({
         </div>
       </div>
 
-      <svg data-testid="prediction-svg" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mt-8 w-full">
+      <svg
+        data-testid="prediction-svg"
+        role="img"
+        aria-label={chartLabel}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="mt-8 w-full"
+      >
         <polyline
           points={toPoints(baselineValues, maxValue)}
           fill="none"
