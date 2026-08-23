@@ -1,0 +1,31 @@
+# Reference copy of /etc/systemd/system/exhibition-backend.service, kept here
+# so the service can be rebuilt if the box is lost — the same reason the
+# Caddyfile lives in this repo (#42). deploy.sh does NOT install this file.
+#
+# Caddy's config is validated (`caddy validate`) before it is copied, so a bad
+# one is caught while the running process is untouched. systemd has no
+# equivalent gate worth trusting, and this is the unit deploy.sh itself
+# restarts — a broken copy would take down the service the deploy is trying to
+# verify. The unit also changes approximately never, unlike the Caddyfile,
+# which changes with every new backend route. So apply it by hand:
+#
+#   sudo cp deploy/exhibition-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl restart exhibition-backend
+#
+# No secrets here: app/config.py's Settings reads backend/.env from
+# WorkingDirectory, so SEOUL_API_KEY and friends stay off this file.
+[Unit]
+Description=Exhibition Congestion Prediction Backend
+After=network.target redis-server.service
+Requires=redis-server.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/exhibition-traffic/backend
+ExecStart=/home/ubuntu/exhibition-traffic/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
