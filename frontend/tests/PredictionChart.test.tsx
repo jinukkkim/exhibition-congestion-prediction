@@ -48,3 +48,70 @@ describe("PredictionChart", () => {
     expect(screen.getByText(/95\.2/)).toBeInTheDocument();
   });
 });
+
+
+function curveOf(value: number) {
+  return Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    baseline: value,
+    model: value + 10,
+  }));
+}
+
+const READY_WITH_DAYS = {
+  status: "ready" as const,
+  baseline_mae: 120.5,
+  model_mae: 95.2,
+  curve: curveOf(1000),
+  days: [
+    { date: "2026-08-23", is_holiday: false, curve: curveOf(1000) },
+    { date: "2026-08-24", is_holiday: false, curve: curveOf(2000) },
+  ],
+};
+
+describe("PredictionChart selected day", () => {
+  it("draws the curve for the given date", () => {
+    const { rerender } = render(
+      <PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-23" />
+    );
+    const today = screen.getByTestId("prediction-svg").innerHTML;
+    expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
+
+    rerender(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-24" />);
+
+    expect(screen.getByTestId("prediction-svg").innerHTML).not.toBe(today);
+    expect(screen.getByText(/8\/24\(월\)의 시간대별 예측/)).toBeInTheDocument();
+  });
+
+  it("does not render tabs of its own", () => {
+    render(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-08-23" />);
+
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+  });
+
+  it("falls back to the legacy curve when the payload has no days", () => {
+    // days 를 담기 전 배치가 남긴 캐시가 TTL 안에 남아 있을 수 있다.
+    render(
+      <PredictionChart
+        prediction={{
+          status: "ready",
+          baseline_mae: 120.5,
+          model_mae: 95.2,
+          curve: curveOf(1000),
+        }}
+        selectedDate="2026-08-24"
+      />
+    );
+
+    expect(screen.getByTestId("prediction-svg")).toBeInTheDocument();
+    expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
+  });
+
+  it("falls back when the selected date is not in the payload", () => {
+    // 자정을 넘겨 폴링이 갱신되면 어제였던 항목이 사라진다.
+    render(<PredictionChart prediction={READY_WITH_DAYS} selectedDate="2026-09-01" />);
+
+    expect(screen.getByTestId("prediction-svg")).toBeInTheDocument();
+    expect(screen.getByText(/오늘의 시간대별 예측/)).toBeInTheDocument();
+  });
+});

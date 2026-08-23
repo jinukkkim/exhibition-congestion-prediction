@@ -55,7 +55,11 @@ def build_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         run_daily_batch,
-        trigger=CronTrigger(hour=3, minute=0, timezone=_SEOUL_TZ),
+        # 자정 직후 — 배치가 만드는 것이 "오늘부터 7일의 커브"이므로 하루가
+        # 시작될 때 도는 것이 맞다. 03:00 이던 동안에는 자정~03:00 에 들어온
+        # 사람에게 목록의 첫 항목이 어제였다. 정각이 아닌 이유는 수집기가
+        # */5, MMCA 가 */10 이라 5의 배수 분에 동시 발사되기 때문이다.
+        trigger=CronTrigger(hour=0, minute=2, timezone=_SEOUL_TZ),
         id="daily_batch",
         misfire_grace_time=3600,
     )

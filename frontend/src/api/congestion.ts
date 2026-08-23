@@ -18,12 +18,21 @@ export interface PredictionCurvePoint {
   model: number;
 }
 
+export interface PredictionDay {
+  date: string;
+  is_holiday: boolean;
+  curve: PredictionCurvePoint[];
+}
+
 export interface PredictionResult {
   status: "collecting" | "ready";
   days_collected?: number;
   baseline_mae?: number;
   model_mae?: number;
+  // days 를 담기 전 배치가 남긴 캐시가 TTL(24시간) 안에 남아 있을 수 있고,
+  // 배포 중에도 구 백엔드 응답을 받을 수 있어 둘 다 optional 이다.
   curve?: PredictionCurvePoint[];
+  days?: PredictionDay[];
 }
 
 export async function fetchPrediction(): Promise<PredictionResult> {
