@@ -29,6 +29,10 @@ function cellValue(value: string | number | null | undefined): string {
 export function DailyLogTable() {
   const [selectedDate, setSelectedDate] = useState(todayString());
   const [rows, setRows] = useState<RawLogPoint[] | null>(null);
+  // 어느 열 머리글에 올려 있는지. 네이티브 title 툴팁은 포인터가 완전히
+  // 멈춰 있어야 뜨고 리렌더·창 포커스 변화에 취소되므로, 표 위 고정 줄에
+  // 직접 그린다. title 도 함께 남겨둔다 — 스크린리더가 읽는 열 설명이다.
+  const [hint, setHint] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -81,66 +85,76 @@ export function DailyLogTable() {
           가상 스크롤로 올려야 한다. 지하철·버스 승하차처럼 행마다 배열인
           값도 여기 컬럼으로는 못 담는다 — 행 펼치기로 붙일 자리. */}
       {!error && displayRows && displayRows.length > 0 && (
-        <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
-          <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
-              <tr>
-                <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
-                  시각
-                </th>
-                {columns.map((key) => {
-                  const note = SEOUL_FIELD_NOTES[key];
-                  return (
-                    <th
-                      key={key}
-                      // title 은 th 에 둔다 — ⓘ 위에서만 뜨는 것보다 머리글
-                      // 어디에 올려도 뜨는 편이 찾기 쉽고, 스크린리더도 이걸
-                      // 열 설명으로 읽는다. ⓘ 는 설명이 있다는 표시일 뿐이라
-                      // 접근성 이름에서 빼둔다.
-                      title={note}
-                      className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
-                    >
-                      {key}
-                      {note && (
-                        <span
-                          aria-hidden
-                          className="ml-1 cursor-help align-super text-[9px] text-ink-soft/60"
-                        >
-                          ⓘ
-                        </span>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.map((row) => (
-                <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
-                  <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
-                    {row.observed_at.slice(11, 16)}
-                  </td>
-                  {columns.map((key) => (
-                    <td
-                      key={key}
-                      className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
-                      style={
-                        key === LEVEL_KEY
-                          ? {
-                              color: statusOf(cellValue(row.fields[key])).text,
-                              fontWeight: 600,
-                            }
-                          : undefined
-                      }
-                    >
-                      {cellValue(row.fields[key])}
-                    </td>
-                  ))}
+        <>
+          {/* 설명 줄은 스크롤 컨테이너 밖에 둔다 — 안에 넣으면 overflow-auto 가
+              오른쪽 열의 설명을 잘라낸다. 비어 있을 때도 자리를 지켜 표가
+              위아래로 튀지 않는다. */}
+          <div className="truncate border-b border-hairline/60 px-8 py-3 text-xs text-ink-soft">
+            {hint ?? "열 이름에 마우스를 올리면 그 열이 무엇인지 설명이 나옵니다."}
+          </div>
+          <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
+                <tr>
+                  <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
+                    시각
+                  </th>
+                  {columns.map((key) => {
+                    const note = SEOUL_FIELD_NOTES[key];
+                    return (
+                      <th
+                        key={key}
+                        // 설명을 띄우는 것은 ⓘ 가 아니라 머리글 전체다 — 작은
+                        // 글자 하나를 정확히 겨냥하는 것보다 쉽다. ⓘ 는 설명이
+                        // 있다는 표시일 뿐이라 접근성 이름에서 빼두고, title 은
+                        // 스크린리더가 읽는 열 설명으로 남긴다.
+                        title={note}
+                        onMouseEnter={() => setHint(note ?? null)}
+                        onMouseLeave={() => setHint(null)}
+                        className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
+                      >
+                        {key}
+                        {note && (
+                          <span
+                            aria-hidden
+                            className="ml-1 cursor-help align-super text-[9px] text-ink-soft/60"
+                          >
+                            ⓘ
+                          </span>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {displayRows.map((row) => (
+                  <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
+                    <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
+                      {row.observed_at.slice(11, 16)}
+                    </td>
+                    {columns.map((key) => (
+                      <td
+                        key={key}
+                        className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
+                        style={
+                          key === LEVEL_KEY
+                            ? {
+                                color: statusOf(cellValue(row.fields[key])).text,
+                                fontWeight: 600,
+                              }
+                            : undefined
+                        }
+                      >
+                        {cellValue(row.fields[key])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

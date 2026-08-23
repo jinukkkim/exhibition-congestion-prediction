@@ -71,13 +71,19 @@ describe("DailyLogTable", () => {
     const known = await waitFor(() =>
       screen.getByRole("columnheader", { name: "AREA_PPLTN_MIN" })
     );
-    expect(known.getAttribute("title")).toContain("하한");
     expect(known).toHaveTextContent("ⓘ");
+
+    // 설명은 머리글에 올렸을 때 표 위 고정 줄에 나타난다. 네이티브 title 은
+    // 포인터가 완전히 멈춰 있어야 뜨고 리렌더에 취소되므로 직접 그린다.
+    expect(screen.queryByText(/하한/)).not.toBeInTheDocument();
+    fireEvent.mouseEnter(known);
+    expect(screen.getByText(/하한/)).toBeInTheDocument();
+    fireEvent.mouseLeave(known);
+    expect(screen.queryByText(/하한/)).not.toBeInTheDocument();
 
     // 설명이 없는 필드도 열로는 나온다 — 설명 사전이 컬럼 목록을 좌우하면
     // 응답에서 컬럼을 만드는 성질이 깨진다.
     const unknown = screen.getByRole("columnheader", { name: "FUTURE_FIELD" });
-    expect(unknown).not.toHaveAttribute("title");
     expect(unknown).not.toHaveTextContent("ⓘ");
   });
 
