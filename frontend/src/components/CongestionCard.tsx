@@ -341,9 +341,7 @@ export function CongestionCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
-              {isTodayView
-                ? "국립중앙박물관 · 현재 혼잡도"
-                : `국립중앙박물관 · ${monthDayWeekday(chartDate)} 실제`}
+              {isTodayView ? "국립중앙박물관 · 현재 혼잡도" : "국립중앙박물관"}
             </p>
             <p className="mt-1 text-[11px] text-ink-soft/70">
               {isTodayView ? "오늘 " : ""}영업시간 {formatMinutes(open)}–{formatMinutes(close)}

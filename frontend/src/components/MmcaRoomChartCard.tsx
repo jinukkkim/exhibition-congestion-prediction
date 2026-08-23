@@ -276,17 +276,13 @@ export function MmcaRoomChartCard({
                   : "휴관일입니다"}
             </p>
           </div>
-          {isTodayView ? (
+          {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
                 style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
               />
               {openBadge}
-            </span>
-          ) : (
-            <span className="shrink-0 text-[11px] font-medium text-ink-soft">
-              {monthDayWeekday(chartDate)} 실제
             </span>
           )}
         </div>

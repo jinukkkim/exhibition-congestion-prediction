@@ -188,7 +188,7 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
   });
 
-  it("titles itself by the drawn date and drops the live headline when it is not today", () => {
+  it("drops the live headline when it is not today", () => {
     // 미래 탭에서는 지난주 같은 요일의 실제 곡선을 대리로 그린다. 지나간 날의
     // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
     render(
@@ -203,7 +203,6 @@ describe("CongestionCard", () => {
       />
     );
 
-    expect(screen.getByText(/7\/11\(토\) 실제/)).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
     expect(screen.queryByText("갱신 지연")).not.toBeInTheDocument();
     expect(screen.queryByText("보통")).not.toBeInTheDocument();
@@ -226,8 +225,8 @@ describe("CongestionCard", () => {
       />
     );
 
-    // 제목과 범례 둘 다 그 날짜를 적으므로 둘 이상이 정상
-    expect(screen.getAllByText(/7\/11\(토\)/).length).toBeGreaterThan(1);
+    // 날짜를 적는 곳은 범례뿐이다
+    expect(screen.getAllByText(/7\/11\(토\)/).length).toBe(1);
     expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
     // 비교 데이터를 주지 않았으므로 지난주 범례도 없어야 한다
     expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();

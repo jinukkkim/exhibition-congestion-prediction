@@ -525,7 +525,7 @@ describe("MmcaRoomChartCard past-day view", () => {
     );
   }
 
-  it("says which date it draws instead of a live badge", () => {
+  it("drops the live badge and the current grade", () => {
     // 미래 탭에서는 지난주 같은 요일의 실제 기록을 대리로 그린다. 지나간 날의
     // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
     renderPastDay();

@@ -197,7 +197,6 @@ describe("NationalMuseumPage date tabs", () => {
     await waitFor(() =>
       expect(screen.getByText(/8\/22\(토\)의 시간대별 예측/)).toBeInTheDocument()
     );
-    expect(screen.getByText(/8\/15\(토\) 실제/)).toBeInTheDocument();
     expect(api.fetchDaily).toHaveBeenCalledWith("2026-08-15");
   });
 
