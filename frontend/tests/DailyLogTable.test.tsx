@@ -85,6 +85,16 @@ describe("DailyLogTable", () => {
     fireEvent.mouseLeave(icon);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
+    // 네이티브 title 은 달지 않는다 — 우리 툴팁이 뜬 뒤 몇 초 지나면 OS 가
+    // 같은 내용을 회색 상자로 하나 더 띄운다.
+    expect(known).not.toHaveAttribute("title");
+
+    // 스크린리더용 설명은 aria-describedby 로 잇는다. 머리글 안에 숨긴 글로
+    // 넣으면 열 이름에 섞여 들어간다.
+    const describedBy = known.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent("하한");
+
     // 설명이 없는 필드도 열로는 나온다 — 설명 사전이 컬럼 목록을 좌우하면
     // 응답에서 컬럼을 만드는 성질이 깨진다.
     const unknown = screen.getByRole("columnheader", { name: "FUTURE_FIELD" });

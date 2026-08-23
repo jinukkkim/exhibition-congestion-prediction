@@ -19,6 +19,12 @@ function columnsOf(rows: RawLogPoint[]): string[] {
   return [...new Set(rows.flatMap((row) => Object.keys(row.fields ?? {})))];
 }
 
+// aria-describedby 가 가리킬 id. 설명을 머리글 안에 숨긴 글로 넣으면 열의
+// 접근성 이름에 섞여 들어가므로("TEMP 기온 (℃)."), 표 밖에 따로 두고 잇는다.
+function noteId(key: string): string {
+  return `seoul-field-note-${key}`;
+}
+
 // 혼잡도만 색을 입힌다. 나머지는 수치라 색으로 구분할 것이 없다.
 const LEVEL_KEY = "AREA_CONGEST_LVL";
 
@@ -154,11 +160,11 @@ export function DailyLogTable() {
                     return (
                       <th
                         key={key}
-                        // 설명을 띄우는 것은 ⓘ 가 아니라 머리글 전체다 — 작은
-                        // 글자 하나를 정확히 겨냥하는 것보다 쉽다. ⓘ 는 설명이
-                        // 있다는 표시일 뿐이라 접근성 이름에서 빼두고, title 은
-                        // 스크린리더가 읽는 열 설명으로 남긴다.
-                        title={note}
+                        // 네이티브 title 은 쓰지 않는다 — 우리 툴팁이 뜬 뒤
+                        // 몇 초 지나면 OS 가 같은 내용을 회색 상자로 하나 더
+                        // 띄운다. 스크린리더용 설명은 아래 sr-only 목록을
+                        // 가리켜 잇는다.
+                        aria-describedby={note ? noteId(key) : undefined}
                         className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
                       >
                         {key}
@@ -191,6 +197,16 @@ export function DailyLogTable() {
           </div>
         </>
       )}
+
+      <div className="sr-only">
+        {columns.map((key) =>
+          SEOUL_FIELD_NOTES[key] ? (
+            <span key={key} id={noteId(key)}>
+              {SEOUL_FIELD_NOTES[key]}
+            </span>
+          ) : null
+        )}
+      </div>
 
       {/* body 로 빼서 그린다 — 카드의 backdrop-blur 가 position: fixed 의 기준
           컨테이너가 되어버려 좌표가 카드 기준으로 어긋나고, 카드의

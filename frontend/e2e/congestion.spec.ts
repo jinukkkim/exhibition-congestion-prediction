@@ -277,6 +277,10 @@ test("pops the column explanation right above its ⓘ, not off in a corner", asy
   // 머리글 전체가 아니라 ⓘ 에서만 뜬다.
   await header.hover();
   await expect(page.getByRole("tooltip")).toBeHidden();
+  // 네이티브 title 이 남아 있으면 우리 툴팁 뒤로 OS 가 같은 내용을 하나 더
+  // 띄운다. 그 회색 상자는 스크린샷에도 안 잡히므로 속성 자체를 막아둔다.
+  await expect(header).not.toHaveAttribute("title");
+  await expect(header.getByTestId("column-note")).not.toHaveAttribute("title");
 
   await icon.hover();
   const tooltip = page.getByRole("tooltip");
