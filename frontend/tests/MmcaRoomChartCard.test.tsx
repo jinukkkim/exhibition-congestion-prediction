@@ -504,3 +504,43 @@ describe("MmcaRoomChartCard freshness badge", () => {
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
   });
 });
+
+describe("MmcaRoomChartCard past-day view", () => {
+  function renderPastDay() {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-11T11:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-11T14:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        lastWeekDaily={null}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        viewDate="2026-07-11"
+        isOpenToday
+      />
+    );
+  }
+
+  it("says which date it draws instead of a live badge", () => {
+    // 미래 탭에서는 지난주 같은 요일의 실제 기록을 대리로 그린다. 지나간 날의
+    // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
+    renderPastDay();
+
+    expect(screen.getAllByText(/7\/11\(토\)/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+    expect(screen.queryByText("갱신 지연")).not.toBeInTheDocument();
+    expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
+  });
+
+  it("labels the legend by the drawn date, not by today", () => {
+    renderPastDay();
+
+    expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument();
+  });
+});

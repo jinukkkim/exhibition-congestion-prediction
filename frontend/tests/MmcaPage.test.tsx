@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -510,5 +510,91 @@ describe("MmcaPage", () => {
     // 성공한 뒤에는 다시 조르지 않는다
     await vi.advanceTimersByTimeAsync(120_000);
     expect(fetchMmcaDaily.mock.calls.filter(([, date]) => date === lastWeek)).toHaveLength(2);
+  });
+});
+
+describe("MmcaPage date tabs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-07-28T11:00:00")); // 화요일, 10:00-18:00 안
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("shows seven tabs starting at today", async () => {
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+    // 고정 시각 2026-07-28 화요일
+    expect(screen.getByRole("tab", { name: "오늘 7/28" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("draws the chosen date minus seven days", async () => {
+    // MMCA 는 예측 모델이 없어 지난주 같은 요일의 실제 기록을 대리로 쓴다.
+    // 판독이 없으면 방이 작은 비활성 카드로 접히므로, 그 날짜의 행을 준다.
+    const fetchMmcaDaily = vi
+      .spyOn(api, "fetchMmcaDaily")
+      .mockImplementation((_venue, date) =>
+        Promise.resolve(
+          date === "2026-07-25"
+            ? [
+                {
+                  observed_at: "2026-07-25T11:00:00",
+                  rooms: [
+                    { space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "여유" },
+                  ],
+                },
+                {
+                  observed_at: "2026-07-25T14:00:00",
+                  rooms: [
+                    { space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "붐빔" },
+                  ],
+                },
+              ]
+            : []
+        )
+      );
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
+
+    // 8/1 - 7 = 7/25
+    await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", "2026-07-25"));
+    expect(screen.getAllByText(/7\/25\(토\)/).length).toBeGreaterThan(0);
+  });
+
+  it("drops the live badge on a future tab", async () => {
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+    expect(screen.getByText("실시간")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
+
+    await waitFor(() => expect(screen.queryByText("실시간")).not.toBeInTheDocument());
   });
 });
