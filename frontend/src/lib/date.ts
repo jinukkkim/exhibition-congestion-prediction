@@ -5,8 +5,19 @@ function formatDate(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// 백엔드는 날짜를 KST 로 다루고(routes/prediction.py 의 _today_seoul,
+// batch.py, collector.py) observed_at 도 KST 벽시계다. 브라우저 타임존으로
+// "오늘"을 정하면 "오늘"이 두 벌이 되어, 탭 선택이 서버가 내려준 날짜 목록과
+// 어긋나고 실시간 헤드라인 판정도 갈린다.
+const SEOUL_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 export function todayString(): string {
-  return formatDate(new Date());
+  return SEOUL_DAY.format(new Date());
 }
 
 export function shiftDate(date: string, days: number): string {

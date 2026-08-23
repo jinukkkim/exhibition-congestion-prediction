@@ -32,6 +32,13 @@ def prediction() -> dict:
     today = _today_seoul().isoformat()
     upcoming = [day for day in days if day["date"] >= today]
 
+    # upcoming 이 빌 수는 없다: 페이로드의 날짜는 배치가 돈 날부터 6일 뒤까지이고
+    # cache.PREDICTION_TTL_SECONDS 가 24시간이라 페이로드 자체가 그보다 오래
+    # 살아남지 못한다. 즉 남는 항목은 최소 6개다. TTL 을 늘린다면 이 가정이
+    # 깨지므로, 그때는 빈 목록에 대비해 stale 한 curve 를 내려보내지 않도록
+    # 해야 한다.
+
+
     result = {**cached, "days": upcoming}
     if upcoming:
         result["curve"] = upcoming[0]["curve"]
