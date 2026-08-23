@@ -65,10 +65,14 @@ Two endpoints, deliberately separate:
 | `GET /health` | Is the process up? | `deploy/deploy.sh`, right after a restart |
 | `GET /health/collection` | Is data still arriving? | An external uptime monitor |
 
-`/health/collection` returns 503 once the Seoul poll is more than 15 minutes
+`/health/collection` returns 503 once the Seoul poll is more than 45 minutes
 old, or an MMCA round is more than 25 minutes old *while a venue is open* —
-overnight staleness is expected, not a failure. The body also carries MMCA's
-call count for the day, as a floor on quota spent against the 1,000/day cap.
+overnight staleness is expected, not a failure. The Seoul threshold is that
+wide because its `observed_at` is the Open API's own publication time, which
+already lags roughly 30 minutes on a perfectly healthy system; tightening it
+is what once pinned this endpoint at a permanent 503. The body also carries
+MMCA's call count for the day, as a floor on quota spent against the
+1,000/day cap.
 
 Point an external monitor (UptimeRobot, Better Stack, cron-job.org — any of
 them will do) at `/health/collection` on a 5–10 minute interval. It has to be
