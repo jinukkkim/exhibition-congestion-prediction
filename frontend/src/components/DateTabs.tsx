@@ -20,10 +20,13 @@ export function DateTabs({
             role="tab"
             aria-selected={isSelected}
             onClick={() => onSelect(date)}
-            className={`flex min-w-[64px] flex-col items-center gap-0.5 rounded-2xl px-4 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
+            // 선택된 탭도 배경과 같은 색 테두리를 둔다 — 한쪽에만 테두리를
+            // 주면 border-box 안에서 내용 폭이 1px 달라져 고를 때마다 글자가
+            // 흔들린다.
+            className={`flex min-w-[64px] flex-col items-center gap-0.5 rounded-2xl border px-4 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
               isSelected
-                ? "bg-ink text-white"
-                : "text-ink-soft hover:bg-ink/5 hover:text-ink"
+                ? "border-ink bg-ink text-white"
+                : "border-hairline/60 text-ink-soft hover:border-hairline hover:bg-ink/5 hover:text-ink"
             }`}
           >
             {/* 혼잡도를 결정하는 것은 요일이고(모델 피처가 요일·시간·공휴일뿐)
