@@ -102,6 +102,27 @@ describe("DailyLogTable", () => {
     expect(within(unknown).queryByTestId("column-note")).not.toBeInTheDocument();
   });
 
+  it("closes the explanation when the date changes under the pointer", async () => {
+    // 키보드로 날짜 버튼을 누르면 포인터가 ⓘ 위에 그대로 있어 mouseleave 가
+    // 오지 않는다. 새 날짜에 그 열이 없으면 사라진 ⓘ 의 좌표에 옛 설명이
+    // 계속 떠 있게 된다.
+    vi.spyOn(api, "fetchDailyRaw").mockResolvedValue([
+      { observed_at: "2026-07-16T09:00:00", fields: { AREA_PPLTN_MIN: 800 } },
+    ]);
+
+    render(<DailyLogTable />);
+
+    const header = await waitFor(() =>
+      screen.getByRole("columnheader", { name: "AREA_PPLTN_MIN" })
+    );
+    fireEvent.mouseEnter(within(header).getByTestId("column-note"));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /이전 날짜/ }));
+
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+  });
+
   it("shows an empty-state message when there is no data for the day", async () => {
     vi.spyOn(api, "fetchDailyRaw").mockResolvedValue([]);
 

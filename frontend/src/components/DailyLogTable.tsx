@@ -67,6 +67,10 @@ export function DailyLogTable() {
     let ignore = false;
     setRows(null);
     setError(false);
+    // 툴팁도 닫는다 — 포인터가 ⓘ 위에 그대로 있는 채로 날짜가 바뀌면(키보드로
+    // 날짜 버튼을 누른 경우) mouseleave 가 오지 않고, 새 날짜에 그 열이 없으면
+    // 사라진 ⓘ 의 좌표에 옛 설명이 계속 떠 있는다.
+    setTip(null);
     fetchDailyRaw(selectedDate)
       .then((data) => {
         if (!ignore) setRows(data);
@@ -147,55 +151,53 @@ export function DailyLogTable() {
           가상 스크롤로 올려야 한다. 지하철·버스 승하차처럼 행마다 배열인
           값도 여기 컬럼으로는 못 담는다 — 행 펼치기로 붙일 자리. */}
       {!error && displayRows && displayRows.length > 0 && (
-        <>
-          <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
-            <table className="w-full border-collapse text-left text-[13px]">
-              <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
-                <tr>
-                  <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
-                    시각
-                  </th>
-                  {columns.map((key) => {
-                    const note = SEOUL_FIELD_NOTES[key];
-                    return (
-                      <th
-                        key={key}
-                        // 네이티브 title 은 쓰지 않는다 — 우리 툴팁이 뜬 뒤
-                        // 몇 초 지나면 OS 가 같은 내용을 회색 상자로 하나 더
-                        // 띄운다. 스크린리더용 설명은 아래 sr-only 목록을
-                        // 가리켜 잇는다.
-                        aria-describedby={note ? noteId(key) : undefined}
-                        className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
-                      >
-                        {key}
-                        {note && (
-                          <span
-                            aria-hidden
-                            data-testid="column-note"
-                            // 9px 글자를 정확히 겨냥하기는 어려우므로 글자보다
-                            // 넓은 판을 두고, 그 여백만큼 -m 으로 되돌려 열
-                            // 너비는 그대로 둔다.
-                            onMouseEnter={(event) =>
-                              setTip({
-                                note,
-                                ...tipPosition(event.currentTarget.getBoundingClientRect()),
-                              })
-                            }
-                            onMouseLeave={() => setTip(null)}
-                            className="-my-1 ml-0.5 inline-block cursor-help px-1 py-1 align-super text-[9px] text-ink-soft/60"
-                          >
-                            ⓘ
-                          </span>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              {tableBody}
-            </table>
-          </div>
-        </>
+        <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
+          <table className="w-full border-collapse text-left text-[13px]">
+            <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
+              <tr>
+                <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
+                  시각
+                </th>
+                {columns.map((key) => {
+                  const note = SEOUL_FIELD_NOTES[key];
+                  return (
+                    <th
+                      key={key}
+                      // 네이티브 title 은 쓰지 않는다 — 우리 툴팁이 뜬 뒤
+                      // 몇 초 지나면 OS 가 같은 내용을 회색 상자로 하나 더
+                      // 띄운다. 스크린리더용 설명은 아래 sr-only 목록을
+                      // 가리켜 잇는다.
+                      aria-describedby={note ? noteId(key) : undefined}
+                      className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
+                    >
+                      {key}
+                      {note && (
+                        <span
+                          aria-hidden
+                          data-testid="column-note"
+                          // 9px 글자를 정확히 겨냥하기는 어려우므로 글자보다
+                          // 넓은 판을 두고, 그 여백만큼 -m 으로 되돌려 열
+                          // 너비는 그대로 둔다.
+                          onMouseEnter={(event) =>
+                            setTip({
+                              note,
+                              ...tipPosition(event.currentTarget.getBoundingClientRect()),
+                            })
+                          }
+                          onMouseLeave={() => setTip(null)}
+                          className="-my-1 ml-0.5 inline-block cursor-help px-1 py-1 align-super text-[9px] text-ink-soft/60"
+                        >
+                          ⓘ
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            {tableBody}
+          </table>
+        </div>
       )}
 
       <div className="sr-only">
