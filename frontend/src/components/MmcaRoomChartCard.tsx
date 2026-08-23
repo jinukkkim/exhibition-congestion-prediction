@@ -162,6 +162,9 @@ export function MmcaRoomChartCard({
 
   const chartDate = viewDate ?? todayString();
   const isTodayView = chartDate === todayString();
+  // 미래 탭의 곡선은 지난주 같은 요일의 대리값이다 — 오늘 차트의 회색 비교선과
+  // 같은 뜻이므로 색도 같게 둔다 (CongestionCard 와 같은 규칙).
+  const lineStroke = isTodayView ? CHART_BLUE : LAST_WEEK_STROKE;
   const isOpen = isTodayView && isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
   const points = roomPoints(daily, spaceCode, open, close);
@@ -311,7 +314,7 @@ export function MmcaRoomChartCard({
           {(linePath || lastWeekLinePath) && (
             <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
               <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
+                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
                 {monthDayWeekday(chartDate)}
                 {isTodayView ? " 오늘" : ""}
               </span>
@@ -357,13 +360,18 @@ export function MmcaRoomChartCard({
                     strokeLinecap="round"
                   />
                 )}
-                {areaD && <path d={areaD} fill={`url(#fill-${spaceCode})`} />}
+                {areaD &&
+                  (isTodayView ? (
+                    <path d={areaD} fill={`url(#fill-${spaceCode})`} />
+                  ) : (
+                    <path d={areaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                  ))}
                 {linePath && (
                   <path
                     data-testid="mmca-room-chart-line"
                     d={linePath}
                     fill="none"
-                    stroke={CHART_BLUE}
+                    stroke={lineStroke}
                     strokeWidth={2.5}
                     strokeLinejoin="round"
                     strokeLinecap="round"
@@ -411,7 +419,7 @@ export function MmcaRoomChartCard({
                       cy={yOf(hoverPoint.tier)}
                       r={4}
                       fill="#FFFFFF"
-                      stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
+                      stroke={hoverIsThisWeek ? lineStroke : LAST_WEEK_STROKE}
                       strokeWidth={2}
                     />
                   </>

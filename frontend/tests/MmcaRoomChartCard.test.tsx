@@ -536,6 +536,13 @@ describe("MmcaRoomChartCard past-day view", () => {
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
   });
 
+  it("draws the curve in the last-week grey, not the today blue", () => {
+    // 오늘 차트의 회색 비교선과 같은 뜻이므로 색도 같아야 한다.
+    renderPastDay();
+
+    expect(screen.getByTestId("mmca-room-chart-line")).toHaveAttribute("stroke", "#D1D1D1");
+  });
+
   it("labels the legend by the drawn date, not by today", () => {
     renderPastDay();
 

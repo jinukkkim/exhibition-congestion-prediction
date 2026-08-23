@@ -175,6 +175,10 @@ export function CongestionCard({
 
   const chartDate = viewDate ?? todayString();
   const isTodayView = chartDate === todayString();
+  // 미래 탭의 곡선은 그 날짜의 실제가 아니라 지난주 같은 요일의 대리값이다 —
+  // 오늘 차트의 회색 비교선과 같은 뜻이므로 색도 같게 둔다. 파란색은 "묻고 있는
+  // 그 날의 실제"에만 쓴다.
+  const lineStroke = isTodayView ? CHART_BLUE : LAST_WEEK_STROKE;
 
   // 지나간 날의 차트는 실시간 값에 의존하지 않는다 — current fetch 가 실패해도
   // 그 날의 곡선은 그릴 수 있어야 한다.
@@ -396,7 +400,7 @@ export function CongestionCard({
               // 날의 곡선 옆에 오늘 날짜가 적힌다. 비교선은 데이터가 있을 때만.
               <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
                   {monthDayWeekday(chartDate)}
                   {isTodayView ? " 오늘" : ""}
                 </span>
@@ -441,7 +445,12 @@ export function CongestionCard({
                       strokeLinecap="round"
                     />
                   )}
-                  {areaD && <path d={areaD} fill="url(#sparkline-fill)" />}
+                  {areaD &&
+                    (isTodayView ? (
+                      <path d={areaD} fill="url(#sparkline-fill)" />
+                    ) : (
+                      <path d={areaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                    ))}
                   {isOpen && lastPoint && (
                     <line
                       x1={lastPoint.x}
@@ -458,7 +467,7 @@ export function CongestionCard({
                       data-testid="sparkline-line"
                       d={linePath}
                       fill="none"
-                      stroke={CHART_BLUE}
+                      stroke={lineStroke}
                       strokeWidth={2.5}
                       strokeLinecap="round"
                     />
@@ -484,7 +493,7 @@ export function CongestionCard({
                         cy={hoverXY.y}
                         r={4}
                         fill="#FFFFFF"
-                        stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
+                        stroke={hoverIsThisWeek ? lineStroke : LAST_WEEK_STROKE}
                         strokeWidth={2}
                       />
                     </>

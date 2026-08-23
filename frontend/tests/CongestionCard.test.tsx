@@ -233,6 +233,37 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
   });
 
+  it("draws a past-day curve in the last-week grey, not the today blue", () => {
+    // 미래 탭의 곡선은 그 날짜의 실제가 아니라 지난주 대리값이다 — 오늘 차트의
+    // 회색 비교선과 같은 뜻이므로 색도 같아야 한다.
+    const { rerender } = render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-11T10:00:00", 900), dailyPoint("2026-07-11T11:00:00", 1100)]}
+        viewDate="2026-07-11"
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-line")).toHaveAttribute("stroke", "#D1D1D1");
+
+    rerender(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-line")).toHaveAttribute("stroke", "#0071E3");
+  });
+
   it("uses the drawn date's business hours for the axis", () => {
     // 2026-07-11 은 토요일 → 21:00 폐관. 오늘(수요일)도 21:00 이므로 평일과
     // 구분되는 날짜를 쓴다: 7/13 월요일은 17:30 폐관.
