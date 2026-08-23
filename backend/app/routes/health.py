@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Response
@@ -35,6 +36,31 @@ MMCA_STALE_MINUTES = 25
 
 def _age_minutes(last: datetime | None, now: datetime) -> float | None:
     return None if last is None else round((now - last).total_seconds() / 60, 1)
+
+
+def _last_offsite_backup(now: datetime) -> tuple[str | None, float | None]:
+    """When an off-box DB copy last landed, from the stamp backup_db.sh touches.
+
+    The script touches it only after the upload PUT returns, so this measures the
+    guarantee that matters — a copy that survives losing the instance — rather
+    than "a file exists on the same disk we are trying to protect against".
+
+    Deliberately reported without a `stale` flag and without voting on the
+    status code. Tightening a threshold this endpoint could not satisfy is what
+    once pinned it at a permanent 503 (see SEOUL_STALE_MINUTES); a late backup
+    is worth seeing, not worth paging for, and it must not be able to mask a
+    real collection outage by sharing the same 503.
+
+    A missing stamp reads as None, not as a failure: dev machines have no
+    backup dir at all.
+    """
+    try:
+        mtime = (Path(settings.backup_dir) / ".last_upload").stat().st_mtime
+    except OSError:
+        return None, None
+
+    uploaded = datetime.fromtimestamp(mtime, _SEOUL_TZ).replace(tzinfo=None)
+    return uploaded.isoformat(), round((now - uploaded).total_seconds() / 3600, 1)
 
 
 def _mmca_is_stale(last: datetime | None, now: datetime) -> bool:
@@ -89,6 +115,7 @@ def collection_health(response: Response) -> dict:
         )
 
     seoul_stale = seoul_last is None or now - seoul_last > timedelta(minutes=SEOUL_STALE_MINUTES)
+    backup_at, backup_age = _last_offsite_backup(now)
     mmca_stale = _mmca_is_stale(mmca_last, now)
 
     if seoul_stale or mmca_stale:
@@ -112,5 +139,10 @@ def collection_health(response: Response) -> dict:
             # Successful calls only — a room that errored isn't recorded, so
             # this is a floor on quota spent, not the exact figure.
             "calls_today": mmca_calls_today or 0,
+        },
+        # No "stale" key here on purpose — see _last_offsite_backup.
+        "backup": {
+            "last_offsite_upload_at": backup_at,
+            "age_hours": backup_age,
         },
     }
