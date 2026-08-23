@@ -73,18 +73,20 @@ describe("DailyLogTable", () => {
     );
     expect(known).toHaveTextContent("ⓘ");
 
-    // 설명은 머리글에 올렸을 때 표 위 고정 줄에 나타난다. 네이티브 title 은
-    // 포인터가 완전히 멈춰 있어야 뜨고 리렌더에 취소되므로 직접 그린다.
-    expect(screen.queryByText(/하한/)).not.toBeInTheDocument();
+    // 설명은 머리글에 올렸을 때 그 자리에 뜬다. 네이티브 title 은 포인터가
+    // 완전히 멈춰 있어야 뜨고 리렌더에 취소되므로 직접 그린다.
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     fireEvent.mouseEnter(known);
-    expect(screen.getByText(/하한/)).toBeInTheDocument();
+    expect(screen.getByRole("tooltip")).toHaveTextContent("하한");
     fireEvent.mouseLeave(known);
-    expect(screen.queryByText(/하한/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
     // 설명이 없는 필드도 열로는 나온다 — 설명 사전이 컬럼 목록을 좌우하면
     // 응답에서 컬럼을 만드는 성질이 깨진다.
     const unknown = screen.getByRole("columnheader", { name: "FUTURE_FIELD" });
     expect(unknown).not.toHaveTextContent("ⓘ");
+    fireEvent.mouseEnter(unknown);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("shows an empty-state message when there is no data for the day", async () => {

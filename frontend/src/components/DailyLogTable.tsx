@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { shiftDate, todayString } from "../lib/date";
 import { fetchDailyRaw, type RawLogPoint } from "../api/congestion";
@@ -21,6 +22,25 @@ function columnsOf(rows: RawLogPoint[]): string[] {
 // 혼잡도만 색을 입힌다. 나머지는 수치라 색으로 구분할 것이 없다.
 const LEVEL_KEY = "AREA_CONGEST_LVL";
 
+interface Tip {
+  note: string;
+  left: number;
+  top: number;
+}
+
+const TIP_WIDTH = 320; // max-w-[20rem] 과 같은 값
+
+// 표가 overflow-auto 안에 있어 그 안에 그린 툴팁은 오른쪽 열에서 잘린다.
+// position: fixed 로 컨테이너 밖에 띄우고, 머리글 칸의 화면 좌표에 맞춘다.
+// 마우스를 따라가지 않고 칸에 붙이는 이유는 흔들리지 않기 때문이고, 오른쪽
+// 끝에서는 화면 밖으로 나가지 않게 왼쪽으로 당긴다.
+function tipPosition(header: DOMRect): { left: number; top: number } {
+  return {
+    left: Math.max(8, Math.min(header.left, window.innerWidth - TIP_WIDTH - 8)),
+    top: header.bottom + 6,
+  };
+}
+
 function cellValue(value: string | number | null | undefined): string {
   // 0 은 값이다 — falsy 로 묶어 비우면 안 된다.
   return value === null || value === undefined ? "" : String(value);
@@ -29,10 +49,10 @@ function cellValue(value: string | number | null | undefined): string {
 export function DailyLogTable() {
   const [selectedDate, setSelectedDate] = useState(todayString());
   const [rows, setRows] = useState<RawLogPoint[] | null>(null);
-  // 어느 열 머리글에 올려 있는지. 네이티브 title 툴팁은 포인터가 완전히
-  // 멈춰 있어야 뜨고 리렌더·창 포커스 변화에 취소되므로, 표 위 고정 줄에
-  // 직접 그린다. title 도 함께 남겨둔다 — 스크린리더가 읽는 열 설명이다.
-  const [hint, setHint] = useState<string | null>(null);
+  // 올려둔 열의 설명과 그것을 띄울 자리. 네이티브 title 툴팁은 포인터가 완전히
+  // 멈춰 있어야 뜨고 리렌더·창 포커스 변화에 취소되므로 직접 그린다. title 은
+  // 남겨둔다 — 스크린리더가 읽는 열 설명이다.
+  const [tip, setTip] = useState<Tip | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -53,8 +73,42 @@ export function DailyLogTable() {
 
   const isToday = selectedDate === todayString();
   const isEarliest = selectedDate <= EARLIEST_DATE;
-  const displayRows = rows ? [...rows].reverse() : rows;
-  const columns = rows ? columnsOf(rows) : [];
+  // 하루치가 288행 × 44열이라 본문만 12,000 셀이 넘는다. 머리글에 마우스를
+  // 올릴 때마다 그걸 통째로 다시 그리지 않도록 행·열과 본문을 memo 로 묶는다
+  // (툴팁 상태만 바뀌면 머리글과 툴팁만 다시 그려진다).
+  const displayRows = useMemo(() => (rows ? [...rows].reverse() : rows), [rows]);
+  const columns = useMemo(() => (rows ? columnsOf(rows) : []), [rows]);
+
+  const tableBody = useMemo(
+    () => (
+      <tbody>
+        {displayRows?.map((row) => (
+          <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
+            <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
+              {row.observed_at.slice(11, 16)}
+            </td>
+            {columns.map((key) => (
+              <td
+                key={key}
+                className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
+                style={
+                  key === LEVEL_KEY
+                    ? {
+                        color: statusOf(cellValue(row.fields[key])).text,
+                        fontWeight: 600,
+                      }
+                    : undefined
+                }
+              >
+                {cellValue(row.fields[key])}
+              </td>
+            ))}
+          </tr>
+        ))}
+</tbody>
+    ),
+    [displayRows, columns]
+  );
 
   return (
     <div className="overflow-hidden rounded-apple border border-hairline/60 bg-white/70 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
@@ -86,12 +140,6 @@ export function DailyLogTable() {
           값도 여기 컬럼으로는 못 담는다 — 행 펼치기로 붙일 자리. */}
       {!error && displayRows && displayRows.length > 0 && (
         <>
-          {/* 설명 줄은 스크롤 컨테이너 밖에 둔다 — 안에 넣으면 overflow-auto 가
-              오른쪽 열의 설명을 잘라낸다. 비어 있을 때도 자리를 지켜 표가
-              위아래로 튀지 않는다. */}
-          <div className="truncate border-b border-hairline/60 px-8 py-3 text-xs text-ink-soft">
-            {hint ?? "열 이름에 마우스를 올리면 그 열이 무엇인지 설명이 나옵니다."}
-          </div>
           <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
@@ -109,8 +157,14 @@ export function DailyLogTable() {
                         // 있다는 표시일 뿐이라 접근성 이름에서 빼두고, title 은
                         // 스크린리더가 읽는 열 설명으로 남긴다.
                         title={note}
-                        onMouseEnter={() => setHint(note ?? null)}
-                        onMouseLeave={() => setHint(null)}
+                        onMouseEnter={(event) =>
+                          note &&
+                          setTip({
+                            note,
+                            ...tipPosition(event.currentTarget.getBoundingClientRect()),
+                          })
+                        }
+                        onMouseLeave={() => setTip(null)}
                         className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
                       >
                         {key}
@@ -127,35 +181,26 @@ export function DailyLogTable() {
                   })}
                 </tr>
               </thead>
-              <tbody>
-                {displayRows.map((row) => (
-                  <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
-                    <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
-                      {row.observed_at.slice(11, 16)}
-                    </td>
-                    {columns.map((key) => (
-                      <td
-                        key={key}
-                        className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink"
-                        style={
-                          key === LEVEL_KEY
-                            ? {
-                                color: statusOf(cellValue(row.fields[key])).text,
-                                fontWeight: 600,
-                              }
-                            : undefined
-                        }
-                      >
-                        {cellValue(row.fields[key])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
+              {tableBody}
             </table>
           </div>
         </>
       )}
+
+      {/* body 로 빼서 그린다 — 카드의 backdrop-blur 가 position: fixed 의 기준
+          컨테이너가 되어버려 좌표가 카드 기준으로 어긋나고, 카드의
+          overflow-hidden 에 잘리기까지 한다. */}
+      {tip &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-50 max-w-[20rem] rounded-2xl bg-ink px-3.5 py-2.5 text-xs leading-relaxed text-canvas shadow-apple"
+            style={{ left: tip.left, top: tip.top }}
+          >
+            {tip.note}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -249,3 +249,42 @@ test("keeps the time column in place in the MMCA log too", async ({ page }) => {
   expect(after!.x).toBeCloseTo(before!.x, 0);
   await expect(timeCell).toBeVisible();
 });
+
+test("puts the column explanation under the column, not off in a corner", async ({ page }) => {
+  // 카드에 backdrop-blur 가 걸려 있어 position: fixed 의 기준이 화면이 아니라
+  // 카드가 된다. body 로 portal 하지 않으면 좌표가 통째로 어긋나는데, jsdom 은
+  // 그 차이를 못 본다.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          observed_at: "2026-07-15T09:00:00",
+          fields: { AREA_CONGEST_LVL: "여유", RESNT_PPLTN_RATE: 45.1 },
+        },
+      ],
+    })
+  );
+
+  await page.goto("/logs");
+
+  const header = page.getByRole("columnheader", { name: "RESNT_PPLTN_RATE", exact: true });
+  await header.waitFor();
+  const headerBox = (await header.boundingBox())!;
+
+  await header.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText(/상주인구/);
+
+  const tipBox = (await tooltip.boundingBox())!;
+  // 머리글 바로 아래에 붙어 있어야 한다.
+  expect(Math.abs(tipBox.y - (headerBox.y + headerBox.height))).toBeLessThan(20);
+  // 화면 안에 온전히 들어와야 한다.
+  expect(tipBox.x).toBeGreaterThanOrEqual(0);
+  expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
+});
