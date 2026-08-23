@@ -34,7 +34,18 @@ import sqlite3
 import sys
 
 source, destination = sys.argv[1], sys.argv[2]
-src = sqlite3.connect(source)
+
+# timeout raises the busy handler's wait above the 5s default. The DB is in
+# `delete` journal mode, so the collector's 5-minute INSERT holds an EXCLUSIVE
+# lock and a backup starting inside that window gets SQLITE_BUSY. Those writes
+# last milliseconds, so 5s is already ample; 30s costs nothing and removes the
+# case entirely.
+#
+# Deliberately NOT a `pages=1, sleep=…` retry loop: with pages > 0 any write to
+# the source restarts the backup from the beginning, trading a near-zero risk
+# for repeated restarts on a file this size. One step under one lock cannot be
+# invalidated halfway.
+src = sqlite3.connect(source, timeout=30)
 dst = sqlite3.connect(destination)
 src.backup(dst)
 

@@ -22,7 +22,8 @@ cp .env.example .env   # fill in SEOUL_API_KEY
 
 - `SEOUL_API_KEY` — required, no default
 - `SEOUL_AREA_NAME` — defaults to `국립중앙박물관·용산가족공원`
-- `DATABASE_URL` — defaults to `sqlite:///./congestion.db`, and **production runs that same SQLite file** — a single `congestion.db` on the server, not a managed database. Postgres was the original design (see `docs/superpowers/specs/2026-07-15-*`) and SQLAlchemy would still take it via the `pg8000` driver (`postgresql+pg8000://user:pass@host/db`), but it has never been deployed. Anything that assumes a replicated or backed-up database does not hold here.
+- `DATABASE_URL` — defaults to `sqlite:///./congestion.db`, and **production runs that same SQLite file** — a single `congestion.db` on the server, not a managed database. Postgres was the original design (see `docs/superpowers/specs/2026-07-15-*`) and SQLAlchemy would still take it via the `pg8000` driver (`postgresql+pg8000://user:pass@host/db`), but it has never been deployed. There is no replication and no managed failover; backups are a cron job on
+  this same box, described under Backups below.
 - `REDIS_URL` — defaults to `redis://localhost:6379/0`
 
 ### Developing against real data

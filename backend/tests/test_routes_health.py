@@ -215,7 +215,7 @@ def test_an_empty_database_reads_as_stale(client):
 def _stamp_backup(monkeypatch, tmp_path, uploaded_at: datetime | None):
     """Point settings at a scratch backup dir, optionally with a stamp in it.
 
-    backup_db.sh touches .last_upload only after `aws s3 cp` returns, so its
+    backup_db.sh touches .last_upload only after the upload PUT returns, so its
     mtime means "an off-box copy exists" — not "a local file exists".
     """
     from app.config import settings
