@@ -131,11 +131,14 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         scheduler.shutdown(wait=False)
 
 
-def test_daily_batch_fires_at_3am_seoul_not_server_time():
-    """Production runs on Etc/UTC, where an unpinned cron put "3am" at noon KST.
+def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
+    """Production runs on Etc/UTC, where an unpinned cron put this at noon KST.
 
     Asserted through the trigger's own resolution rather than the configured
     timezone, so it still holds if the jobs ever move to per-trigger zones.
+
+    00:02 rather than midnight: the collectors run on */5 and */10, so every
+    multiple-of-five minute fires a full-table-scan batch alongside an insert.
     """
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -151,5 +154,22 @@ def test_daily_batch_fires_at_3am_seoul_not_server_time():
     previous = datetime(2026, 8, 12, 15, 0, tzinfo=timezone.utc)
     fire = trigger.get_next_fire_time(None, previous)
 
-    assert fire.astimezone(seoul).hour == 3
-    assert fire.astimezone(timezone.utc).hour == 18  # 03:00 KST == 18:00 UTC
+    assert fire.astimezone(seoul).hour == 0
+    assert fire.astimezone(seoul).minute == 2
+    assert fire.astimezone(timezone.utc).hour == 15  # 00:02 KST == 15:02 UTC
+
+
+def test_daily_batch_does_not_collide_with_the_collector_grid():
+    """수집기가 */5, MMCA 가 */10 이라 5의 배수 분은 동시 발사된다."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from app.scheduler import build_scheduler
+
+    seoul = ZoneInfo("Asia/Seoul")
+    trigger = {job.id: job.trigger for job in build_scheduler().get_jobs()}["daily_batch"]
+
+    previous = datetime(2026, 8, 12, 15, 0, tzinfo=timezone.utc)
+    fire = trigger.get_next_fire_time(None, previous)
+
+    assert fire.astimezone(seoul).minute % 5 != 0

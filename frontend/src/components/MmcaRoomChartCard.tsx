@@ -137,6 +137,7 @@ export function MmcaRoomChartCard({
   close,
   nowMinutes,
   now,
+  viewDate,
   isOpenToday,
 }: {
   room: MmcaRoomStatus;
@@ -148,6 +149,9 @@ export function MmcaRoomChartCard({
   // nowMinutes 와 같은 시계에서 나온 값 (MmcaPage 가 하나의 new Date() 로 둘을
   // 만든다). 판독 나이를 재려면 분 단위가 아닌 실제 시각이 필요하다.
   now: Date;
+  // 차트가 그리는 날짜. 생략하면 오늘. 오늘이 아니면 지나간 날의 기록만 그리므로
+  // 실시간 배지·현재 등급을 그리지 않는다.
+  viewDate?: string;
   isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -156,7 +160,12 @@ export function MmcaRoomChartCard({
   const spaceCode = room.space_code;
   const title = room.space_nm ?? spaceCode;
 
-  const isOpen = isOpenToday && nowMinutes >= open && nowMinutes <= close;
+  const chartDate = viewDate ?? todayString();
+  const isTodayView = chartDate === todayString();
+  // 미래 탭의 곡선은 지난주 같은 요일의 대리값이다 — 오늘 차트의 회색 비교선과
+  // 같은 뜻이므로 색도 같게 둔다 (CongestionCard 와 같은 규칙).
+  const lineStroke = isTodayView ? CHART_BLUE : LAST_WEEK_STROKE;
+  const isOpen = isTodayView && isOpenToday && nowMinutes >= open && nowMinutes <= close;
 
   const points = roomPoints(daily, spaceCode, open, close);
   // Last week is always a fully-elapsed day, so it just uses the plain
@@ -260,18 +269,25 @@ export function MmcaRoomChartCard({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
             <p className="mt-1 text-[11px] text-ink-soft/70">
-              {isOpenToday ? `오늘 영업시간 ${formatMinutes(open)}–${formatMinutes(close)}` : "오늘은 휴관일입니다"}
+              {isOpenToday
+                ? `${isTodayView ? "오늘 " : ""}영업시간 ${formatMinutes(open)}–${formatMinutes(close)}`
+                : isTodayView
+                  ? "오늘은 휴관일입니다"
+                  : "휴관일입니다"}
             </p>
           </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-              style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
-            />
-            {openBadge}
-          </span>
+          {isTodayView && (
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
+                style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
+              />
+              {openBadge}
+            </span>
+          )}
         </div>
 
+        {isTodayView && (
         <div className="mt-4">
           {isOpen ? (
             currentLabel ? (
@@ -288,18 +304,22 @@ export function MmcaRoomChartCard({
             </span>
           )}
         </div>
+        )}
 
         <div className="relative mt-8">
           {(linePath || lastWeekLinePath) && (
             <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
               <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: CHART_BLUE }} />
-                {monthDayWeekday(todayString())} 오늘
+                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
+                {monthDayWeekday(chartDate)}
+                {isTodayView ? " 오늘" : ""}
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
-                {monthDayWeekday(shiftDate(todayString(), -7))} 지난주
-              </span>
+              {lastWeekLinePath && (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
+                  {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
+                </span>
+              )}
             </div>
           )}
           <svg
@@ -336,13 +356,18 @@ export function MmcaRoomChartCard({
                     strokeLinecap="round"
                   />
                 )}
-                {areaD && <path d={areaD} fill={`url(#fill-${spaceCode})`} />}
+                {areaD &&
+                  (isTodayView ? (
+                    <path d={areaD} fill={`url(#fill-${spaceCode})`} />
+                  ) : (
+                    <path d={areaD} fill={LAST_WEEK_FILL} opacity={0.2} />
+                  ))}
                 {linePath && (
                   <path
                     data-testid="mmca-room-chart-line"
                     d={linePath}
                     fill="none"
-                    stroke={CHART_BLUE}
+                    stroke={lineStroke}
                     strokeWidth={2.5}
                     strokeLinejoin="round"
                     strokeLinecap="round"
@@ -390,7 +415,7 @@ export function MmcaRoomChartCard({
                       cy={yOf(hoverPoint.tier)}
                       r={4}
                       fill="#FFFFFF"
-                      stroke={hoverIsThisWeek ? CHART_BLUE : LAST_WEEK_STROKE}
+                      stroke={hoverIsThisWeek ? lineStroke : LAST_WEEK_STROKE}
                       strokeWidth={2}
                     />
                   </>

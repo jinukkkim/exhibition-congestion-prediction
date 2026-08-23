@@ -188,6 +188,106 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
   });
 
+  it("drops the live headline when it is not today", () => {
+    // 미래 탭에서는 지난주 같은 요일의 실제 곡선을 대리로 그린다. 지나간 날의
+    // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-11T10:00:00", 900), dailyPoint("2026-07-11T11:00:00", 1100)]}
+        viewDate="2026-07-11"
+      />
+    );
+
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+    expect(screen.queryByText("갱신 지연")).not.toBeInTheDocument();
+    expect(screen.queryByText("보통")).not.toBeInTheDocument();
+    expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
+  });
+
+  it("labels the legend by the drawn date, not by today", () => {
+    // 범례가 todayString() 에 하드코딩되어 있으면 8/22 곡선 옆에 "8/23(일) 오늘"
+    // 이라고 적힌다. 그리는 것과 적는 것이 어긋나면 안 된다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-11T10:00:00", 900), dailyPoint("2026-07-11T11:00:00", 1100)]}
+        lastWeekDaily={null}
+        viewDate="2026-07-11"
+      />
+    );
+
+    // 날짜를 적는 곳은 범례뿐이다
+    expect(screen.getAllByText(/7\/11\(토\)/).length).toBe(1);
+    expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
+    // 비교 데이터를 주지 않았으므로 지난주 범례도 없어야 한다
+    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+  });
+
+  it("draws a past-day curve in the last-week grey, not the today blue", () => {
+    // 미래 탭의 곡선은 그 날짜의 실제가 아니라 지난주 대리값이다 — 오늘 차트의
+    // 회색 비교선과 같은 뜻이므로 색도 같아야 한다.
+    const { rerender } = render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-11T10:00:00", 900), dailyPoint("2026-07-11T11:00:00", 1100)]}
+        viewDate="2026-07-11"
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-line")).toHaveAttribute("stroke", "#D1D1D1");
+
+    rerender(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-line")).toHaveAttribute("stroke", "#0071E3");
+  });
+
+  it("uses the drawn date's business hours for the axis", () => {
+    // 2026-07-11 은 토요일 → 21:00 폐관. 오늘(수요일)도 21:00 이므로 평일과
+    // 구분되는 날짜를 쓴다: 7/13 월요일은 17:30 폐관.
+    const { rerender } = render(
+      <CongestionCard
+        data={null}
+        daily={[dailyPoint("2026-07-13T10:00:00", 900)]}
+        viewDate="2026-07-13"
+      />
+    );
+
+    // 오늘이 아니므로 "오늘"을 붙이지 않는다
+    expect(screen.getByText("영업시간 09:30–17:30")).toBeInTheDocument();
+
+    rerender(
+      <CongestionCard
+        data={null}
+        daily={[dailyPoint("2026-07-11T10:00:00", 900)]}
+        viewDate="2026-07-11"
+      />
+    );
+
+    expect(screen.getByText("영업시간 09:30–21:00")).toBeInTheDocument();
+  });
+
   it("renders a loading state when data is null", () => {
     render(<CongestionCard data={null} daily={null} />);
     expect(screen.getByText(/불러오는 중/)).toBeInTheDocument();
