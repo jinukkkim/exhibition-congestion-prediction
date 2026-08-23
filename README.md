@@ -78,6 +78,35 @@ them will do) at `/health/collection` on a 5–10 minute interval. It has to be
 external: collection dying and the whole box dying look the same from inside,
 and an in-process alerter cannot report its own death.
 
+### DNS renewal
+
+`deploy/duckdns_update.sh` re-points the duckdns hostname at this box every
+five minutes, from cron:
+
+```
+*/5 * * * * /home/ubuntu/exhibition-traffic/deploy/duckdns_update.sh >> /home/ubuntu/duckdns.log 2>&1
+```
+
+The token is read from `/home/ubuntu/.duckdns` (mode 600, outside the repo, same
+treatment as `.backup_par`) rather than written inline in the crontab. Cron logs
+every command it runs to the journal verbatim, so an inline token becomes a
+permanent, greppable copy in `journalctl -u cron`:
+
+```
+CRON[411116]: (ubuntu) CMD (curl -fsS "https://…&token=<the actual token>…")
+```
+
+The script also checks the response *body*. duckdns answers HTTP 200 with `KO`
+for a bad or rotated token, so `curl -f` alone reports success — verified: `curl
+-fsS` with a junk token exits 0 and writes `KO` to the log. Renewal would stop
+and nothing would say so until the hostname expired.
+
+To rotate the token: recreate it at duckdns.org, then edit the one line in
+`/home/ubuntu/.duckdns` and run the script once by hand — it prints nothing and
+exits 0 on success, or names the refusal and exits 1. Rotate *after* the crontab
+points at this script; while the token is still inline, recreating it breaks
+renewal silently.
+
 ## Docs
 
 - Design spec: `docs/superpowers/specs/2026-07-15-exhibition-congestion-prediction-design.md`
