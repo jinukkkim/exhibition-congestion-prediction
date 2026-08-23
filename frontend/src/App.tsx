@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { HomePage } from "./pages/HomePage";
+import { LogsPage } from "./pages/LogsPage";
 import { MmcaPage } from "./pages/MmcaPage";
 import { NationalMuseumPage } from "./pages/NationalMuseumPage";
 
@@ -9,6 +10,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/logs" element={<LogsPage />} />
         <Route path="/venues/national-museum" element={<NationalMuseumPage />} />
         <Route
           path="/venues/mmca-seoul"

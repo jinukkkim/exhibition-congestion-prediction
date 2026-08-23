@@ -88,13 +88,21 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
-        <header className="mb-12 border-b border-hairline/70 pb-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-            Exhibition · Seoul
-          </p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            전시 혼잡도 예측
-          </h1>
+        <header className="mb-12 flex items-end justify-between gap-4 border-b border-hairline/70 pb-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+              Exhibition · Seoul
+            </p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+              전시 혼잡도 예측
+            </h1>
+          </div>
+          <Link
+            to="/logs"
+            className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft transition hover:text-accent"
+          >
+            수집 원본 데이터 →
+          </Link>
         </header>
 
         <section className="grid gap-6 sm:grid-cols-2">

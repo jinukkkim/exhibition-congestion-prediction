@@ -101,8 +101,6 @@ describe("NationalMuseumPage", () => {
     await waitFor(() => expect(screen.getByText(/추이를 불러오지 못했습니다/)).toBeInTheDocument());
     // 현재 혼잡도는 살아 있다 — 추이 실패가 카드 전체를 에러로 바꾸지 않음
     expect(screen.getByText("보통")).toBeInTheDocument();
-    // (아래 DailyLogTable 도 같은 /congestion/daily 를 쓰므로 자기 에러를
-    //  함께 표시한다. 그건 이 케이스의 대상이 아니다.)
   });
 
   it("retries a failed fetch on the next tick", async () => {

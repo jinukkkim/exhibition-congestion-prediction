@@ -70,6 +70,21 @@ describe("HomePage", () => {
     expect(screen.queryByRole("link", { name: /국립현대미술관 덕수궁관/ })).not.toBeInTheDocument();
   });
 
+  it("links to the raw collection log", async () => {
+    // 관 페이지에서 표를 내린 대신 여기서만 들어갈 수 있으므로, 링크가 사라지면
+    // 수집한 데이터를 화면에서 볼 방법이 없어진다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("link", { name: /수집 원본 데이터/ })).toHaveAttribute(
+      "href",
+      "/logs"
+    );
+  });
+
   it("renders Deoksugung as an unclickable card, name and reason still visible", async () => {
     // 서비스가 재개될 기약이 없으므로 빈 페이지로 보내는 링크를 없앤다. 비활성
     // 링크가 아니라 링크 자체를 두지 않는다 — aria-disabled 를 붙인 링크는

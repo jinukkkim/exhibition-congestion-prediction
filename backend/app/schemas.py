@@ -31,6 +31,15 @@ class DailyLogPoint(BaseModel):
     non_resnt_ppltn_rate: float | None = None
 
 
+class RawLogPoint(BaseModel):
+    observed_at: str
+    # Every field we kept for this reading, under the Seoul API's own key
+    # names. Deliberately an open dict rather than named fields: pinning a
+    # list here would mean editing this schema every time 서울시 adds a field,
+    # and /congestion/daily/raw exists precisely to show everything we kept.
+    fields: dict[str, str | int | float | None]
+
+
 class MmcaRoomStatus(BaseModel):
     space_code: str
     space_nm: str | None

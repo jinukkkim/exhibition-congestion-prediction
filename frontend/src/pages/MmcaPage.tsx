@@ -9,7 +9,6 @@ import {
   type MmcaVenue,
 } from "../api/mmca";
 import { DateTabs } from "../components/DateTabs";
-import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
 import { usePolledFetch } from "../hooks/usePolledFetch";
@@ -166,10 +165,6 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
             ))}
           </section>
         )}
-
-        <section className="mt-6">
-          <MmcaDailyLogTable venue={venue} />
-        </section>
       </main>
     </div>
   );

@@ -69,3 +69,18 @@ export async function fetchDaily(date: string): Promise<DailyLogPoint[]> {
   }
   return res.json();
 }
+
+export interface RawLogPoint {
+  observed_at: string;
+  // 서울시가 준 필드 이름 그대로. 필드 목록을 여기 박아두면 API 가 하나 늘 때마다
+  // 이 타입과 표를 같이 고쳐야 하므로, 이름을 모르는 채로 흘려보낸다.
+  fields: Record<string, string | number | null>;
+}
+
+export async function fetchDailyRaw(date: string): Promise<RawLogPoint[]> {
+  const res = await fetch(`/congestion/daily/raw?date=${date}`);
+  if (!res.ok) {
+    throw new Error(`failed to fetch raw daily congestion log: ${res.status}`);
+  }
+  return res.json();
+}

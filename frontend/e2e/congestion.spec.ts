@@ -72,7 +72,6 @@ test("renders current congestion and prediction chart from the API", async ({ pa
   await expect(page.getByText("보통")).toBeVisible();
   await expect(page.getByTestId("prediction-svg")).toBeVisible();
   await expect(page.getByTestId("history-sparkline")).toBeVisible();
-  await expect(page.getByText("09:00")).toBeVisible();
 });
 
 test("navigates from the home picker to each venue page", async ({ page }) => {
@@ -154,4 +153,149 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await page.getByRole("link", { name: "국립중앙박물관" }).click();
   await expect(page).toHaveURL(/\/venues\/national-museum$/);
   await expect(page.getByText("보통")).toBeVisible();
+});
+
+
+test("shows every collected field on the raw log page", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          observed_at: "2026-07-15T09:00:00",
+          fields: {
+            AREA_CONGEST_LVL: "여유",
+            AREA_PPLTN_MIN: 800,
+            // 파싱된 컬럼이 아니라 raw_response 에서 흘러온 필드 — 이 페이지의 존재 이유.
+            TEMP: "30.2",
+          },
+        },
+      ],
+    })
+  );
+
+  await page.goto("/logs");
+
+  // exact: 기본 부분일치라 SENSIBLE_TEMP 같은 이웃 컬럼까지 잡는다.
+  await expect(page.getByRole("columnheader", { name: "TEMP", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "30.2" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "여유" })).toBeVisible();
+});
+
+test("keeps the time column in place while the log scrolls sideways", async ({ page }) => {
+  // 43개 필드를 가로로 늘어놓으면 오른쪽 끝 값이 어느 시각의 것인지 알 수 없다.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  const fields: Record<string, string> = { AREA_CONGEST_LVL: "여유" };
+  for (let i = 0; i < 30; i++) fields[`FIELD_${i}`] = `v${i}`;
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({ json: [{ observed_at: "2026-07-15T09:00:00", fields }] })
+  );
+
+  await page.goto("/logs");
+
+  const timeCell = page.getByRole("cell", { name: "09:00" });
+  await timeCell.waitFor();
+  const before = await timeCell.boundingBox();
+
+  const scroller = page.getByTestId("log-scroll");
+  const lastColumn = page.getByRole("columnheader", { name: "FIELD_29", exact: true });
+  const lastBefore = await lastColumn.boundingBox();
+
+  await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+
+  const lastAfter = await lastColumn.boundingBox();
+  // 실제로 가로로 움직였는지 먼저 확인한다 — 안 움직였으면 아래 단언은 공짜로 통과한다.
+  expect(lastAfter!.x).toBeLessThan(lastBefore!.x - 100);
+
+  const after = await timeCell.boundingBox();
+  expect(after!.x).toBeCloseTo(before!.x, 0);
+  await expect(timeCell).toBeVisible();
+});
+
+test("keeps the time column in place in the MMCA log too", async ({ page }) => {
+  // 전시실 15개는 데스크톱 폭에서는 다 들어가지만 모바일에서는 넘친다.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  const rooms = Array.from({ length: 15 }, (_, i) => ({
+    space_code: `MMCA-SPACE-10${String(i).padStart(2, "0")}`,
+    space_nm: `${i + 1}전시실`,
+    congestion_nm: "여유",
+  }));
+
+  await page.route("**/mmca/daily*", (route) =>
+    route.fulfill({ json: [{ observed_at: "2026-07-15T09:00:00", rooms }] })
+  );
+
+  await page.goto("/logs?venue=mmca-seoul");
+
+  const timeCell = page.getByRole("cell", { name: "09:00" });
+  await timeCell.waitFor();
+  const before = await timeCell.boundingBox();
+
+  const scroller = page.getByTestId("log-scroll");
+  const lastColumn = page.getByRole("columnheader", { name: "15전시실", exact: true });
+  const lastBefore = await lastColumn.boundingBox();
+
+  await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+
+  const lastAfter = await lastColumn.boundingBox();
+  expect(lastAfter!.x).toBeLessThan(lastBefore!.x - 100);
+
+  const after = await timeCell.boundingBox();
+  expect(after!.x).toBeCloseTo(before!.x, 0);
+  await expect(timeCell).toBeVisible();
+});
+
+test("pops the column explanation right above its ⓘ, not off in a corner", async ({ page }) => {
+  // 카드에 backdrop-blur 가 걸려 있어 position: fixed 의 기준이 화면이 아니라
+  // 카드가 된다. body 로 portal 하지 않으면 좌표가 통째로 어긋나는데, jsdom 은
+  // 그 차이를 못 본다.
+  await page.clock.setFixedTime(new Date("2026-07-15T14:30:00"));
+
+  await page.route("**/congestion/daily/raw*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          observed_at: "2026-07-15T09:00:00",
+          fields: { AREA_CONGEST_LVL: "여유", RESNT_PPLTN_RATE: 45.1 },
+        },
+      ],
+    })
+  );
+
+  await page.goto("/logs");
+
+  const header = page.getByRole("columnheader", { name: "RESNT_PPLTN_RATE", exact: true });
+  await header.waitFor();
+  const icon = header.getByTestId("column-note");
+  const iconBox = (await icon.boundingBox())!;
+
+  // 머리글 전체가 아니라 ⓘ 에서만 뜬다.
+  await header.hover();
+  await expect(page.getByRole("tooltip")).toBeHidden();
+  // 네이티브 title 이 남아 있으면 우리 툴팁 뒤로 OS 가 같은 내용을 하나 더
+  // 띄운다. 그 회색 상자는 스크린샷에도 안 잡히므로 속성 자체를 막아둔다.
+  await expect(header).not.toHaveAttribute("title");
+  await expect(header.getByTestId("column-note")).not.toHaveAttribute("title");
+
+  await icon.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText(/상주인구/);
+
+  const tipBox = (await tooltip.boundingBox())!;
+  // ⓘ 바로 위에 붙어 있어야 한다 — 세로로도, 가로로도.
+  expect(Math.abs(iconBox.y - (tipBox.y + tipBox.height))).toBeLessThan(20);
+  expect(tipBox.x).toBeLessThanOrEqual(iconBox.x + 20);
+  expect(tipBox.x + tipBox.width).toBeGreaterThanOrEqual(iconBox.x);
+  // 화면 안에 온전히 들어와야 한다.
+  expect(tipBox.x).toBeGreaterThanOrEqual(0);
+  expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
 });
