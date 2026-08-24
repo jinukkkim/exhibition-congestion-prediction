@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     }
     database_url: str = "sqlite:///./congestion.db"
     redis_url: str = "redis://localhost:6379/0"
+    # Where deploy/backup_db.sh lands its snapshots. Only read here, for the
+    # freshness figure /health/collection reports — nothing writes it.
+    # Absent on dev machines, which is why that figure is nullable.
+    backup_dir: str = "/home/ubuntu/backups"
 
     model_config = SettingsConfigDict(env_file=".env")
 
