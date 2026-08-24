@@ -96,6 +96,13 @@ permanent, greppable copy in `journalctl -u cron`:
 CRON[411116]: (ubuntu) CMD (curl -fsS "https://…&token=<the actual token>…")
 ```
 
+The script `source`s that file, so it holds one shell assignment and nothing
+else:
+
+```
+DUCKDNS_TOKEN=00000000-0000-0000-0000-000000000000
+```
+
 The script also checks the response *body*. duckdns answers HTTP 200 with `KO`
 for a bad or rotated token, so `curl -f` alone reports success — verified: `curl
 -fsS` with a junk token exits 0 and writes `KO` to the log. Renewal would stop

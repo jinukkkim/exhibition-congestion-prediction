@@ -11,7 +11,7 @@
 # which no amount of care elsewhere undoes. Same treatment as .backup_par.
 set -euo pipefail
 
-DOMAIN="${DUCKDNS_DOMAIN:-exhibition-traffic}"   # public; it is in deploy/Caddyfile
+DOMAIN=exhibition-traffic   # public; it is in deploy/Caddyfile
 CONF="${CONF:-/home/ubuntu/.duckdns}"
 
 [ -r "$CONF" ] || { echo "missing $CONF — see README 'DNS'" >&2; exit 1; }
