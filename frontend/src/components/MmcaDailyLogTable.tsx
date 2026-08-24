@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { fetchMmcaDaily, type MmcaDailyLogPoint, type MmcaVenue } from "../api/mmca";
 import { shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
+import { STICKY_TIME_CELL } from "../lib/stickyTimeColumn";
 
 export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
   const [selectedDate, setSelectedDate] = useState(todayString());
@@ -53,11 +54,11 @@ export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
         <p className="px-8 py-12 text-center text-sm text-ink-soft">데이터 없음</p>
       )}
       {!error && displayRows && displayRows.length > 0 && (
-        <div className="max-h-[28rem] overflow-auto">
+        <div data-testid="log-scroll" className="max-h-[28rem] overflow-auto">
           <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="sticky top-0 z-10 bg-white/85 backdrop-blur-xl">
+            <thead className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl">
               <tr>
-                <th className="whitespace-nowrap border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                <th className={`${STICKY_TIME_CELL} z-30 border-b border-hairline/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft`}>
                   시각
                 </th>
                 {columns.map((room) => (
@@ -73,7 +74,7 @@ export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
             <tbody>
               {displayRows.map((row) => (
                 <tr key={row.observed_at} className="transition-colors hover:bg-ink/[0.03]">
-                  <td className="whitespace-nowrap border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink">
+                  <td className={`${STICKY_TIME_CELL} z-10 border-b border-hairline/40 px-4 py-2.5 font-mono tabular-nums text-ink`}>
                     {row.observed_at.slice(11, 16)}
                   </td>
                   {row.rooms.map((room) => (

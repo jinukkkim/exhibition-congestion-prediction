@@ -18,12 +18,21 @@ export interface PredictionCurvePoint {
   model: number;
 }
 
+export interface PredictionDay {
+  date: string;
+  is_holiday: boolean;
+  curve: PredictionCurvePoint[];
+}
+
 export interface PredictionResult {
   status: "collecting" | "ready";
   days_collected?: number;
   baseline_mae?: number;
   model_mae?: number;
+  // days 를 담기 전 배치가 남긴 캐시가 TTL(24시간) 안에 남아 있을 수 있고,
+  // 배포 중에도 구 백엔드 응답을 받을 수 있어 둘 다 optional 이다.
   curve?: PredictionCurvePoint[];
+  days?: PredictionDay[];
 }
 
 export async function fetchPrediction(): Promise<PredictionResult> {
@@ -57,6 +66,21 @@ export async function fetchDaily(date: string): Promise<DailyLogPoint[]> {
   const res = await fetch(`/congestion/daily?date=${date}`);
   if (!res.ok) {
     throw new Error(`failed to fetch daily congestion log: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface RawLogPoint {
+  observed_at: string;
+  // 서울시가 준 필드 이름 그대로. 필드 목록을 여기 박아두면 API 가 하나 늘 때마다
+  // 이 타입과 표를 같이 고쳐야 하므로, 이름을 모르는 채로 흘려보낸다.
+  fields: Record<string, string | number | null>;
+}
+
+export async function fetchDailyRaw(date: string): Promise<RawLogPoint[]> {
+  const res = await fetch(`/congestion/daily/raw?date=${date}`);
+  if (!res.ok) {
+    throw new Error(`failed to fetch raw daily congestion log: ${res.status}`);
   }
   return res.json();
 }

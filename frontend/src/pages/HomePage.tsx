@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { fetchCurrent } from "../api/congestion";
 import { fetchMmcaRooms } from "../api/mmca";
+import { DISABLED_MMCA_VENUES } from "../lib/mmcaDisabledRooms";
 import { statusOf } from "../lib/status";
 import { mmcaSummary, nationalMuseumSummary, type VenueSummary } from "../lib/venueSummary";
 import { VENUES } from "../venues";
@@ -87,26 +88,38 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
-        <header className="mb-12 border-b border-hairline/70 pb-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-            Exhibition · Seoul
-          </p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            전시 혼잡도 예측
-          </h1>
+        <header className="mb-12 flex items-end justify-between gap-4 border-b border-hairline/70 pb-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+              Exhibition · Seoul
+            </p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+              전시 혼잡도 예측
+            </h1>
+          </div>
+          <Link
+            to="/logs"
+            className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft transition hover:text-accent"
+          >
+            수집 원본 데이터 →
+          </Link>
         </header>
 
         <section className="grid gap-6 sm:grid-cols-2">
           {VENUES.map((venue) => {
             const summary = summaryOf(venue);
-            return (
-              <Link
-                key={venue.id}
-                to={venue.path}
-                className={`rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl transition hover:border-accent/50${
-                  summary.kind === "inactive" ? " opacity-60" : ""
-                }`}
-              >
+            // 갈 곳이 없는 관은 링크로 두지 않는다. 비활성 링크(aria-disabled)는
+            // 스크린리더가 여전히 링크로 읽어 혼란스러우므로 요소 자체를 바꾸고,
+            // 클릭 가능하다는 신호인 호버 반응도 뺀다.
+            const unreachable =
+              venue.mmcaVenue !== undefined && DISABLED_MMCA_VENUES.has(venue.mmcaVenue);
+            const className = `rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl transition${
+              unreachable ? "" : " hover:border-accent/50"
+            }${summary.kind === "inactive" ? " opacity-60" : ""}`;
+            // 컴포넌트를 렌더 안에서 만들면 매 렌더 타입이 달라져 카드가 통째로
+            // 리마운트된다 — 요소 종류만 분기한다.
+            const content = (
+              <>
                 <span className="text-xl font-semibold text-ink">{venue.name}</span>
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   {summary.kind === "inactive" && (
@@ -133,6 +146,16 @@ export function HomePage() {
                     {summary.observedAt.slice(11, 16)} 기준
                   </p>
                 )}
+              </>
+            );
+
+            return unreachable ? (
+              <div key={venue.id} className={className}>
+                {content}
+              </div>
+            ) : (
+              <Link key={venue.id} to={venue.path} className={className}>
+                {content}
               </Link>
             );
           })}

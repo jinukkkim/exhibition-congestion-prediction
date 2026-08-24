@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import fakeredis
 import pytest
@@ -103,3 +103,71 @@ def test_run_daily_batch_falls_back_to_overall_avg_for_untrained_bucket(session_
 
     assert result["status"] == "ready"
     assert math.isfinite(result["baseline_mae"])
+
+
+def test_run_daily_batch_builds_a_curve_for_today_and_the_next_six_days(session_factory):
+    from app.prediction.batch import run_daily_batch
+
+    _seed(session_factory, 20)
+
+    result = run_daily_batch(session_factory, today=date(2026, 8, 23))
+
+    assert result["status"] == "ready"
+    assert [day["date"] for day in result["days"]] == [
+        "2026-08-23",
+        "2026-08-24",
+        "2026-08-25",
+        "2026-08-26",
+        "2026-08-27",
+        "2026-08-28",
+        "2026-08-29",
+    ]
+    for day in result["days"]:
+        assert [point["hour"] for point in day["curve"]] == list(range(24))
+
+
+def test_seven_day_window_never_repeats_a_weekday(session_factory):
+    """피처가 요일·공휴일뿐이라 같은 요일이 두 번 들어오면 곡선이 그대로 중복된다."""
+    from app.prediction.batch import run_daily_batch
+
+    _seed(session_factory, 20)
+
+    result = run_daily_batch(session_factory, today=date(2026, 8, 23))
+
+    weekdays = [date.fromisoformat(day["date"]).weekday() for day in result["days"]]
+    assert sorted(weekdays) == list(range(7))
+
+
+def test_curve_field_still_holds_today(session_factory):
+    """배포 중 '구 프론트 + 신 백엔드' 구간이 curve 를 읽는다."""
+    from app.prediction.batch import run_daily_batch
+
+    _seed(session_factory, 20)
+
+    result = run_daily_batch(session_factory, today=date(2026, 8, 23))
+
+    assert result["curve"] == result["days"][0]["curve"]
+
+
+def test_holiday_flag_follows_the_calendar(session_factory):
+    """2026-10-03 은 개천절, 10-04 는 평일 일요일."""
+    from app.prediction.batch import run_daily_batch
+
+    _seed(session_factory, 20)
+
+    result = run_daily_batch(session_factory, today=date(2026, 10, 3))
+    flags = {day["date"]: day["is_holiday"] for day in result["days"]}
+
+    assert flags["2026-10-03"] is True
+    assert flags["2026-10-04"] is False
+
+
+def test_collecting_result_has_no_days(session_factory):
+    from app.prediction.batch import run_daily_batch
+
+    _seed(session_factory, 3)
+
+    result = run_daily_batch(session_factory, today=date(2026, 8, 23))
+
+    assert result["status"] == "collecting"
+    assert "days" not in result

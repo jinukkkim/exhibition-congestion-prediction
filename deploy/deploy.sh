@@ -3,8 +3,8 @@
 # it in sync with main and restart the backend.
 set -euo pipefail
 
-# The systemd unit lives on the server, not in this repo, so the port is an
-# assumption here — override if the unit ever moves off uvicorn's default.
+# Port matches deploy/exhibition-backend.service, which is where uvicorn's
+# --host/--port are actually set. Still overridable, but no longer a guess.
 # The wait budget (~30s) is likewise overridable, for whenever startup grows
 # something slower than init_db() and the scheduler.
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
