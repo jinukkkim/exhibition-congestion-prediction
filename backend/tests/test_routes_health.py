@@ -1,4 +1,6 @@
+import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import fakeredis
 import pytest
@@ -208,3 +210,67 @@ def test_an_empty_database_reads_as_stale(client):
     assert body["mmca"]["last_observed_at"] is None
     assert body["mmca"]["stale"] is True
     assert body["mmca"]["rooms_in_last_round"] == 0
+
+
+def _stamp_backup(monkeypatch, tmp_path, uploaded_at: datetime | None):
+    """Point settings at a scratch backup dir, optionally with a stamp in it.
+
+    backup_db.sh touches .last_upload only after the upload PUT returns, so its
+    mtime means "an off-box copy exists" — not "a local file exists".
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+    if uploaded_at is not None:
+        stamp = tmp_path / ".last_upload"
+        stamp.touch()
+        epoch = uploaded_at.replace(tzinfo=ZoneInfo("Asia/Seoul")).timestamp()
+        os.utime(stamp, (epoch, epoch))
+
+
+def test_backup_age_is_null_when_nothing_has_been_uploaded(client, tmp_path):
+    """Dev machines have no backup dir. That is not a failure, just an absence."""
+    test_client, session_factory, monkeypatch = client
+    _freeze(monkeypatch, OPEN_HOURS)
+    _stamp_backup(monkeypatch, tmp_path, None)
+    _add(
+        session_factory,
+        seoul=OPEN_HOURS - timedelta(minutes=4),
+        mmca=[OPEN_HOURS - timedelta(minutes=8)] * 3,
+    )
+
+    response = test_client.get("/health/collection")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["backup"] == {"last_offsite_upload_at": None, "age_hours": None}
+
+
+def test_a_stale_backup_is_reported_without_failing_the_check(client, tmp_path):
+    """The backup block deliberately does not gate the 503.
+
+    A threshold this endpoint could not satisfy is what once pinned it at a
+    permanent 503 and made the uptime monitor useless (see SEOUL_STALE_MINUTES).
+    A backup four days old is worth seeing, not worth paging for — and it must
+    not mask a genuine collection outage by sharing the same status code.
+    """
+    test_client, session_factory, monkeypatch = client
+    _freeze(monkeypatch, OPEN_HOURS)
+    _stamp_backup(monkeypatch, tmp_path, OPEN_HOURS - timedelta(hours=100))
+    _add(
+        session_factory,
+        seoul=OPEN_HOURS - timedelta(minutes=4),
+        mmca=[OPEN_HOURS - timedelta(minutes=8)] * 3,
+    )
+
+    response = test_client.get("/health/collection")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["backup"]["age_hours"] == 100.0
+    assert body["backup"]["last_offsite_upload_at"] == "2026-08-08T11:00:00"
+    # No "stale" key: sharing the name with seoul/mmca would imply it votes
+    # on the status code, which it must not.
+    assert "stale" not in body["backup"]
