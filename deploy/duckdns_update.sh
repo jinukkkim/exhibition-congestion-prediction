@@ -22,7 +22,10 @@ log() { echo "$(TZ=Asia/Seoul date -Is) $*" >&2; }
 [ -r "$CONF" ] || { log "missing $CONF — see README 'DNS renewal'"; exit 1; }
 # shellcheck source=/dev/null
 . "$CONF"
-: "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is not set in $CONF}"
+# Not `: "${DUCKDNS_TOKEN:?…}"`: that exits through bash's own message, with no
+# timestamp, which would make the claim above false for the one case most likely
+# to happen — the file present but its token line emptied during a rotation.
+[ -n "${DUCKDNS_TOKEN:-}" ] || { log "DUCKDNS_TOKEN is not set in $CONF"; exit 1; }
 
 # --config - reads the request off stdin, so the token never appears in curl's
 # argv either. It would otherwise be visible to `ps` for the life of the call.
