@@ -14,7 +14,12 @@ set -euo pipefail
 DOMAIN=exhibition-traffic   # public; it is in deploy/Caddyfile
 CONF="${CONF:-/home/ubuntu/.duckdns}"
 
-[ -r "$CONF" ] || { echo "missing $CONF — see README 'DNS renewal'" >&2; exit 1; }
+# Every failure line is stamped. Without it a log of "502" repeated fifty times
+# cannot distinguish one upstream outage from a chronic rate, which is the first
+# question anyone asks when they open this file.
+log() { echo "$(TZ=Asia/Seoul date -Is) $*" >&2; }
+
+[ -r "$CONF" ] || { log "missing $CONF — see README 'DNS renewal'"; exit 1; }
 # shellcheck source=/dev/null
 . "$CONF"
 : "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is not set in $CONF}"
@@ -22,15 +27,26 @@ CONF="${CONF:-/home/ubuntu/.duckdns}"
 # --config - reads the request off stdin, so the token never appears in curl's
 # argv either. It would otherwise be visible to `ps` for the life of the call.
 # Empty ip= tells duckdns to use the source address of this request.
-response="$(curl -fsS --max-time 30 --config - <<CURL
+#
+# --retry because duckdns returns 502 for a fifth of these calls (measured: 55
+# failures in 276 runs over 23 hours, 52 of them 502). Ten consecutive manual
+# requests during that period all returned 200, so the errors are short and
+# scattered rather than sustained outages — exactly the shape a retry absorbs.
+# curl already treats 5xx as retryable, so this needs no --retry-all-errors.
+if ! response="$(curl -fsS --retry 3 --max-time 30 --config - <<CURL
 url = "https://www.duckdns.org/update?domains=$DOMAIN&token=$DUCKDNS_TOKEN&ip="
 CURL
-)"
+)"; then
+  # curl has already printed its own reason to stderr; this adds the timestamp
+  # and says which name failed, so the log line stands on its own.
+  log "curl could not reach duckdns for $DOMAIN — see the line above"
+  exit 1
+fi
 
 # duckdns answers 200 with a body of "KO" for a bad or rotated token, so -f
 # alone would call that a success and the hostname would quietly stop being
 # renewed until it expired. The body is the only real signal here.
 if [ "$response" != "OK" ]; then
-  echo "duckdns refused the update for $DOMAIN: ${response:-<empty>}" >&2
+  log "duckdns refused the update for $DOMAIN: ${response:-<empty>}"
   exit 1
 fi

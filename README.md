@@ -111,11 +111,20 @@ and nothing would say so until the hostname expired.
 
 To rotate the token: recreate it at duckdns.org, then edit the one line in
 `/home/ubuntu/.duckdns` and run the script once by hand — it prints nothing and
-exits 0 on success. A refusal from duckdns names itself (`duckdns refused the
-update for …: KO`) and exits 1; a network failure never reaches that check, so
-it surfaces curl's own message and curl's own exit code (6, 7, 28, …) instead.
-Rotate *after* the crontab points at this script; while the token is still
-inline, recreating it breaks renewal silently.
+exits 0 on success. Every failure exits 1 behind a timestamped line naming the
+hostname, whether duckdns refused it (`duckdns refused the update for …: KO`) or
+curl never got an answer; in the latter case curl's own message sits on the line
+above, which is where the specific reason lives. Rotate *after* the crontab
+points at this script; while the token is still inline, recreating it breaks
+renewal silently.
+
+Expect failures in that log: duckdns returned 502 for roughly a fifth of these
+calls over a measured 23-hour window (55 of 276 runs, 52 of them 502), while ten
+consecutive manual requests in the same period all returned 200 — short,
+scattered upstream errors rather than outages, which is why the call retries.
+None of it threatens the hostname, which only needs one success every 30 days,
+and the log costs about 1.2MB a year at that rate. The timestamps exist so this
+question can be answered from the file instead of re-measured.
 
 ## Backups
 
