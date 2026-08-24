@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Keeps the duckdns hostname pointed at this box. Installed as a cron job on the
-# server (see README "DNS"); deploy.sh does not call it.
+# server (see README "DNS renewal"); deploy.sh does not call it.
 #
 # The token lives in a file rather than inline in the crontab because cron logs
 # every command it runs to the journal verbatim:
@@ -14,7 +14,7 @@ set -euo pipefail
 DOMAIN=exhibition-traffic   # public; it is in deploy/Caddyfile
 CONF="${CONF:-/home/ubuntu/.duckdns}"
 
-[ -r "$CONF" ] || { echo "missing $CONF — see README 'DNS'" >&2; exit 1; }
+[ -r "$CONF" ] || { echo "missing $CONF — see README 'DNS renewal'" >&2; exit 1; }
 # shellcheck source=/dev/null
 . "$CONF"
 : "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is not set in $CONF}"
