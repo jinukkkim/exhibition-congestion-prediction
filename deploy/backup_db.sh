@@ -57,11 +57,17 @@ status = dst.execute("pragma quick_check").fetchone()[0]
 if status != "ok":
     raise SystemExit(f"quick_check failed: {status}")
 
-rows = dst.execute("select count(*) from raw_congestion").fetchone()[0]
-if rows == 0:
-    raise SystemExit("raw_congestion is empty — refusing to upload")
+# Both tables, not just Seoul: quick_check catches structural damage but not a
+# table that an application bug emptied, and the MMCA readings are exactly as
+# irreplaceable as the Seoul ones.
+counts = []
+for table in ("raw_congestion", "raw_mmca_congestion"):
+    rows = dst.execute(f"select count(*) from {table}").fetchone()[0]
+    if rows == 0:
+        raise SystemExit(f"{table} is empty — refusing to upload")
+    counts.append(f"{table}={rows}")
 
-print(f"snapshot ok: {rows} seoul readings")
+print("snapshot ok: " + ", ".join(counts))
 dst.close()
 src.close()
 PY
