@@ -111,9 +111,11 @@ and nothing would say so until the hostname expired.
 
 To rotate the token: recreate it at duckdns.org, then edit the one line in
 `/home/ubuntu/.duckdns` and run the script once by hand — it prints nothing and
-exits 0 on success, or names the refusal and exits 1. Rotate *after* the crontab
-points at this script; while the token is still inline, recreating it breaks
-renewal silently.
+exits 0 on success. A refusal from duckdns names itself (`duckdns refused the
+update for …: KO`) and exits 1; a network failure never reaches that check, so
+it surfaces curl's own message and curl's own exit code (6, 7, 28, …) instead.
+Rotate *after* the crontab points at this script; while the token is still
+inline, recreating it breaks renewal silently.
 
 ## Backups
 
