@@ -2,12 +2,16 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DailyLogTable } from "../src/components/DailyLogTable";
+import { todayString } from "../src/lib/date";
 import * as api from "../src/api/congestion";
 import type { RawLogPoint } from "../src/api/congestion";
 
 // No @types/node in this project; declare just enough of the Node global to
 // read/write TZ for the timezone-pinned test below.
 declare const process: { env: Record<string, string | undefined> };
+
+// Mirrors DailyLogTable's own EARLIEST_DATE, which is module-private there.
+const EARLIEST_DATE = "2026-07-15";
 
 function makeRow(observedAt: string, congestLevel = "여유"): RawLogPoint {
   return {
@@ -176,17 +180,28 @@ describe("DailyLogTable", () => {
     await waitFor(() => screen.getByText(/데이터 없음/));
 
     const prevButton = screen.getByRole("button", { name: /이전 날짜/ });
-    const earliest = new Date("2026-07-15T00:00:00");
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const daysToEarliest = Math.round((today.getTime() - earliest.getTime()) / 86_400_000);
+    // Count the clicks from todayString() — the same Asia/Seoul source the
+    // component starts from. Deriving them from `new Date()` counted days in
+    // the runner's zone instead, and CI runs in UTC, which sits a day behind
+    // Seoul for nine hours out of every twenty-four. In that window the loop
+    // ran one click short and stopped on 2026-07-16. Parsing both ends as UTC
+    // keeps the subtraction itself free of the runner's zone.
+    //
+    // "Today" is only where the walk starts; what this test asserts is the
+    // boundary, so taking it from the component's own clock costs no
+    // independence — unlike the KST-pinned test below, where the calendar
+    // arithmetic *is* the thing under test and needs its own oracle.
+    const daysToEarliest = Math.round(
+      (Date.parse(`${todayString()}T00:00:00Z`) - Date.parse(`${EARLIEST_DATE}T00:00:00Z`)) /
+        86_400_000
+    );
 
     for (let i = 0; i < daysToEarliest; i++) {
       fireEvent.click(prevButton);
       await waitFor(() => screen.getByText(/데이터 없음/));
     }
 
-    expect(screen.getByText("2026-07-15")).toBeInTheDocument();
+    expect(screen.getByText(EARLIEST_DATE)).toBeInTheDocument();
     expect(prevButton).toBeDisabled();
   });
 
