@@ -66,7 +66,7 @@ describe("MmcaPage", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
     // 2026-07-28 은 화요일 → 18:00 폐관. 수·토 연장 규칙도 같은 줄에 적는다.
-    expect(screen.getAllByText("오늘 영업시간 10:00–18:00 (수·토는 21:00까지)")).toHaveLength(1);
+    expect(screen.getAllByText("영업시간 10:00–18:00 (수·토는 21:00까지)")).toHaveLength(1);
   });
 
   it("moves the header's business hours to the selected date", async () => {

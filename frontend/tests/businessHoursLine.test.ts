@@ -21,7 +21,7 @@ describe("businessHoursLine", () => {
 
   it("marks the today tab as today", () => {
     expect(businessHoursLine(10 * 60, 18 * 60, true)).toBe(
-      "오늘 영업시간 10:00–18:00 (수·토는 21:00까지)"
+      "영업시간 10:00–18:00 (수·토는 21:00까지)"
     );
   });
 

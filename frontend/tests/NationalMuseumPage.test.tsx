@@ -210,7 +210,7 @@ describe("NationalMuseumPage date tabs", () => {
 
     // 2026-08-20 은 목요일 → 17:30 폐관
     expect(
-      screen.getAllByText("오늘 영업시간 09:30–17:30 (수·토는 21:00까지)")
+      screen.getAllByText("영업시간 09:30–17:30 (수·토는 21:00까지)")
     ).toHaveLength(1);
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));

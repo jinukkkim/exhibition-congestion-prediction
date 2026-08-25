@@ -23,5 +23,8 @@ export function businessHoursLine(
     close === LONG_CLOSE_MINUTES
       ? "수·토 연장 운영"
       : `수·토는 ${formatMinutes(LONG_CLOSE_MINUTES)}까지`;
-  return `${isToday ? "오늘 " : ""}영업시간 ${formatMinutes(open)}–${formatMinutes(close)} (${rule})`;
+  // "오늘" 을 붙이지 않는다 — 이 줄 바로 아래 날짜 탭이 오늘 탭을 "오늘 8/25"
+  // 로 표시하므로 같은 말이 한 화면에 두 번 나온다. 휴관일 문구는 그대로 둔다:
+  // 거기서는 "오늘은" 이 영업시간이라는 말과 겹치지 않는다.
+  return `영업시간 ${formatMinutes(open)}–${formatMinutes(close)} (${rule})`;
 }
