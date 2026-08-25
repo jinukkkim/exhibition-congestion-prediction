@@ -54,20 +54,15 @@ export function NationalMuseumPage() {
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
         <header className="mb-12 border-b border-hairline/70 pb-8">
-          <div>
-            <Link
-              to="/"
-              className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
-            >
-              ← 미술관 선택
-            </Link>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-              Exhibition · Seoul
-            </p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-              {name}
-            </h1>
-          </div>
+          <Link
+            to="/"
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
+          >
+            ← 전체 보기
+          </Link>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+            {name}
+          </h1>
         </header>
 
         {(prediction.data?.days?.length ?? 0) > 0 && (

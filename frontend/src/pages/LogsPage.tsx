@@ -28,7 +28,7 @@ export function LogsPage() {
             to="/"
             className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
           >
-            ← 미술관 선택
+            ← 전체 보기
           </Link>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
             수집 원본 데이터

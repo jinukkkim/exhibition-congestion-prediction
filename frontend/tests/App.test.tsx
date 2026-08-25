@@ -82,7 +82,7 @@ describe("App routing", () => {
     visit("/venues/mmca-seoul");
     await waitFor(() => expect(document.title).toBe("국립현대미술관 서울관 · 전시 혼잡도 예측"));
 
-    fireEvent.click(screen.getByRole("link", { name: /관 선택/ }));
+    fireEvent.click(screen.getByRole("link", { name: /전체 보기/ }));
     await waitFor(() => expect(document.title).toBe("전시 혼잡도 예측"));
   });
 
