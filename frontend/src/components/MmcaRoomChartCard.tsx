@@ -2,7 +2,7 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { statusOf } from "../lib/status";
 
@@ -28,12 +28,6 @@ const MIN_GAP_MINUTES = 35;
 
 function minutesOfDay(isoString: string): number {
   return Number(isoString.slice(11, 13)) * 60 + Number(isoString.slice(14, 16));
-}
-
-function formatMinutes(minutes: number): string {
-  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
-  const mm = String(minutes % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
 }
 
 function tickLabel(minutes: number): string {
@@ -266,9 +260,7 @@ export function MmcaRoomChartCard({
 
       <div className="relative">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span

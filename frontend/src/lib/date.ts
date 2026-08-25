@@ -45,3 +45,12 @@ export function monthDayWeekday(date: string): string {
 export function upcomingDates(from: string, count: number): string[] {
   return Array.from({ length: count }, (_, offset) => shiftDate(from, offset));
 }
+
+// 하루 안의 분(0–1439)을 HH:MM 으로. 영업시간 한 줄과 두 차트의 축 눈금이 같은
+// 표기를 써야 하므로 한 곳에 둔다 — 사본이 셋이던 동안에는 하나만 고치면 헤더와
+// 축이 조용히 어긋날 수 있었다.
+export function formatMinutes(minutes: number): string {
+  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mm = String(minutes % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
