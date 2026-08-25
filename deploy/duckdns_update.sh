@@ -36,13 +36,24 @@ log() { echo "$(TZ=Asia/Seoul date -Is) $*" >&2; }
 # requests during that period all returned 200, so the errors are short and
 # scattered rather than sustained outages — exactly the shape a retry absorbs.
 # curl already treats 5xx as retryable, so this needs no --retry-all-errors.
-if ! response="$(curl -fsS --retry 3 --max-time 30 --config - <<CURL
+#
+# curl's own stderr is held back rather than let through. It prints a line for
+# every failed attempt — including the ones --retry then absorbs, because it
+# prints them before the outcome is known — so letting it reach the log filled
+# the file with complaints from runs that had in fact succeeded. Verified: one
+# request answering 502 and its retry answering 200 exits 0 and still emits
+# `curl: (22) … error: 502`. A log that reports success as failure is worse
+# than no log, so the message is only surfaced when the whole call failed.
+#
+# It cannot simply be merged with 2>&1 either: the absorbed error would then be
+# part of `$response`, and the "OK" body check below would never match.
+curl_err="$(mktemp)"
+trap 'rm -f "$curl_err"' EXIT
+if ! response="$(curl -fsS --retry 3 --max-time 30 --config - 2>"$curl_err" <<CURL
 url = "https://www.duckdns.org/update?domains=$DOMAIN&token=$DUCKDNS_TOKEN&ip="
 CURL
 )"; then
-  # curl has already printed its own reason to stderr; this adds the timestamp
-  # and says which name failed, so the log line stands on its own.
-  log "curl could not reach duckdns for $DOMAIN — see the line above"
+  log "curl could not reach duckdns for $DOMAIN: $(tr '\n' ' ' < "$curl_err")"
   exit 1
 fi
 
