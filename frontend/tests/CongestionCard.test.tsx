@@ -292,6 +292,30 @@ describe("CongestionCard", () => {
     expect(screen.queryByText("17:30")).not.toBeInTheDocument();
   });
 
+  it("names the Seoul open-data area, not the museum alone, in the card subtitle", () => {
+    // 차트가 그리는 값은 국립중앙박물관·용산가족공원 한 구역의 인구다
+    // (backend/app/config.py 의 seoul_area_name). 관 이름만 적으면 관 안의
+    // 인원처럼 읽힌다.
+    const { rerender } = render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("국립중앙박물관·용산가족공원 · 현재 혼잡도")).toBeInTheDocument();
+
+    rerender(
+      <CongestionCard data={null} daily={[]} viewDate="2026-07-13" />
+    );
+
+    expect(screen.getByText("국립중앙박물관·용산가족공원")).toBeInTheDocument();
+  });
+
   it("leaves the business-hours line to the page header instead of repeating it per card", () => {
     render(
       <CongestionCard
