@@ -25,6 +25,10 @@ export default function App() {
             진입 경로(북마크·방문기록)도 홈으로 돌려보낸다 — 홈 카드가 "서비스
             예정"으로 이유를 말한다. 수집이 재개되면 이 라우트를 되살릴 것. */}
         <Route path="/venues/mmca-deoksugung" element={<Navigate to="/" replace />} />
+        {/* 어디에도 없는 주소는 빈 #root 로 끝난다 — 오타나 옛 링크로 들어온
+            사람에게 아무것도 없는 화면과 돌아갈 링크 하나 없는 막다른 길을
+            주는 셈이다. 덕수궁관과 같은 처리로 홈에 내려놓는다. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
