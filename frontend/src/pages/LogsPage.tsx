@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { DailyLogTable } from "../components/DailyLogTable";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { DISABLED_MMCA_VENUES } from "../lib/mmcaDisabledRooms";
 import { VENUES } from "../venues";
 
@@ -12,6 +13,7 @@ const LOGGED_VENUES = VENUES.filter(
 );
 
 export function LogsPage() {
+  useDocumentTitle("수집 원본 데이터");
   const [params, setParams] = useSearchParams();
   // 관을 URL 에 둔다 — 새로고침해도, 링크를 공유해도 같은 관이 열린다.
   // 모르는 값이면 404 대신 첫 관: 오래된 링크에도 보여줄 것이 있다.
@@ -26,7 +28,7 @@ export function LogsPage() {
             to="/"
             className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
           >
-            ← 미술관 선택
+            ← 전체 보기
           </Link>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
             수집 원본 데이터

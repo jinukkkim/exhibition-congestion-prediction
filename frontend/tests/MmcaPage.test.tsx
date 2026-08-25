@@ -42,7 +42,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -60,7 +60,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -76,7 +76,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -93,7 +93,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -105,7 +105,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -124,7 +124,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -144,7 +144,7 @@ describe("MmcaPage", () => {
 
     const { unmount } = render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -162,20 +162,20 @@ describe("MmcaPage", () => {
     expect(consoleError).not.toHaveBeenCalled();
   });
 
-  it("fetches rooms and daily data for the venue prop, shows the title prop as heading", async () => {
+  it("fetches rooms and daily data for the venue prop, shows that venue name as heading", async () => {
     const fetchMmcaRooms = vi
       .spyOn(api, "fetchMmcaRooms")
       .mockResolvedValue([makeRoom({ space_code: "MMCA-SPACE-2001" })]);
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />
+        <MmcaPage venue="gwacheon" />
       </MemoryRouter>
     );
 
     await waitFor(() => expect(fetchMmcaRooms).toHaveBeenCalledWith("gwacheon"));
     expect(
-      screen.getByRole("heading", { name: "국립현대미술관 과천관 혼잡도" })
+      screen.getByRole("heading", { name: "국립현대미술관 과천관" })
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(vi.mocked(api.fetchMmcaDaily)).toHaveBeenCalledWith("gwacheon", expect.any(String))
@@ -192,7 +192,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -208,7 +208,7 @@ describe("MmcaPage", () => {
 
     const { container } = render(
       <MemoryRouter>
-        <MmcaPage venue="deoksugung" title="국립현대미술관 덕수궁관 혼잡도" />
+        <MmcaPage venue="deoksugung" />
       </MemoryRouter>
     );
 
@@ -224,7 +224,7 @@ describe("MmcaPage", () => {
 
     const { container } = render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -238,7 +238,7 @@ describe("MmcaPage", () => {
 
     const { unmount } = render(
       <MemoryRouter>
-        <MmcaPage venue="deoksugung" title="국립현대미술관 덕수궁관 혼잡도" />
+        <MmcaPage venue="deoksugung" />
       </MemoryRouter>
     );
 
@@ -255,7 +255,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -276,7 +276,7 @@ describe("MmcaPage", () => {
 
     const { container } = render(
       <MemoryRouter>
-        <MmcaPage venue="gwacheon" title="국립현대미술관 과천관 혼잡도" />
+        <MmcaPage venue="gwacheon" />
       </MemoryRouter>
     );
 
@@ -309,7 +309,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -342,7 +342,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -379,7 +379,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -397,7 +397,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -433,7 +433,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -453,7 +453,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -467,7 +467,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -500,7 +500,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -528,7 +528,7 @@ describe("MmcaPage", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -563,7 +563,7 @@ describe("MmcaPage date tabs", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -601,7 +601,7 @@ describe("MmcaPage date tabs", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
@@ -619,7 +619,7 @@ describe("MmcaPage date tabs", () => {
 
     render(
       <MemoryRouter>
-        <MmcaPage venue="seoul" title="국립현대미술관 서울관 혼잡도" />
+        <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 

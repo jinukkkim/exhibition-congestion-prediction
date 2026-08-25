@@ -9,11 +9,16 @@ import { shiftDate, todayString } from "../lib/date";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
 export function NationalMuseumPage() {
+  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  const name = VENUES.find((v) => v.id === "national-museum")!.name;
+  useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
@@ -57,24 +62,19 @@ export function NationalMuseumPage() {
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
         <header className="mb-12 border-b border-hairline/70 pb-8">
-          <div>
-            <Link
-              to="/"
-              className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
-            >
-              ← 미술관 선택
-            </Link>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-              Exhibition · Seoul
-            </p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-              전시 혼잡도 예측
-            </h1>
-            {/* 관 단위 정보 — 카드마다 반복하지 않는다. */}
-            <p className="mt-3 text-sm text-ink-soft">
-              {businessHoursLine(open, close, selectedDate === today)}
-            </p>
-          </div>
+          <Link
+            to="/"
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
+          >
+            ← 전체 보기
+          </Link>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+            {name}
+          </h1>
+          {/* 관 단위 정보 — 카드마다 반복하지 않는다. */}
+          <p className="mt-3 text-sm text-ink-soft">
+            {businessHoursLine(open, close, selectedDate === today)}
+          </p>
         </header>
 
         {(prediction.data?.days?.length ?? 0) > 0 && (

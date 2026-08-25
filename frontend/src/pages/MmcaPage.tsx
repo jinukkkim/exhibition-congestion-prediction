@@ -11,16 +11,22 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
+import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
 const COLLECTION_START_DELAY_MINUTES = 10;
 
-export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
+export function MmcaPage({ venue }: { venue: MmcaVenue }) {
+  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  // MmcaVenue 는 셋 다 VENUES 에 있으므로 못 찾는 경우는 없다.
+  const name = VENUES.find((v) => v.mmcaVenue === venue)!.name;
+  useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
@@ -122,10 +128,10 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
             to="/"
             className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
           >
-            ← 미술관 선택
+            ← 전체 보기
           </Link>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            {title}
+            {name}
           </h1>
           {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
           <p className="mt-3 text-sm text-ink-soft">

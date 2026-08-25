@@ -132,7 +132,7 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await expect(page).toHaveURL(/\/venues\/mmca-seoul$/);
   await expect(page.getByText("1전시실")).toBeVisible();
 
-  await page.getByRole("link", { name: "← 미술관 선택" }).click();
+  await page.getByRole("link", { name: "← 전체 보기" }).click();
   await expect(page).toHaveURL(/\/$/);
 
   await page.getByRole("link", { name: "국립현대미술관 과천관" }).click();
@@ -142,7 +142,7 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   // so every venue page now renders exactly one chart card.
   await expect(page.getByTestId("mmca-room-chart")).toHaveCount(1);
 
-  await page.getByRole("link", { name: "← 미술관 선택" }).click();
+  await page.getByRole("link", { name: "← 전체 보기" }).click();
   await expect(page).toHaveURL(/\/$/);
 
   // 북마크로 남아 있을 수 있는 덕수궁관 주소는 홈으로 돌려보낸다.

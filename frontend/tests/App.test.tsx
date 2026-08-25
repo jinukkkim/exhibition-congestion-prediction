@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as congestionApi from "../src/api/congestion";
@@ -69,15 +69,40 @@ describe("App routing", () => {
     await waitFor(() => expect(screen.getByText("전시 혼잡도 예측")).toBeInTheDocument());
     expect(window.location.pathname).toBe("/");
     expect(screen.getByText("서비스 예정")).toBeInTheDocument();
-    expect(screen.queryByText("국립현대미술관 덕수궁관 혼잡도")).not.toBeInTheDocument();
+    // 덕수궁관 카드가 홈에 이름 그대로 있으므로, 상세 페이지가 아니라는 것은
+    // heading 으로만 물을 수 있다.
+    expect(
+      screen.queryByRole("heading", { name: "국립현대미술관 덕수궁관" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives each route its own document title and updates it on navigation", async () => {
+    // 클라이언트 라우팅이라 제목은 저절로 바뀌지 않는다 — 탭·북마크·방문기록이
+    // 라우트마다 구분되려면 각 페이지가 자기 제목을 써야 한다.
+    visit("/venues/mmca-seoul");
+    await waitFor(() => expect(document.title).toBe("국립현대미술관 서울관 · 전시 혼잡도 예측"));
+
+    fireEvent.click(screen.getByRole("link", { name: /전체 보기/ }));
+    await waitFor(() => expect(document.title).toBe("전시 혼잡도 예측"));
   });
 
   it("still routes the other MMCA venues to their own page", async () => {
     visit("/venues/mmca-seoul");
 
     await waitFor(() =>
-      expect(screen.getByText("국립현대미술관 서울관 혼잡도")).toBeInTheDocument()
+      expect(
+        screen.getByRole("heading", { name: "국립현대미술관 서울관" })
+      ).toBeInTheDocument()
     );
     expect(window.location.pathname).toBe("/venues/mmca-seoul");
+  });
+
+  it("sends an address that matches no route back to the picker", async () => {
+    // 맞는 라우트가 하나도 없으면 Routes 는 아무것도 그리지 않는다 — 오타 하나,
+    // 옛 링크 하나로 #root 가 통째로 비고 돌아갈 링크조차 남지 않는다.
+    visit("/venues/does-not-exist");
+
+    await waitFor(() => expect(screen.getByText("전시 혼잡도 예측")).toBeInTheDocument());
+    expect(window.location.pathname).toBe("/");
   });
 });

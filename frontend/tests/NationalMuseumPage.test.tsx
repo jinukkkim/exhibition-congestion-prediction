@@ -60,6 +60,16 @@ describe("NationalMuseumPage", () => {
     );
   }
 
+  it("names the venue in the heading, without the home page branding", async () => {
+    // 홈과 글자 하나까지 같은 h1 을 쓰던 탓에 상세 페이지가 어느 관인지 말하지
+    // 못했다. eyebrow 도 홈의 브랜딩이라 다른 상세 페이지에는 없다.
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "국립중앙박물관" })).toBeInTheDocument();
+    expect(screen.queryByText("전시 혼잡도 예측")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exhibition · Seoul")).not.toBeInTheDocument();
+  });
+
   it("renders the current level once loaded", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("보통")).toBeInTheDocument());
