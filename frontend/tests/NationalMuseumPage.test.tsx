@@ -210,8 +210,7 @@ describe("NationalMuseumPage date tabs", () => {
 
   it("shows the business hours once in the header and moves them to the selected date", async () => {
     // 영업시간은 관 단위 값이라 카드가 아니라 헤더에 한 줄만 둔다. 수·토는
-    // 21:00 폐관이므로 탭을 옮기면 값이 바뀌고, 그날이 이미 토요일이면 21:00 을
-    // 두 번 적지 않는다.
+    // 21:00 폐관이므로 탭을 옮기면 날짜와 시간이 함께 바뀐다.
     render(
       <MemoryRouter>
         <NationalMuseumPage />
@@ -220,14 +219,14 @@ describe("NationalMuseumPage date tabs", () => {
 
     // 2026-08-20 은 목요일 → 17:30 폐관
     expect(
-      screen.getAllByText("영업시간 09:30–17:30 (수·토는 21:00까지)")
+      screen.getAllByText("8/20(목) 영업시간 09:30–17:30")
     ).toHaveLength(1);
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
     fireEvent.click(screen.getByRole("tab", { name: "토 8/22" }));
 
     await waitFor(() =>
-      expect(screen.getByText("영업시간 09:30–21:00 (수·토 연장 운영)")).toBeInTheDocument()
+      expect(screen.getByText("8/22(토) 영업시간 09:30–21:00")).toBeInTheDocument()
     );
   });
 

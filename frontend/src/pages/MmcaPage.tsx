@@ -135,7 +135,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           </h1>
           {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
           <p className="mt-3 text-sm text-ink-soft">
-            {businessHoursLine(open, close, isTodayTab, isOpenToday)}
+            {businessHoursLine(selectedDate, open, close, isOpenToday)}
           </p>
         </header>
 

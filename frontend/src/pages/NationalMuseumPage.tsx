@@ -73,7 +73,7 @@ export function NationalMuseumPage() {
           </h1>
           {/* 관 단위 정보 — 카드마다 반복하지 않는다. */}
           <p className="mt-3 text-sm text-ink-soft">
-            {businessHoursLine(open, close, selectedDate === today)}
+            {businessHoursLine(selectedDate, open, close)}
           </p>
         </header>
 

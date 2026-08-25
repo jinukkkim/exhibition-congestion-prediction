@@ -65,13 +65,12 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
-    // 2026-07-28 은 화요일 → 18:00 폐관. 수·토 연장 규칙도 같은 줄에 적는다.
-    expect(screen.getAllByText("영업시간 10:00–18:00 (수·토는 21:00까지)")).toHaveLength(1);
+    // 2026-07-28 은 화요일 → 18:00 폐관. 줄이 스스로 어느 날인지 말한다.
+    expect(screen.getAllByText("7/28(화) 영업시간 10:00–18:00")).toHaveLength(1);
   });
 
   it("moves the header's business hours to the selected date", async () => {
-    // 수·토는 21:00 폐관 — 탭을 옮기면 헤더도 따라가야 한다. 그날이 이미 수·토면
-    // 21:00 을 두 번 적지 않는다.
+    // 수·토는 21:00 폐관 — 탭을 옮기면 헤더의 날짜와 시간이 함께 따라가야 한다.
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
     render(
@@ -84,7 +83,7 @@ describe("MmcaPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "수 7/29" }));
 
     await waitFor(() =>
-      expect(screen.getByText("영업시간 10:00–21:00 (수·토 연장 운영)")).toBeInTheDocument()
+      expect(screen.getByText("7/29(수) 영업시간 10:00–21:00")).toBeInTheDocument()
     );
   });
 
@@ -247,7 +246,7 @@ describe("MmcaPage", () => {
     // congestion_nm the rooms endpoint still returns. The label says why.
     await waitFor(() => expect(screen.getByText("휴관일")).toBeInTheDocument());
     // 휴관 안내도 관 단위 정보다 — 헤더가 시간을 주장하지 않고 휴관을 알린다.
-    expect(screen.getByText("오늘은 휴관일입니다")).toBeInTheDocument();
+    expect(screen.getByText("7/27(월) 휴관일입니다")).toBeInTheDocument();
     expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
     expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
@@ -260,7 +259,7 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
-    expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+    expect(screen.queryByText(/휴관일입니다/)).not.toBeInTheDocument();
   });
 
   it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
