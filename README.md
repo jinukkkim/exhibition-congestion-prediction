@@ -119,13 +119,12 @@ empty. Rotate *after* the crontab
 points at this script; while the token is still inline, recreating it breaks
 renewal silently.
 
-Expect failures in that log: duckdns returned 502 for roughly a fifth of these
-calls over a measured 23-hour window (55 of 276 runs, 52 of them 502), while ten
-consecutive manual requests in the same period all returned 200 — short,
-scattered upstream errors rather than outages, which is why the call retries.
-None of it threatens the hostname, which only needs one success every 30 days,
-and the log costs about 1.2MB a year at that rate. The timestamps exist so this
-question can be answered from the file instead of re-measured.
+A line in that log means a renewal actually failed. duckdns returned 502 for
+roughly a fifth of these calls over a measured 23-hour window (55 of 276 runs,
+52 of them 502), which is why the call retries — and curl prints a line for each
+failed attempt even when the retry then succeeds, so its stderr is held back and
+only surfaced if the whole call failed. Nothing threatens the hostname either
+way: it needs one success every 30 days and gets a few hundred.
 
 ## Backups
 
