@@ -80,4 +80,13 @@ describe("App routing", () => {
     );
     expect(window.location.pathname).toBe("/venues/mmca-seoul");
   });
+
+  it("sends an address that matches no route back to the picker", async () => {
+    // 맞는 라우트가 하나도 없으면 Routes 는 아무것도 그리지 않는다 — 오타 하나,
+    // 옛 링크 하나로 #root 가 통째로 비고 돌아갈 링크조차 남지 않는다.
+    visit("/venues/does-not-exist");
+
+    await waitFor(() => expect(screen.getByText("전시 혼잡도 예측")).toBeInTheDocument());
+    expect(window.location.pathname).toBe("/");
+  });
 });
