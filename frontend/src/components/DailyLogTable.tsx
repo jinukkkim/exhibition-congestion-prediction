@@ -6,8 +6,11 @@ import { fetchDailyRaw, type RawLogPoint } from "../api/congestion";
 import { statusOf } from "../lib/status";
 import { SEOUL_FIELD_NOTES } from "../lib/seoulFieldNotes";
 import { STICKY_TIME_CELL } from "../lib/stickyTimeColumn";
+import { VENUES } from "../venues";
 
-const EARLIEST_DATE = "2026-07-15"; // first day the collector started storing readings
+// 이 표는 국립중앙박물관 전용이다. 수집 시작일은 관마다 다르므로
+// venues.ts 한 곳에서 읽는다.
+const EARLIEST_DATE = VENUES.find((venue) => venue.id === "national-museum")?.earliestDate;
 
 // 컬럼을 여기 나열하지 않는다 — 응답에 실제로 들어 있는 필드 이름이 그대로
 // 헤더가 되므로, 서울시가 필드를 늘리면 코드를 안 고쳐도 표에 나타난다.
@@ -84,7 +87,7 @@ export function DailyLogTable() {
   }, [selectedDate]);
 
   const isToday = selectedDate === todayString();
-  const isEarliest = selectedDate <= EARLIEST_DATE;
+  const isEarliest = EARLIEST_DATE !== undefined && selectedDate <= EARLIEST_DATE;
   // 하루치가 288행 × 44열이라 본문만 12,000 셀이 넘는다. 머리글에 마우스를
   // 올릴 때마다 그걸 통째로 다시 그리지 않도록 행·열과 본문을 memo 로 묶는다
   // (툴팁 상태만 바뀌면 머리글과 툴팁만 다시 그려진다).

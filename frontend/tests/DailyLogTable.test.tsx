@@ -10,8 +10,10 @@ import type { RawLogPoint } from "../src/api/congestion";
 // read/write TZ for the timezone-pinned test below.
 declare const process: { env: Record<string, string | undefined> };
 
-// Mirrors DailyLogTable's own EARLIEST_DATE, which is module-private there.
-const EARLIEST_DATE = "2026-07-15";
+// Mirrors the national-museum earliestDate in venues.ts. Written out by hand
+// rather than imported: reading it from the source under test would let a wrong
+// value there agree with itself and pass.
+const EARLIEST_DATE = "2026-07-16";
 
 function makeRow(observedAt: string, congestLevel = "여유"): RawLogPoint {
   return {
@@ -184,7 +186,7 @@ describe("DailyLogTable", () => {
     // component starts from. Deriving them from `new Date()` counted days in
     // the runner's zone instead, and CI runs in UTC, which sits a day behind
     // Seoul for nine hours out of every twenty-four. In that window the loop
-    // ran one click short and stopped on 2026-07-16. Parsing both ends as UTC
+    // ran one click short and stopped a day after EARLIEST_DATE. Parsing as UTC
     // keeps the subtraction itself free of the runner's zone.
     //
     // "Today" is only where the walk starts; what this test asserts is the
@@ -221,7 +223,7 @@ describe("DailyLogTable", () => {
     await waitFor(() => expect(fetchRawMock).toHaveBeenCalledTimes(2));
 
     // The newer (second) request resolves first...
-    resolveSecond([makeRow("2026-07-15T05:00:00")]);
+    resolveSecond([makeRow("2026-07-16T05:00:00")]);
     await waitFor(() => expect(screen.getByText("05:00")).toBeInTheDocument());
 
     // ...then the stale (first) request resolves late. It must be ignored.
