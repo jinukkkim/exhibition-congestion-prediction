@@ -69,14 +69,20 @@ describe("App routing", () => {
     await waitFor(() => expect(screen.getByText("전시 혼잡도 예측")).toBeInTheDocument());
     expect(window.location.pathname).toBe("/");
     expect(screen.getByText("서비스 예정")).toBeInTheDocument();
-    expect(screen.queryByText("국립현대미술관 덕수궁관 혼잡도")).not.toBeInTheDocument();
+    // 덕수궁관 카드가 홈에 이름 그대로 있으므로, 상세 페이지가 아니라는 것은
+    // heading 으로만 물을 수 있다.
+    expect(
+      screen.queryByRole("heading", { name: "국립현대미술관 덕수궁관" })
+    ).not.toBeInTheDocument();
   });
 
   it("still routes the other MMCA venues to their own page", async () => {
     visit("/venues/mmca-seoul");
 
     await waitFor(() =>
-      expect(screen.getByText("국립현대미술관 서울관 혼잡도")).toBeInTheDocument()
+      expect(
+        screen.getByRole("heading", { name: "국립현대미술관 서울관" })
+      ).toBeInTheDocument()
     );
     expect(window.location.pathname).toBe("/venues/mmca-seoul");
   });

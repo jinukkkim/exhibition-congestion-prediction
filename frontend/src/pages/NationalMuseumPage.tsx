@@ -8,10 +8,13 @@ import { shiftDate, todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
 export function NationalMuseumPage() {
+  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  const name = VENUES.find((v) => v.id === "national-museum")!.name;
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
@@ -60,7 +63,7 @@ export function NationalMuseumPage() {
               Exhibition · Seoul
             </p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-              전시 혼잡도 예측
+              {name}
             </h1>
           </div>
         </header>
