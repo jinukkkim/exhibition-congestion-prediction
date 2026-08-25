@@ -11,6 +11,7 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
@@ -24,6 +25,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
   // MmcaVenue 는 셋 다 VENUES 에 있으므로 못 찾는 경우는 없다.
   const name = VENUES.find((v) => v.mmcaVenue === venue)!.name;
+  useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 

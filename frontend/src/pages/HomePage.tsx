@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchCurrent } from "../api/congestion";
 import { fetchMmcaRooms } from "../api/mmca";
 import { DISABLED_MMCA_VENUES } from "../lib/mmcaDisabledRooms";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { statusOf } from "../lib/status";
 import { mmcaSummary, nationalMuseumSummary, type VenueSummary } from "../lib/venueSummary";
 import { VENUES } from "../venues";
@@ -26,6 +27,7 @@ function LevelText({ level, count }: { level: string; count?: number }) {
 }
 
 export function HomePage() {
+  useDocumentTitle();
   const [summaries, setSummaries] = useState<Record<string, VenueSummary>>({});
   // 폴링은 이전 tick의 요청을 취소하지 않는다. tick N의 응답이 tick N+1보다 늦게
   // 도착하면 화면이 과거 값으로 되돌아가므로, 발사 시점의 tick 번호를 들고 있다가

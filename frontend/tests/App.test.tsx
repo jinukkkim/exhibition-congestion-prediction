@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as congestionApi from "../src/api/congestion";
@@ -74,6 +74,16 @@ describe("App routing", () => {
     expect(
       screen.queryByRole("heading", { name: "국립현대미술관 덕수궁관" })
     ).not.toBeInTheDocument();
+  });
+
+  it("gives each route its own document title and updates it on navigation", async () => {
+    // 클라이언트 라우팅이라 제목은 저절로 바뀌지 않는다 — 탭·북마크·방문기록이
+    // 라우트마다 구분되려면 각 페이지가 자기 제목을 써야 한다.
+    visit("/venues/mmca-seoul");
+    await waitFor(() => expect(document.title).toBe("국립현대미술관 서울관 · 전시 혼잡도 예측"));
+
+    fireEvent.click(screen.getByRole("link", { name: /관 선택/ }));
+    await waitFor(() => expect(document.title).toBe("전시 혼잡도 예측"));
   });
 
   it("still routes the other MMCA venues to their own page", async () => {
