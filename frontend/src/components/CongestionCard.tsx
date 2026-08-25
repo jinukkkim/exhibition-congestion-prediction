@@ -3,7 +3,7 @@ import { useRef, useState, type MouseEvent } from "react";
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
-import { SEOUL_STALE_MINUTES, isStale } from "../lib/freshness";
+import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { statusOf } from "../lib/status";
 
@@ -356,7 +356,7 @@ export function CongestionCard({
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-                style={{ backgroundColor: isLive ? status.core : "#C7C7CC" }}
+                style={{ backgroundColor: freshnessDotColor(isOpen, stale) }}
               />
               {openBadge}
             </span>

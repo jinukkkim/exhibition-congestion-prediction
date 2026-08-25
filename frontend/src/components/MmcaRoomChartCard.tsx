@@ -3,7 +3,7 @@ import { useRef, useState, type MouseEvent } from "react";
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
-import { MMCA_STALE_MINUTES, isStale } from "../lib/freshness";
+import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
@@ -273,7 +273,7 @@ export function MmcaRoomChartCard({
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-                style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
+                style={{ backgroundColor: freshnessDotColor(isOpen, stale) }}
               />
               {openBadge}
             </span>

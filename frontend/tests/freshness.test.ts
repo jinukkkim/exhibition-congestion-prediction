@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { MMCA_STALE_MINUTES, SEOUL_STALE_MINUTES, isStale } from "../src/lib/freshness";
+import {
+  MMCA_STALE_MINUTES,
+  SEOUL_STALE_MINUTES,
+  freshnessDotColor,
+  isStale,
+} from "../src/lib/freshness";
 
 const NOW = new Date("2026-08-22T14:00:00");
 
@@ -35,5 +40,20 @@ describe("thresholds", () => {
     // 그 여유가 필요 없다. backend/app/routes/health.py 의 짝과 같은 값.
     expect(SEOUL_STALE_MINUTES).toBe(45);
     expect(MMCA_STALE_MINUTES).toBe(25);
+  });
+});
+
+describe("freshnessDotColor", () => {
+  it("says live or delayed with a fixed color, not the congestion color", () => {
+    // 점은 신선도 한 축만 담당한다 — 혼잡도가 "붐빔"이어도 값이 신선하면 초록이다.
+    // 예전에는 status.core 를 써서 같은 점이 두 가지를 동시에 뜻했다.
+    expect(freshnessDotColor(true, false)).toBe("#34C759");
+    expect(freshnessDotColor(true, true)).toBe("#FF9F0A");
+  });
+
+  it("stays grey outside business hours", () => {
+    // 영업 전·종료·휴관일에는 주장할 신선도가 없다. 낡았든 아니든 회색이다.
+    expect(freshnessDotColor(false, true)).toBe("#C7C7CC");
+    expect(freshnessDotColor(false, false)).toBe("#C7C7CC");
   });
 });
