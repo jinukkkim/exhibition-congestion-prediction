@@ -349,9 +349,7 @@ export function CongestionCard({
                 적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. 지나간 날의
                 기록에는 해당하지 않는다. */}
             {isTodayView && (
-              <p className="mt-0.5 text-[11px] text-ink-soft/70">
-                서울시 실시간 도시데이터 제공 특성상 약 30분 지연된 측정값
-              </p>
+              <p className="mt-1 text-[11px] text-ink-soft/70">30분 지연됨</p>
             )}
           </div>
           {isTodayView && (

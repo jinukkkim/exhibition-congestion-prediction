@@ -174,7 +174,7 @@ describe("CongestionCard", () => {
       />
     );
 
-    expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
+    expect(screen.getByText("30분 지연됨")).toBeInTheDocument();
   });
 
   it("says the museum is closed rather than loading when the clock already answers", () => {
