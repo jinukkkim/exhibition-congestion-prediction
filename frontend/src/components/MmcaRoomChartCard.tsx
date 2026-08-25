@@ -268,13 +268,6 @@ export function MmcaRoomChartCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
-            <p className="mt-1 text-[11px] text-ink-soft/70">
-              {isOpenToday
-                ? `${isTodayView ? "오늘 " : ""}영업시간 ${formatMinutes(open)}–${formatMinutes(close)}`
-                : isTodayView
-                  ? "오늘은 휴관일입니다"
-                  : "휴관일입니다"}
-            </p>
           </div>
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">

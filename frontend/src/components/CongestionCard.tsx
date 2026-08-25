@@ -343,9 +343,6 @@ export function CongestionCard({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
               {isTodayView ? "국립중앙박물관 · 현재 혼잡도" : "국립중앙박물관"}
             </p>
-            <p className="mt-1 text-[11px] text-ink-soft/70">
-              {isTodayView ? "오늘 " : ""}영업시간 {formatMinutes(open)}–{formatMinutes(close)}
-            </p>
             {/* 기준 시각이 현재보다 한참 이전인 것이 정상이라는 사실을 옆에
                 적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. 지나간 날의
                 기록에는 해당하지 않는다. */}

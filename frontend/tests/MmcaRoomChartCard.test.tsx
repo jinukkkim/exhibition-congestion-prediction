@@ -82,11 +82,28 @@ describe("MmcaRoomChartCard", () => {
 
     // A closed weekly day (e.g. Deoksugung on Monday) is not the same thing
     // as "outside hours today" — it must not claim hours it doesn't have.
+    // (관 단위 휴관 안내 한 줄은 페이지 헤더가 맡는다 — MmcaPage.test.tsx.)
     expect(screen.getByText("휴관일입니다")).toBeInTheDocument();
     expect(screen.getByText("휴관일")).toBeInTheDocument();
-    expect(screen.getByText("오늘은 휴관일입니다")).toBeInTheDocument();
-    expect(screen.queryByText(/오늘 영업시간/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
     expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
+  });
+
+  it("leaves the business-hours line to the page header instead of repeating it per room", () => {
+    // 영업시간은 관 단위 값이라 방마다 같은 줄이 반복됐다.
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
   });
 
   it("falls back to the space code as the title when the room has no name yet", () => {

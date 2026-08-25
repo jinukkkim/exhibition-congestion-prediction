@@ -274,8 +274,11 @@ describe("CongestionCard", () => {
       />
     );
 
-    // 오늘이 아니므로 "오늘"을 붙이지 않는다
-    expect(screen.getByText("영업시간 09:30–17:30")).toBeInTheDocument();
+    // 영업시간 문구는 페이지 헤더로 옮겼으므로, 축이 실제로 그 날짜의 폐관
+    // 시각을 쓰는지는 x 축 끝 눈금으로 확인한다 (17:30 은 반시간이라 HH:MM,
+    // 21:00 은 정시라 "21").
+    expect(screen.getByText("17:30")).toBeInTheDocument();
+    expect(screen.queryByText("21")).not.toBeInTheDocument();
 
     rerender(
       <CongestionCard
@@ -285,7 +288,23 @@ describe("CongestionCard", () => {
       />
     );
 
-    expect(screen.getByText("영업시간 09:30–21:00")).toBeInTheDocument();
+    expect(screen.getByText("21")).toBeInTheDocument();
+    expect(screen.queryByText("17:30")).not.toBeInTheDocument();
+  });
+
+  it("leaves the business-hours line to the page header instead of repeating it per card", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
   });
 
   it("renders a loading state when data is null", () => {

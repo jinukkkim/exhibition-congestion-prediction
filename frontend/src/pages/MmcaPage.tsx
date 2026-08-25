@@ -12,6 +12,7 @@ import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
@@ -68,6 +69,9 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00 폐관이라 요일에 따라
   // 축의 오른쪽 끝이 달라진다. (D 와 D-7 은 같은 요일이라 결과는 같지만,
   // 그리는 날짜를 기준으로 두는 편이 읽기에 분명하다.)
+  // 헤더의 영업시간 한 줄도 이 값을 그대로 쓴다: chartDate 는 selectedDate 이거나
+  // 그 -7 일이고 -7 은 요일을 보존하므로, 고른 날짜의 영업시간·휴관 여부와 항상
+  // 같다. 두 번 계산할 이유가 없다.
   const { open, close, isOpenToday } = mmcaBusinessHours(
     venue,
     isTodayTab ? now : new Date(`${chartDate}T00:00:00`)
@@ -123,6 +127,10 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
             {title}
           </h1>
+          {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
+          <p className="mt-3 text-sm text-ink-soft">
+            {businessHoursLine(open, close, isTodayTab, isOpenToday)}
+          </p>
         </header>
 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
