@@ -41,3 +41,20 @@ def set_prediction(result: dict) -> None:
 def get_prediction() -> dict | None:
     raw = r.get(PREDICTION_KEY)
     return json.loads(raw) if raw else None
+
+
+# 오늘 곡선은 최근 120분 실측에 매달려 있어 판독마다 바뀐다. 프론트가 60초로
+# 폴링하므로(MmcaPage 의 POLL_INTERVAL_MS) TTL 도 60초로 맞춘다 — 수집 주기인
+# 600초로 잡으면 새 판독이 들어와도 최대 10분간 곡선이 안 움직인다.
+MMCA_PREDICTION_TTL_TODAY_SECONDS = 60
+# 미래 날짜는 편차가 없어 하루 안에서 정적이다.
+MMCA_PREDICTION_TTL_FUTURE_SECONDS = 3600
+
+
+def set_mmca_prediction(venue: str, day: str, payload: list[dict], ttl: int) -> None:
+    r.set(f"mmca:prediction:{venue}:{day}", json.dumps(payload), ex=ttl)
+
+
+def get_mmca_prediction(venue: str, day: str) -> list[dict] | None:
+    raw = r.get(f"mmca:prediction:{venue}:{day}")
+    return json.loads(raw) if raw else None
