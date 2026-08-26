@@ -11,12 +11,18 @@ app/prediction/mmca.py 의 네 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTE
 
   python scripts/backtest_mmca_prediction.py [congestion.db]
 
-CI 에 넣지 않는다 — 프로덕션 스냅샷이 필요하고 실행이 길다.
+CI 에 넣지 않는다 — git 에 없는 220MB 프로덕션 스냅샷에 의존한다. 실행 자체는
+1.5초쯤이라 느려서가 아니다.
+
+커버하지 않는 것: 스펙의 "오전 10-12시 고정" 행. 그건 `anchor_minutes` 로
+표현할 수 없는 형태(고정 시각 창)이고 후보가 아니라 일회성 탐색이었다 —
+일부러 뺐다. "오늘 전체" 는 `anchor=660` 으로 대신한다: 가장 긴 영업일보다
+길어서 사실상 개장~현재 전체가 된다.
 """
 
 import sqlite3
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -99,19 +105,13 @@ def evaluate(
         ranks = {r.observed_at: CONGESTION_RANKS[r.congestion_nm] for r in readings}
         for i, reading in enumerate(readings):
             now = reading.observed_at
-            shift = 0.0
-            if use_shift:
-                shifts = today_shift(profile, readings[: i + 1], now, anchor_minutes=anchor)
-                if code not in shifts:
-                    # 앵커 관측이 모자라거나 프로파일 셀이 없다 — 스킵해서
-                    # 변형끼리 같은 표본을 비교하게 한다.
-                    continue
-                shift = shifts[code]
-            elif not any(
-                (code, day.weekday(), r.observed_at.hour) in profile
-                for r in readings[: i + 1]
-            ):
+            shifts = today_shift(profile, readings[: i + 1], now, anchor_minutes=anchor)
+            if code not in shifts:
+                # 앵커 관측이 모자라거나 프로파일 셀이 없다. 게이트는 두 변형에
+                # 똑같이 걸어야 한다 — 표본이 다르면 보정 있음/없음 비교가
+                # 근거가 아니라 인상이 된다.
                 continue
+            shift = shifts[code] if use_shift else 0.0
             current = ranks[now]
             for horizon in HORIZONS:
                 target = now + timedelta(minutes=horizon)
@@ -126,21 +126,37 @@ def evaluate(
 
 
 def sweep(data, days, starts, label: str, variants: list[tuple[str, dict]]) -> None:
+    """변형별로 창마다의 정확도 + 합계를 찍는다.
+
+    창별 수치를 찍는 이유: 롤링 오리진의 요점이 "어떤 결론도 한 창에 기대지
+    않는다" 인데 여기 마진은 0.2~0.6%p 다. 합계만 찍으면 5창 중 2창에서만 이긴
+    변형과 5창 전부에서 이긴 변형이 같아 보인다 — 근거의 강도가 사라진다.
+    """
     print(f"\n{label}")
-    print(f"  {'변형':<14}{'정확도':>10}{'MAE':>8}{'n':>9}")
+    columns = "".join(f"{f'창{k}':>7}" for k in range(1, len(starts) + 1))
+    print(f"  {'변형':<14}{columns}{'합계':>9}{'MAE':>8}{'n':>9}")
+
+    by_window: dict[str, list[float | None]] = {}
     for name, kwargs in variants:
-        total = [0, 0, 0.0]
-        for start in starts:
-            got = evaluate(data, days, start, **kwargs)
-            if not got:
-                continue
-            total[0] += got[0]
-            total[1] += got[1]
-            total[2] += got[2]
-        if not total[0]:
-            print(f"  {name:<14}{'측정 불가':>10}")
+        results = [evaluate(data, days, start, **kwargs) for start in starts]
+        by_window[name] = [None if not r else r[1] / r[0] for r in results]
+        got = [r for r in results if r]
+        if not got:
+            print(f"  {name:<14}{'측정 불가':>9}")
             continue
-        print(f"  {name:<14}{total[1] / total[0]:>9.1%}{total[2] / total[0]:>8.2f}{total[0]:>9}")
+        n = sum(r[0] for r in got)
+        cells = "".join(f"{'-':>7}" if a is None else f"{a:>7.1%}" for a in by_window[name])
+        accuracy = sum(r[1] for r in got) / n
+        print(f"  {name:<14}{cells}{accuracy:>9.1%}{sum(r[2] for r in got) / n:>8.2f}{n:>9}")
+
+    # 동점이면 variants 순서상 앞선 쪽이 가져간다 — 마진이 0.1%p 미만인 창은
+    # 어차피 근거로 쓸 수 없다.
+    wins = Counter()
+    for k in range(len(starts)):
+        column = {name: a[k] for name, a in by_window.items() if a[k] is not None}
+        if column:
+            wins[max(column, key=lambda name: column[name])] += 1
+    print("  창별 승리: " + ", ".join(f"{n} {c}/{len(starts)}" for n, c in wins.most_common()))
 
 
 def main() -> None:
@@ -154,7 +170,7 @@ def main() -> None:
         ("최근 60분", {"anchor": 60}),
         ("최근 120분", {"anchor": 120}),
         ("최근 240분", {"anchor": 240}),
-        # "오늘 전체" 는 아주 큰 창으로 흉내낸다 — 영업시간이 최대 11시간이다.
+        # "오늘 전체" 대신 660분 — 가장 긴 영업일보다 길어서 같은 값이 된다.
         ("오늘 전체", {"anchor": 660}),
     ])
     sweep(data, days, starts, "② 학습 창", [
