@@ -2,8 +2,8 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
-import { SEOUL_STALE_MINUTES, isStale } from "../lib/freshness";
+import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { statusOf } from "../lib/status";
 
@@ -12,12 +12,6 @@ const SPARKLINE_HEIGHT = 200;
 
 function minutesOfDay(isoString: string): number {
   return Number(isoString.slice(11, 13)) * 60 + Number(isoString.slice(14, 16));
-}
-
-function formatMinutes(minutes: number): string {
-  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
-  const mm = String(minutes % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
 }
 
 // A round hour (e.g. close=21:00 on Wed/Sat) gets the bare-number treatment
@@ -341,25 +335,25 @@ export function CongestionCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
-              {isTodayView ? "국립중앙박물관 · 현재 혼잡도" : "국립중앙박물관"}
+              {isTodayView
+                ? "국립중앙박물관·용산가족공원 · 현재 혼잡도"
+                : "국립중앙박물관·용산가족공원"}
             </p>
-            <p className="mt-1 text-[11px] text-ink-soft/70">
-              {isTodayView ? "오늘 " : ""}영업시간 {formatMinutes(open)}–{formatMinutes(close)}
-            </p>
-            {/* 기준 시각이 현재보다 한참 이전인 것이 정상이라는 사실을 옆에
-                적어 둔다 — 이게 없으면 지연을 장애로 읽게 된다. 지나간 날의
-                기록에는 해당하지 않는다. */}
+            {/* 기준 시각이 현재보다 한참 이전인 것을 장애로 읽지 않도록 옆에
+                적어 둔다. 지나간 날의 기록에는 해당하지 않는다.
+                문구가 "정상" 이라고 말하지는 않으므로, 이 줄이 경고처럼 읽힌다는
+                제보가 오면 그 단어를 되살리는 쪽이 맞다 — 실측 지연은 34.1분
+                (lib/freshness.ts)이라 "약" 도 함께 돌아와야 한다. */}
             {isTodayView && (
-              <p className="mt-0.5 text-[11px] text-ink-soft/70">
-                서울시 실시간 도시데이터 제공 특성상 약 30분 지연된 측정값
-              </p>
+              <p className="mt-1 text-[11px] text-ink-soft/70">30분 지연됨</p>
             )}
           </div>
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
+                data-testid="freshness-dot"
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-                style={{ backgroundColor: isLive ? status.core : "#C7C7CC" }}
+                style={{ backgroundColor: freshnessDotColor(isOpen, stale) }}
               />
               {openBadge}
             </span>

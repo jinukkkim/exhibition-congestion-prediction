@@ -22,3 +22,18 @@ export function isStale(observedAt: string | null, now: Date, staleAfterMinutes:
   const ageMinutes = (now.getTime() - new Date(observedAt).getTime()) / 60_000;
   return ageMinutes > staleAfterMinutes;
 }
+
+// 신선도 배지의 점 색. 혼잡도 팔레트(status.ts)와 값이 겹치지만 **뜻이 다르다**
+// — 여기서 초록은 "여유"가 아니라 "지금 값", 주황은 "약간 붐빔"이 아니라
+// "갱신이 밀렸다"는 뜻이다. 혼잡도 자체는 옆의 큰 글자와 카드 배경 글로우가
+// 말하므로, 점은 신선도 한 축만 담당한다.
+//
+// 영업시간 밖(영업 전·종료·휴관일)에는 신선도를 주장할 일이 없어 회색이다.
+const LIVE_DOT = "#34C759";
+const STALE_DOT = "#FF9F0A";
+const IDLE_DOT = "#C7C7CC";
+
+export function freshnessDotColor(isOpen: boolean, stale: boolean): string {
+  if (!isOpen) return IDLE_DOT;
+  return stale ? STALE_DOT : LIVE_DOT;
+}

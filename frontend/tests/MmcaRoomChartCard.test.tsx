@@ -82,11 +82,28 @@ describe("MmcaRoomChartCard", () => {
 
     // A closed weekly day (e.g. Deoksugung on Monday) is not the same thing
     // as "outside hours today" — it must not claim hours it doesn't have.
+    // (관 단위 휴관 안내 한 줄은 페이지 헤더가 맡는다 — MmcaPage.test.tsx.)
     expect(screen.getByText("휴관일입니다")).toBeInTheDocument();
     expect(screen.getByText("휴관일")).toBeInTheDocument();
-    expect(screen.getByText("오늘은 휴관일입니다")).toBeInTheDocument();
-    expect(screen.queryByText(/오늘 영업시간/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
     expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
+  });
+
+  it("leaves the business-hours line to the page header instead of repeating it per room", () => {
+    // 영업시간은 관 단위 값이라 방마다 같은 줄이 반복됐다.
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
   });
 
   it("falls back to the space code as the title when the room has no name yet", () => {
@@ -491,12 +508,15 @@ describe("MmcaRoomChartCard freshness badge", () => {
   it("keeps the live badge for a recent reading", () => {
     renderWithReading("2026-07-15T14:18:00"); // 12분 전, 임계값 25분 이내
     expect(screen.getByText("실시간")).toBeInTheDocument();
+    // 점은 신선도만 말한다 — 이 방의 등급이 무엇이든 신선하면 초록이다.
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#34C759" });
   });
 
   it("says the reading has gone stale instead of claiming it is live", () => {
     renderWithReading("2026-07-15T13:50:00"); // 40분 전, 임계값 초과
     expect(screen.getByText("갱신 지연")).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#FF9F0A" });
   });
 
   it("does not claim live when today has no reading at all", () => {

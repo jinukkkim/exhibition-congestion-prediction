@@ -144,6 +144,9 @@ describe("CongestionCard", () => {
     );
 
     expect(screen.getByText("실시간")).toBeInTheDocument();
+    // 점 색은 혼잡도가 아니라 신선도를 말한다. 이 판독의 등급은 "보통"(노랑)이지만
+    // 점은 초록이어야 한다 — 예전에는 status.core 를 써서 노랑이 나왔다.
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#34C759" });
   });
 
   it("says the reading has gone stale instead of claiming it is live", () => {
@@ -160,6 +163,9 @@ describe("CongestionCard", () => {
 
     expect(screen.getByText("갱신 지연")).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+    // 지연은 주황이다 — 영업 전·종료·휴관일의 회색과 섞이면 멈춘 수집이
+    // "말할 게 없음"으로 읽힌다.
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#FF9F0A" });
   });
 
   it("explains that the national museum feed is published with a delay", () => {
@@ -174,7 +180,7 @@ describe("CongestionCard", () => {
       />
     );
 
-    expect(screen.getByText(/약 30분 지연/)).toBeInTheDocument();
+    expect(screen.getByText("30분 지연됨")).toBeInTheDocument();
   });
 
   it("says the museum is closed rather than loading when the clock already answers", () => {
@@ -274,8 +280,11 @@ describe("CongestionCard", () => {
       />
     );
 
-    // 오늘이 아니므로 "오늘"을 붙이지 않는다
-    expect(screen.getByText("영업시간 09:30–17:30")).toBeInTheDocument();
+    // 영업시간 문구는 페이지 헤더로 옮겼으므로, 축이 실제로 그 날짜의 폐관
+    // 시각을 쓰는지는 x 축 끝 눈금으로 확인한다 (17:30 은 반시간이라 HH:MM,
+    // 21:00 은 정시라 "21").
+    expect(screen.getByText("17:30")).toBeInTheDocument();
+    expect(screen.queryByText("21")).not.toBeInTheDocument();
 
     rerender(
       <CongestionCard
@@ -285,7 +294,47 @@ describe("CongestionCard", () => {
       />
     );
 
-    expect(screen.getByText("영업시간 09:30–21:00")).toBeInTheDocument();
+    expect(screen.getByText("21")).toBeInTheDocument();
+    expect(screen.queryByText("17:30")).not.toBeInTheDocument();
+  });
+
+  it("names the Seoul open-data area, not the museum alone, in the card subtitle", () => {
+    // 차트가 그리는 값은 국립중앙박물관·용산가족공원 한 구역의 인구다
+    // (backend/app/config.py 의 seoul_area_name). 관 이름만 적으면 관 안의
+    // 인원처럼 읽힌다.
+    const { rerender } = render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.getByText("국립중앙박물관·용산가족공원 · 현재 혼잡도")).toBeInTheDocument();
+
+    rerender(
+      <CongestionCard data={null} daily={[]} viewDate="2026-07-13" />
+    );
+
+    expect(screen.getByText("국립중앙박물관·용산가족공원")).toBeInTheDocument();
+  });
+
+  it("leaves the business-hours line to the page header instead of repeating it per card", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={null}
+      />
+    );
+
+    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
   });
 
   it("renders a loading state when data is null", () => {
