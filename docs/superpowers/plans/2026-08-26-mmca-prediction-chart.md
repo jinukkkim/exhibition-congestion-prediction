@@ -363,6 +363,12 @@ def today_shift(
         observed[row.space_code].append(rank)
         expected[row.space_code].append(cell)
 
+    # 게이트는 **usable 판독 수**(양쪽 평균에 실제로 들어간 것)를 센다 —
+    # 창 안 raw 행 수가 아니다. MIN_ANCHOR_OBSERVATIONS 가 존재하는 이유가
+    # "개관 직후 1~2개 표본으로 만든 편차는 노이즈"이므로, raw 로 세면 창 안
+    # 4개 중 셀이 맞는 것이 2개인 방이 표본 2개짜리 편차를 통과시켜 상수의
+    # 목적을 무너뜨린다. observed 는 `cell is None` 검사를 지난 뒤에만
+    # append 되므로 len(values) 가 곧 usable 수다.
     return {
         code: sum(values) / len(values) - sum(expected[code]) / len(expected[code])
         for code, values in observed.items()
