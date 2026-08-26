@@ -240,6 +240,19 @@ def test_curve_drops_hours_at_or_before_the_last_reading():
     assert [p.minutes for p in points] == [14 * 60, 15 * 60]
 
 
+def test_curve_drops_an_hour_landing_exactly_on_the_last_reading():
+    # last 가 정시에 걸린 경우. 14:00 판독 뒤에 14시 프로파일 점을 또 그리면
+    # 이음매 지점이 두 번 그려진다 — `<` 로 약해지면 이 테스트만 잡는다.
+    profile = {("A", 5, 14): 3.0, ("A", 5, 15): 3.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[14, 15], last=(14 * 60, 0))
+
+    # 14시 점은 last 그 자체(tier 0.0)로 한 번만 나와야 한다.
+    assert [p.minutes for p in points] == [14 * 60, 15 * 60]
+    assert points[0].tier == 0.0
+    assert len([p for p in points if p.minutes == 14 * 60]) == 1
+
+
 def test_curve_skips_hours_missing_from_the_profile():
     profile = {("A", 5, 15): 2.0}
 
