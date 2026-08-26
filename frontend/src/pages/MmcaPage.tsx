@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   fetchMmcaDaily,
+  fetchMmcaPrediction,
   fetchMmcaRooms,
   type MmcaDailyLogPoint,
   type MmcaRoomStatus,
@@ -30,9 +31,9 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
-  // MMCA 는 예측 모델이 없다(등급만 수집하고 인원수가 없어 회귀의 목표변수가
-  // 없다). 그래서 미래 탭에서는 지난주 같은 요일의 실제 기록을 대리로 그린다.
-  // 오늘 탭은 지금까지처럼 오늘 실선 + 지난주 회색선.
+  // 미래 탭의 회색선은 지난주 같은 요일의 실제 기록이다(대리값). 그 위에
+  // 파란 점선으로 예측을 겹친다 — 예측은 selectedDate 기준이고, chartDate 는
+  // 회색선을 가져오는 날짜(미래 탭에서 D-7)라 예측에 쓰면 안 된다.
   const chartDate = selectedDate === today ? today : shiftDate(selectedDate, -7);
   const isTodayTab = selectedDate === today;
   // 국중박과 달리 따라갈 서버 목록이 없어 프론트가 날짜를 만든다.
@@ -60,6 +61,14 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
     [venue, lastWeek]
   );
 
+  // 오늘 탭은 곡선이 최근 120분 실측에 매달려 있어 판독마다 바뀌므로 계속
+  // 폴링한다. 미래 탭은 편차가 없어 정적이라 한 번 받고 멈춘다.
+  const predictionPoll = usePolledFetch(
+    () => fetchMmcaPrediction(venue, selectedDate),
+    { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: !isTodayTab },
+    [venue, selectedDate]
+  );
+
   const rooms = roomsPoll.data;
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
@@ -70,6 +79,11 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
   // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
   const trendError = dailyPoll.error || (isTodayTab && lastWeekPoll.error);
+  // 예측은 없어도 차트가 그려져야 한다 — trendError 에 넣지 않는다. 이력이
+  // 모자란 방은 응답에서 빠지므로 조회 실패는 곧 "그 방은 점선 없음"이다.
+  const predictionByCode = new Map(
+    (predictionPoll.data ?? []).map((room) => [room.space_code, room])
+  );
 
   const now = new Date();
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00 폐관이라 요일에 따라
@@ -158,6 +172,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                 room={room}
                 daily={daily}
                 lastWeekDaily={lastWeekDaily}
+                prediction={predictionByCode.get(room.space_code) ?? null}
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}

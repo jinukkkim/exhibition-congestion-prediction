@@ -27,6 +27,7 @@ describe("MmcaPage", () => {
     // pin it — otherwise these tests pass or fail by time of day.
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -549,6 +550,7 @@ describe("MmcaPage date tabs", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // 화요일, 10:00-18:00 안
+    vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -610,6 +612,58 @@ describe("MmcaPage date tabs", () => {
     // 8/1 - 7 = 7/25
     await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", "2026-07-25"));
     expect(screen.getAllByText(/7\/25\(토\)/).length).toBeGreaterThan(0);
+  });
+
+  it("fetches the prediction for the selected date, not the last-week proxy date", async () => {
+    // chartDate 는 미래 탭에서 D-7 로 옮겨진 값이다 — 회색 대리선을 가져올
+    // 날짜다. 예측은 selectedDate 를 써야 한다. chartDate 를 쓰면 지나간 날의
+    // 예측을 조르는 셈이고, 백엔드가 과거 날짜에 빈 배열을 내므로 증상은
+    // 에러가 아니라 "미래 탭에 점선이 없다"로 나타난다.
+    const fetchMmcaPrediction = vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(fetchMmcaPrediction).toHaveBeenCalledWith("seoul", todayString())
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
+
+    await waitFor(() => expect(fetchMmcaPrediction).toHaveBeenCalledWith("seoul", "2026-08-01"));
+    // 8/1 - 7 = 7/25 — 이 날짜로 물어본 적이 있으면 안 된다.
+    expect(fetchMmcaPrediction.mock.calls.map(([, date]) => date)).not.toContain("2026-07-25");
+  });
+
+  it("keeps polling the prediction on the today tab, but stops on a future tab", async () => {
+    // 오늘 곡선은 최근 120분 실측에 매달려 있어 판독마다 바뀐다. 미래 탭은
+    // 편차가 없어 정적이다.
+    const fetchMmcaPrediction = vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(fetchMmcaPrediction).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMmcaPrediction).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
+    await waitFor(() => expect(fetchMmcaPrediction).toHaveBeenCalledWith("seoul", "2026-08-01"));
+
+    const afterSwitch = fetchMmcaPrediction.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(fetchMmcaPrediction).toHaveBeenCalledTimes(afterSwitch);
   });
 
   it("drops the live badge on a future tab", async () => {

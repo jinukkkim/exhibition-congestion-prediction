@@ -1,6 +1,6 @@
 import { useRef, useState, type MouseEvent } from "react";
 
-import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
+import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
@@ -137,6 +137,9 @@ export function MmcaRoomChartCard({
   room: MmcaRoomStatus;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
+  // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다. 점선을 그리는
+  // 일은 아직 없다 — 배선만 먼저 왔다.
+  prediction?: MmcaRoomPrediction | null;
   open: number;
   close: number;
   nowMinutes: number;
