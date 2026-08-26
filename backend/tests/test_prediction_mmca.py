@@ -4,6 +4,7 @@ from app.prediction.mmca import (
     MIN_SAMPLE_DAYS,
     build_profile,
     sample_days,
+    today_shift,
 )
 
 
@@ -78,3 +79,75 @@ def test_sample_days_ignores_rows_with_no_exhibition():
 def test_min_sample_days_is_three():
     # 전시 교체 직후 재개된 방을 걸러내는 게이트. 스펙 확정값.
     assert MIN_SAMPLE_DAYS == 3
+
+
+def test_today_shift_is_observed_minus_profile_on_the_same_timestamps():
+    # 토요일 15시 프로파일이 2.0 인데 오늘 실측이 1.0 이면 편차 -1.0
+    profile = {("A", 5, 15): 2.0}
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "보통"),      # rank 1
+        Row("A", "2026-08-01T15:10:00", "보통"),      # rank 1
+        Row("A", "2026-08-01T15:20:00", "보통"),      # rank 1
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+
+    assert shift == {"A": -1.0}
+
+
+def test_today_shift_uses_only_the_last_120_minutes():
+    # 12시 셀은 프로파일 0.0, 15시 셀은 2.0.
+    # now=15:20 이면 12:00 판독은 200분 전이라 앵커 창(120분) 밖이다.
+    profile = {("A", 5, 12): 0.0, ("A", 5, 15): 2.0}
+    rows = [
+        Row("A", "2026-08-01T12:00:00", "붐빔"),      # 창 밖 — 무시돼야 한다
+        Row("A", "2026-08-01T15:00:00", "보통"),      # rank 1
+        Row("A", "2026-08-01T15:10:00", "보통"),
+        Row("A", "2026-08-01T15:20:00", "보통"),
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+
+    # 창 안 판독만 쓰면 (1+1+1)/3 - 2.0 = -1.0
+    assert shift == {"A": -1.0}
+
+
+def test_today_shift_omits_rooms_below_the_minimum_observations():
+    profile = {("A", 5, 15): 2.0}
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "보통"),
+        Row("A", "2026-08-01T15:10:00", "보통"),
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:10:00"))
+
+    # 2개는 MIN_ANCHOR_OBSERVATIONS(3) 미만 — 개관 직후 편차는 노이즈다.
+    assert shift == {}
+
+
+def test_today_shift_omits_rooms_whose_cells_are_missing_from_the_profile():
+    profile: dict[tuple[str, int, int], float] = {}
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "보통"),
+        Row("A", "2026-08-01T15:10:00", "보통"),
+        Row("A", "2026-08-01T15:20:00", "보통"),
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+
+    # 비교 기준이 없으면 편차를 만들 수 없다.
+    assert shift == {}
+
+
+def test_today_shift_is_not_clamped():
+    # 클램프는 측정에서 손해였다(없음 64.0% / ±1.0 63.3% / ±0.5 61.9%).
+    profile = {("A", 5, 15): 0.0}
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "붐빔"),
+        Row("A", "2026-08-01T15:10:00", "붐빔"),
+        Row("A", "2026-08-01T15:20:00", "붐빔"),
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+
+    assert shift == {"A": 3.0}

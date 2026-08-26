@@ -42,6 +42,50 @@ def build_profile(rows) -> dict[tuple[str, int, int], float]:
     return {key: sum(values) / len(values) for key, values in buckets.items()}
 
 
+def today_shift(
+    profile: dict[tuple[str, int, int], float],
+    rows,
+    now: datetime,
+    anchor_minutes: int = ANCHOR_WINDOW_MINUTES,
+) -> dict[str, float]:
+    """방별 평행이동량 = (최근 120분 실측 평균) − (같은 시각들의 프로파일 평균).
+
+    `anchor_minutes` 는 백테스트가 창 길이를 스윕하기 위한 것이다 — 프로덕션은
+    기본값을 쓴다. 스크립트가 로직을 재구현하면 근거가 프로덕션 코드와 갈라진다.
+
+    두 평균을 **같은 시각 집합** 위에서 잡는 것이 핵심이다. 시간대마다
+    프로파일 수준이 크게 다르므로(10시 −1.0 → 15시 +0.9), 집합이 어긋나면
+    편차가 시간대 효과를 잘못 빨아들인다.
+
+    계수는 1.0 고정이다 — 데이터에서 추정하면 창별로 1.05/1.02/0.10/0.52/0.50
+    으로 흔들리고, 1.0 고정이 추정값보다 성능이 좋았다. 클램프도 하지 않는다.
+    """
+    observed: dict[str, list[int]] = defaultdict(list)
+    expected: dict[str, list[float]] = defaultdict(list)
+
+    for row in rows:
+        if row.congestion_nm is None:
+            continue
+        rank = CONGESTION_RANKS.get(row.congestion_nm)
+        if rank is None:
+            continue
+        age_minutes = (now - row.observed_at).total_seconds() / 60
+        if not 0 <= age_minutes <= anchor_minutes:
+            continue
+        cell = profile.get((row.space_code, row.observed_at.weekday(), row.observed_at.hour))
+        if cell is None:
+            # 비교 기준이 없는 판독은 양쪽 평균에서 함께 빠져야 한다.
+            continue
+        observed[row.space_code].append(rank)
+        expected[row.space_code].append(cell)
+
+    return {
+        code: sum(values) / len(values) - sum(expected[code]) / len(expected[code])
+        for code, values in observed.items()
+        if len(values) >= MIN_ANCHOR_OBSERVATIONS
+    }
+
+
 def sample_days(rows) -> dict[str, int]:
     """방별로 판독이 있는 날의 수. 방 단위 값이며 셀 단위가 아니다.
 
