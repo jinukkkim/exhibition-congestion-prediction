@@ -198,6 +198,12 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
         except ValueError:
             raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
 
+    # 과거 날짜는 예측하지 않는다. 프로파일 창이 "오늘 −14일"이라 과거 타깃에는
+    # 그 날짜 이후 데이터가 섞여 look-ahead 곡선이 된다. 그 날의 실제 기록은
+    # /mmca/daily 에 이미 있고, 회고 예측은 백테스트 스크립트의 몫이다.
+    if target < now.date():
+        return []
+
     cached = get_mmca_prediction(venue, target.isoformat())
     if cached is not None:
         return [MmcaRoomPrediction(**room) for room in cached]

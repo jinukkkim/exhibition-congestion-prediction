@@ -130,3 +130,21 @@ def test_todays_curve_is_anchored_to_todays_readings(client):
     # 첫 점은 마지막 실측점(15:20 여유)이어야 한다 — 실선과의 이음매.
     assert room["points"][0]["observed_at"].endswith("T15:20:00")
     assert room["points"][0]["tier"] == 0.0
+
+
+def test_past_date_returns_an_empty_list(client):
+    api, Session = client
+    today = _seed(Session, days=14)
+    past = today - timedelta(days=3)
+
+    response = api.get(f"/mmca/prediction?venue=gwacheon&date={past.isoformat()}")
+
+    # 프로파일 창이 "오늘 −14일"이라 과거 타깃에는 그 날짜 이후 데이터가
+    # 섞인다 — look-ahead 곡선을 내보내는 대신 아무것도 내보내지 않는다.
+    assert response.status_code == 200
+    assert response.json() == []
+
+    # 가드는 캐시 앞에 있어야 한다 — 과거 날짜는 캐시를 읽지도 쓰지도 않는다.
+    import app.cache
+
+    assert app.cache.r.keys("mmca:prediction:*") == []
