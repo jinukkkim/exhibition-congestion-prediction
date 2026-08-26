@@ -62,6 +62,7 @@ def today_shift(
     """
     observed: dict[str, list[int]] = defaultdict(list)
     expected: dict[str, list[float]] = defaultdict(list)
+    in_window_counts: dict[str, int] = defaultdict(int)
 
     for row in rows:
         if row.congestion_nm is None:
@@ -72,6 +73,11 @@ def today_shift(
         age_minutes = (now - row.observed_at).total_seconds() / 60
         if not 0 <= age_minutes <= anchor_minutes:
             continue
+        # 게이트는 창 안의 판독 개수로 잰다 — 프로파일 셀 유무와 무관하다.
+        # 셀이 없어 평균에서 빠지는 판독도 "오늘 이 방이 열려 있었다"는
+        # 신호이므로, 게이트를 (양쪽 평균에 쓰인) usable 개수로 잡으면
+        # 개관 초반 셀 미스만으로 방 전체가 부당하게 걸러진다.
+        in_window_counts[row.space_code] += 1
         cell = profile.get((row.space_code, row.observed_at.weekday(), row.observed_at.hour))
         if cell is None:
             # 비교 기준이 없는 판독은 양쪽 평균에서 함께 빠져야 한다.
@@ -82,7 +88,7 @@ def today_shift(
     return {
         code: sum(values) / len(values) - sum(expected[code]) / len(expected[code])
         for code, values in observed.items()
-        if len(values) >= MIN_ANCHOR_OBSERVATIONS
+        if in_window_counts[code] >= MIN_ANCHOR_OBSERVATIONS
     }
 
 

@@ -151,3 +151,22 @@ def test_today_shift_is_not_clamped():
     shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
 
     assert shift == {"A": 3.0}
+
+
+def test_today_shift_drops_cell_less_readings_from_both_means():
+    # 셀이 있는 판독 2개 + 셀이 없는 판독 1개를 같은 방·같은 창에 섞는다.
+    # 셀 없는 판독이 observed 에만 들어가고 expected 에서 빠지면 편차가
+    # 시간대 효과를 빨아들인다 — 브리프가 최중요 불변식이라 부른 버그다.
+    profile = {("A", 5, 15): 2.0}          # 16시 셀은 일부러 비워 둔다
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "보통"),   # rank 1, 셀 있음
+        Row("A", "2026-08-01T15:10:00", "보통"),   # rank 1, 셀 있음
+        Row("A", "2026-08-01T16:00:00", "붐빔"),   # rank 3, 셀 없음 → 양쪽에서 빠져야 한다
+        Row("A", "2026-08-01T16:10:00", "보통"),   # rank 1, 셀 없음 → 양쪽에서 빠져야 한다
+    ]
+
+    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T16:10:00"))
+
+    # 셀 있는 2개만 쓰면 (1+1)/2 - 2.0 = -1.0.
+    # 셀 없는 판독이 observed 에만 섞이면 (1+1+3+1)/4 - 2.0 = -0.5 가 되어 실패한다.
+    assert shift == {"A": -1.0}
