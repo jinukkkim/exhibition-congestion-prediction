@@ -264,6 +264,7 @@ export function MmcaRoomChartCard({
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
+                data-testid="freshness-dot"
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
                 style={{ backgroundColor: freshnessDotColor(isOpen, stale) }}
               />

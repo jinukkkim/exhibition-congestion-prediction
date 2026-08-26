@@ -144,6 +144,9 @@ describe("CongestionCard", () => {
     );
 
     expect(screen.getByText("실시간")).toBeInTheDocument();
+    // 점 색은 혼잡도가 아니라 신선도를 말한다. 이 판독의 등급은 "보통"(노랑)이지만
+    // 점은 초록이어야 한다 — 예전에는 status.core 를 써서 노랑이 나왔다.
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#34C759" });
   });
 
   it("says the reading has gone stale instead of claiming it is live", () => {
@@ -160,6 +163,9 @@ describe("CongestionCard", () => {
 
     expect(screen.getByText("갱신 지연")).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+    // 지연은 주황이다 — 영업 전·종료·휴관일의 회색과 섞이면 멈춘 수집이
+    // "말할 게 없음"으로 읽힌다.
+    expect(screen.getByTestId("freshness-dot")).toHaveStyle({ backgroundColor: "#FF9F0A" });
   });
 
   it("explains that the national museum feed is published with a delay", () => {
