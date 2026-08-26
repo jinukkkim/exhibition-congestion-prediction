@@ -123,10 +123,19 @@ function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: 
     .filter((p) => p.minutes >= open && p.minutes <= close);
 }
 
+// 예측 점은 이미 방별로 갈라져 있고 tier 가 소수다 — roomPoints 처럼 등급명을
+// 인덱스로 되돌릴 필요가 없다.
+function predictionPoints(prediction: MmcaRoomPrediction | null, open: number, close: number): Point[] {
+  return (prediction?.points ?? [])
+    .map((p) => ({ minutes: minutesOfDay(p.observed_at), tier: p.tier, label: p.label }))
+    .filter((p) => p.minutes >= open && p.minutes <= close);
+}
+
 export function MmcaRoomChartCard({
   room,
   daily,
   lastWeekDaily = null,
+  prediction = null,
   open,
   close,
   nowMinutes,
@@ -137,8 +146,7 @@ export function MmcaRoomChartCard({
   room: MmcaRoomStatus;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
-  // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다. 점선을 그리는
-  // 일은 아직 없다 — 배선만 먼저 왔다.
+  // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다.
   prediction?: MmcaRoomPrediction | null;
   open: number;
   close: number;
@@ -187,6 +195,11 @@ export function MmcaRoomChartCard({
   const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
+  const predPoints = predictionPoints(prediction, open, close);
+  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
+  const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
+  // 예측만 있어도 차트는 보여야 한다.
+  const hasAnySeries = Boolean(linePath || lastWeekLinePath || predictionPath);
   const lastPoint = points[points.length - 1];
 
   const currentLabel = room.congestion_nm;
@@ -296,7 +309,7 @@ export function MmcaRoomChartCard({
         )}
 
         <div className="relative mt-8">
-          {(linePath || lastWeekLinePath) && (
+          {hasAnySeries && (
             <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
               <span className="flex items-center gap-1.5">
                 <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
@@ -309,6 +322,15 @@ export function MmcaRoomChartCard({
                   {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
                 </span>
               )}
+              {predictionPath && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-0 w-3 border-t-2 border-dashed"
+                    style={{ borderColor: CHART_BLUE }}
+                  />
+                  {prediction?.anchored ? "예상 (오늘 반영)" : "예상"}
+                </span>
+              )}
             </div>
           )}
           <svg
@@ -317,7 +339,7 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {(linePath || lastWeekLinePath) && (
+            {hasAnySeries && (
               <>
                 <defs>
                   <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
@@ -358,6 +380,18 @@ export function MmcaRoomChartCard({
                     fill="none"
                     stroke={lineStroke}
                     strokeWidth={2.5}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )}
+                {predictionPath && (
+                  <path
+                    data-testid="mmca-room-chart-prediction-line"
+                    d={predictionPath}
+                    fill="none"
+                    stroke={CHART_BLUE}
+                    strokeWidth={2.5}
+                    strokeDasharray="5 5"
                     strokeLinejoin="round"
                     strokeLinecap="round"
                   />
