@@ -220,10 +220,34 @@ w=1 고정이라 프로파일+편차와 완전히 같은 값이 되고, 근거�
 ### `app/prediction/mmca.py` (신규)
 
 ```python
+RANK_LABELS: list[str]                      # ["여유", "보통", "약간 붐빔", "붐빔"]
+CONGESTION_RANKS: dict[str, int]            # 라벨 -> 0..3
+PROFILE_WINDOW_DAYS = 14
+ANCHOR_WINDOW_MINUTES = 120
+RAMP_MINUTES = 90
+MIN_ANCHOR_OBSERVATIONS = 3
+MIN_SAMPLE_DAYS = 3
+
+class CurvePoint(NamedTuple):
+    minutes: int    # 자정부터의 분
+    tier: float     # 0.0~3.0
+    label: str      # round(tier) 의 등급명
+
 def build_profile(rows) -> dict[tuple[str, int, int], float]
-def today_shift(profile, today_rows, day) -> dict[str, float]      # 방별 편차
-def curve(profile, shift, space_code, day, last_reading) -> list[Point]
+def sample_days(rows) -> dict[str, int]
+def today_shift(profile, rows, now, anchor_minutes=ANCHOR_WINDOW_MINUTES) -> dict[str, float]
+def predict_tier(cell, shift, current, minutes_ahead, ramp_minutes=RAMP_MINUTES) -> float
+def curve(profile, space_code, day, hours,
+          shift=0.0, last=None, ramp_minutes=RAMP_MINUTES) -> list[CurvePoint]
 ```
+
+`anchor_minutes` / `ramp_minutes` 는 백테스트가 상수를 스윕하기 위한 인자다 —
+프로덕션은 기본값을 쓴다. `predict_tier` 가 별도 함수인 이유도 같다: 스크립트가
+램프 식을 재구현하면 근거가 프로덕션 코드와 갈라진다.
+
+`today_shift` 의 게이트는 **usable 판독 수**(양쪽 평균에 실제로 들어간 것)를
+센다. 창 안 raw 행 수로 세면 셀이 맞는 판독이 2개뿐인 방이 통과해
+`MIN_ANCHOR_OBSERVATIONS` 가 막으려는 표본 2개짜리 편차를 만든다.
 
 `app/prediction/`에 들어가지만 기존 `baseline.py`/`model.py`/`batch.py`와
 공유하는 것은 없다 — 그쪽은 서울시 연속값(`population_avg`) 전용이고 이쪽은
@@ -239,7 +263,7 @@ MMCA 순서형 전용이다. `RawCongestion`을 읽지 않는다.
   { "space_code": "MMCA-SPACE-1006",
     "space_nm": "6전시실",
     "anchored": true,
-    "sample_days": 4,
+    "sample_days": 14,
     "points": [
       { "observed_at": "2026-08-26T12:00:00", "tier": 2.31, "label": "약간 붐빔" }
     ] }
