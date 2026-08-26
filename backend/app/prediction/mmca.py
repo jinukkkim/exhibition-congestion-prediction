@@ -8,7 +8,9 @@
 """
 
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime
+from typing import NamedTuple
 
 # 프론트 MmcaRoomChartCard.tsx 의 TIERS 와 같은 순서여야 한다.
 RANK_LABELS: list[str] = ["여유", "보통", "약간 붐빔", "붐빔"]
@@ -98,3 +100,88 @@ def sample_days(rows) -> dict[str, int]:
             continue
         days[row.space_code].add(row.observed_at.date())
     return {code: len(dates) for code, dates in days.items()}
+
+
+class CurvePoint(NamedTuple):
+    minutes: int   # 자정부터의 분 — 프론트 minutesOfDay 와 같은 단위
+    tier: float    # 0.0~3.0, 곡선을 그리는 값
+    label: str     # round(tier) 의 등급명, 툴팁용
+
+
+def _clamp_tier(value: float) -> float:
+    return max(0.0, min(3.0, value))
+
+
+def predict_tier(
+    cell: float,
+    shift: float,
+    current: int | None,
+    minutes_ahead: int,
+    ramp_minutes: int = RAMP_MINUTES,
+) -> float:
+    """한 시점의 예측 등급. `curve` 와 백테스트 스크립트가 공유하는 프리미티브.
+
+    `current` 가 None 이면 램프가 없다(미래 날짜) — 평행이동한 프로파일 그대로.
+    있으면 마지막 실측값에서 `ramp_minutes` 에 걸쳐 프로파일로 선형 전이한다.
+
+    별도 함수인 이유: scripts/backtest_mmca_prediction.py 가 이 식을 스윕해야
+    하고, 스크립트가 재구현하면 근거가 프로덕션 코드와 갈라진다.
+    """
+    anchored = _clamp_tier(cell + shift)
+    if current is None:
+        return anchored
+    weight = 1.0 if ramp_minutes == 0 else min(1.0, minutes_ahead / ramp_minutes)
+    return _clamp_tier((1 - weight) * current + weight * anchored)
+
+
+def curve(
+    profile: dict[tuple[str, int, int], float],
+    space_code: str,
+    day: date,
+    hours: Sequence[int],
+    shift: float = 0.0,
+    last: tuple[int, int] | None = None,
+    ramp_minutes: int = RAMP_MINUTES,
+) -> list[CurvePoint]:
+    """예측 곡선. `last` 가 있으면 그 점에서 출발해 90분에 걸쳐 프로파일로 전이한다.
+
+    램프는 장식이 아니다. 없이 곧바로 프로파일 값으로 점프하면 근거리 정확도가
+    77.3% → 59.0% 로 18%p 떨어진다. 30분 이내에서는 "직전 값 유지"가 프로파일
+    보다 훨씬 강하고(+25.6%p vs +8.6%p), 두 방법의 실측 교차점이 90분이다.
+
+    `ramp_minutes` 는 백테스트가 램프 길이를 스윕하기 위한 것이다 — 프로덕션은
+    기본값을 쓴다. 0 을 주면 램프 없음(즉시 프로파일로 점프)이 된다.
+    """
+
+    def point(minutes: int, tier: float) -> CurvePoint:
+        tier = _clamp_tier(tier)
+        return CurvePoint(minutes=minutes, tier=tier, label=RANK_LABELS[round(tier)])
+
+    points: list[CurvePoint] = []
+    if last is not None:
+        last_minutes, last_rank = last
+        # 실선의 끝점을 그대로 첫 점으로 둔다 — 이음매를 없앤다.
+        points.append(point(last_minutes, float(last_rank)))
+
+    for hour in hours:
+        minutes = hour * 60
+        if last is not None and minutes <= last[0]:
+            # 이미 실선이 그린 구간 — 점선이 겹치지 않는다.
+            continue
+        cell = profile.get((space_code, day.weekday(), hour))
+        if cell is None:
+            continue
+        points.append(
+            point(
+                minutes,
+                predict_tier(
+                    cell,
+                    shift,
+                    None if last is None else last[1],
+                    0 if last is None else minutes - last[0],
+                    ramp_minutes=ramp_minutes,
+                ),
+            )
+        )
+
+    return points

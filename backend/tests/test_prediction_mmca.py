@@ -1,8 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from app.prediction.mmca import (
     MIN_SAMPLE_DAYS,
+    RAMP_MINUTES,
     build_profile,
+    curve,
+    predict_tier,
     sample_days,
     today_shift,
 )
@@ -187,3 +190,101 @@ def test_today_shift_gate_counts_usable_readings_not_raw_window_rows():
     shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T16:10:00"))
 
     assert shift == {}
+
+
+def test_curve_without_last_reading_is_the_shifted_profile():
+    # 미래 날짜 — 실측도 편차도 없다.
+    profile = {("A", 5, 14): 1.0, ("A", 5, 15): 2.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[14, 15])
+
+    assert [(p.minutes, p.tier) for p in points] == [(14 * 60, 1.0), (15 * 60, 2.0)]
+    assert [p.label for p in points] == ["보통", "약간 붐빔"]
+
+
+def test_curve_applies_the_shift():
+    profile = {("A", 5, 15): 2.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[15], shift=-1.0)
+
+    assert points[0].tier == 1.0
+
+
+def test_curve_starts_at_the_last_reading_so_the_dashes_join_the_solid_line():
+    profile = {("A", 5, 15): 3.0}
+    # 마지막 실측: 14:30 에 여유(0)
+    points = curve(profile, "A", date(2026, 8, 1), hours=[15], last=(14 * 60 + 30, 0))
+
+    # 첫 점은 정확히 마지막 실측점이어야 한다 — 이음매가 없어야 한다.
+    assert points[0].minutes == 14 * 60 + 30
+    assert points[0].tier == 0.0
+
+
+def test_curve_ramps_linearly_over_90_minutes():
+    profile = {("A", 5, 15): 3.0, ("A", 5, 16): 3.0}
+    # 마지막 실측 14:30 여유(0). 15:00 은 30분 뒤 → w = 30/90 = 1/3
+    # 16:00 은 90분 뒤 → w = 1.0 (프로파일 그대로)
+    points = curve(profile, "A", date(2026, 8, 1), hours=[15, 16], last=(14 * 60 + 30, 0))
+
+    by_minutes = {p.minutes: p.tier for p in points}
+    assert by_minutes[15 * 60] == (1 - 1 / 3) * 0 + (1 / 3) * 3.0
+    assert by_minutes[16 * 60] == 3.0
+
+
+def test_curve_drops_hours_at_or_before_the_last_reading():
+    profile = {("A", 5, 13): 1.0, ("A", 5, 15): 2.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[13, 15], last=(14 * 60, 0))
+
+    # 13시는 이미 실선이 그린 구간이다 — 점선이 겹쳐 그리면 안 된다.
+    assert [p.minutes for p in points] == [14 * 60, 15 * 60]
+
+
+def test_curve_skips_hours_missing_from_the_profile():
+    profile = {("A", 5, 15): 2.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[14, 15, 16])
+
+    assert [p.minutes for p in points] == [15 * 60]
+
+
+def test_curve_clamps_into_the_tier_range():
+    profile = {("A", 5, 15): 3.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[15], shift=2.0)
+
+    # 3.0 + 2.0 = 5.0 → 3.0 으로 잘린다. 라벨도 범위를 벗어나면 안 된다.
+    assert points[0].tier == 3.0
+    assert points[0].label == "붐빔"
+
+
+def test_curve_clamps_negative_shift():
+    profile = {("A", 5, 15): 1.0}
+
+    points = curve(profile, "A", date(2026, 8, 1), hours=[15], shift=-3.0)
+
+    assert points[0].tier == 0.0
+    assert points[0].label == "여유"
+
+
+def test_ramp_minutes_is_ninety():
+    # 실측 최적값. 30분은 근거리에서 지속성보다 나쁘고, 180분은 원거리에서 나쁘다.
+    assert RAMP_MINUTES == 90
+
+
+def test_predict_tier_without_current_is_the_shifted_profile():
+    # 미래 날짜 경로 — 램프가 없다.
+    assert predict_tier(2.0, shift=-0.5, current=None, minutes_ahead=0) == 1.5
+
+
+def test_predict_tier_ramps_from_current_to_profile():
+    # 프로파일 3.0, 현재 0. 45분 뒤면 w = 45/90 = 0.5
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=45) == 1.5
+    # 90분 이상이면 프로파일 그대로
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=90) == 3.0
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=200) == 3.0
+
+
+def test_predict_tier_with_zero_ramp_jumps_straight_to_the_profile():
+    # 백테스트의 "램프 없음" 변형. 근거리 정확도가 18%p 떨어지는 쪽이다.
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=10, ramp_minutes=0) == 3.0
