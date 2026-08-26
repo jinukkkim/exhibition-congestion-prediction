@@ -237,7 +237,7 @@ git commit -m "feat(prediction): MMCA 요일x시간 프로파일 집계
 
 **Interfaces:**
 - Consumes: `build_profile`, `ANCHOR_WINDOW_MINUTES`, `MIN_ANCHOR_OBSERVATIONS` (Task 1)
-- Produces: `today_shift(profile, rows, now) -> dict[str, float]`
+- Produces: `today_shift(profile, rows, now, anchor_minutes=ANCHOR_WINDOW_MINUTES) -> dict[str, float]`
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
@@ -330,8 +330,12 @@ def today_shift(
     profile: dict[tuple[str, int, int], float],
     rows,
     now: datetime,
+    anchor_minutes: int = ANCHOR_WINDOW_MINUTES,
 ) -> dict[str, float]:
     """방별 평행이동량 = (최근 120분 실측 평균) − (같은 시각들의 프로파일 평균).
+
+    `anchor_minutes` 는 백테스트가 창 길이를 스윕하기 위한 것이다 — 프로덕션은
+    기본값을 쓴다. 스크립트가 로직을 재구현하면 근거가 프로덕션 코드와 갈라진다.
 
     두 평균을 **같은 시각 집합** 위에서 잡는 것이 핵심이다. 시간대마다
     프로파일 수준이 크게 다르므로(10시 −1.0 → 15시 +0.9), 집합이 어긋나면
@@ -350,7 +354,7 @@ def today_shift(
         if rank is None:
             continue
         age_minutes = (now - row.observed_at).total_seconds() / 60
-        if not 0 <= age_minutes <= ANCHOR_WINDOW_MINUTES:
+        if not 0 <= age_minutes <= anchor_minutes:
             continue
         cell = profile.get((row.space_code, row.observed_at.weekday(), row.observed_at.hour))
         if cell is None:
@@ -395,11 +399,12 @@ git commit -m "feat(prediction): 오늘 편차로 프로파일 곡선을 평행�
 - Consumes: `build_profile`, `today_shift`, `RAMP_MINUTES`, `RANK_LABELS` (Task 1·2)
 - Produces:
   - `CurvePoint` — `NamedTuple(minutes: int, tier: float, label: str)`
-  - `curve(profile, space_code, day, hours, shift=0.0, last=None) -> list[CurvePoint]`
+  - `predict_tier(cell, shift, current, minutes_ahead, ramp_minutes=RAMP_MINUTES) -> float`
+  - `curve(profile, space_code, day, hours, shift=0.0, last=None, ramp_minutes=RAMP_MINUTES) -> list[CurvePoint]`
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
-`backend/tests/test_prediction_mmca.py`에 추가 (import 줄에 `RAMP_MINUTES`, `curve` 추가):
+`backend/tests/test_prediction_mmca.py`에 추가 (import 줄에 `RAMP_MINUTES`, `curve`, `predict_tier` 추가):
 
 ```python
 from datetime import date
@@ -483,12 +488,31 @@ def test_curve_clamps_negative_shift():
 def test_ramp_minutes_is_ninety():
     # 실측 최적값. 30분은 근거리에서 지속성보다 나쁘고, 180분은 원거리에서 나쁘다.
     assert RAMP_MINUTES == 90
+
+
+def test_predict_tier_without_current_is_the_shifted_profile():
+    # 미래 날짜 경로 — 램프가 없다.
+    assert predict_tier(2.0, shift=-0.5, current=None, minutes_ahead=0) == 1.5
+
+
+def test_predict_tier_ramps_from_current_to_profile():
+    # 프로파일 3.0, 현재 0. 45분 뒤면 w = 45/90 = 0.5
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=45) == 1.5
+    # 90분 이상이면 프로파일 그대로
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=90) == 3.0
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=200) == 3.0
+
+
+def test_predict_tier_with_zero_ramp_jumps_straight_to_the_profile():
+    # 백테스트의 "램프 없음" 변형. 근거리 정확도가 18%p 떨어지는 쪽이다.
+    assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=10, ramp_minutes=0) == 3.0
 ```
 
 - [ ] **Step 2: 실패를 확인한다**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_prediction_mmca.py -v`
-Expected: FAIL — `ImportError: cannot import name 'curve'`
+Expected: FAIL — `ImportError: cannot import name 'curve'
+(또는 `predict_tier`)`
 
 - [ ] **Step 3: 최소 구현을 쓴다**
 
@@ -505,6 +529,28 @@ def _clamp_tier(value: float) -> float:
     return max(0.0, min(3.0, value))
 
 
+def predict_tier(
+    cell: float,
+    shift: float,
+    current: int | None,
+    minutes_ahead: int,
+    ramp_minutes: int = RAMP_MINUTES,
+) -> float:
+    """한 시점의 예측 등급. `curve` 와 백테스트 스크립트가 공유하는 프리미티브.
+
+    `current` 가 None 이면 램프가 없다(미래 날짜) — 평행이동한 프로파일 그대로.
+    있으면 마지막 실측값에서 `ramp_minutes` 에 걸쳐 프로파일로 선형 전이한다.
+
+    별도 함수인 이유: scripts/backtest_mmca_prediction.py 가 이 식을 스윕해야
+    하고, 스크립트가 재구현하면 근거가 프로덕션 코드와 갈라진다.
+    """
+    anchored = _clamp_tier(cell + shift)
+    if current is None:
+        return anchored
+    weight = 1.0 if ramp_minutes == 0 else min(1.0, minutes_ahead / ramp_minutes)
+    return _clamp_tier((1 - weight) * current + weight * anchored)
+
+
 def curve(
     profile: dict[tuple[str, int, int], float],
     space_code: str,
@@ -512,12 +558,16 @@ def curve(
     hours: Sequence[int],
     shift: float = 0.0,
     last: tuple[int, int] | None = None,
+    ramp_minutes: int = RAMP_MINUTES,
 ) -> list[CurvePoint]:
     """예측 곡선. `last` 가 있으면 그 점에서 출발해 90분에 걸쳐 프로파일로 전이한다.
 
     램프는 장식이 아니다. 없이 곧바로 프로파일 값으로 점프하면 근거리 정확도가
     77.3% → 59.0% 로 18%p 떨어진다. 30분 이내에서는 "직전 값 유지"가 프로파일
     보다 훨씬 강하고(+25.6%p vs +8.6%p), 두 방법의 실측 교차점이 90분이다.
+
+    `ramp_minutes` 는 백테스트가 램프 길이를 스윕하기 위한 것이다 — 프로덕션은
+    기본값을 쓴다. 0 을 주면 램프 없음(즉시 프로파일로 점프)이 된다.
     """
 
     def point(minutes: int, tier: float) -> CurvePoint:
@@ -538,12 +588,18 @@ def curve(
         cell = profile.get((space_code, day.weekday(), hour))
         if cell is None:
             continue
-        anchored = _clamp_tier(cell + shift)
-        if last is None:
-            points.append(point(minutes, anchored))
-            continue
-        weight = min(1.0, (minutes - last[0]) / RAMP_MINUTES)
-        points.append(point(minutes, (1 - weight) * last[1] + weight * anchored))
+        points.append(
+            point(
+                minutes,
+                predict_tier(
+                    cell,
+                    shift,
+                    None if last is None else last[1],
+                    0 if last is None else minutes - last[0],
+                    ramp_minutes=ramp_minutes,
+                ),
+            )
+        )
 
     return points
 ```
@@ -551,7 +607,7 @@ def curve(
 - [ ] **Step 4: 통과를 확인한다**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_prediction_mmca.py -v`
-Expected: PASS (20 passed)
+Expected: PASS (23 passed)
 
 - [ ] **Step 5: 커밋**
 
@@ -590,7 +646,6 @@ git commit -m "feat(prediction): 90분 램프로 실측점에서 프로파일로
 
 ```python
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 import fakeredis
 import pytest
@@ -602,9 +657,10 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models import RawMmcaCongestion
 
-# app/routes/mmca.py 의 _SEOUL_TZ 와 같은 기준. CI 는 UTC 라 naive now() 를
-# 쓰면 KST 오전 내내 날짜가 하루 어긋난다.
-_SEOUL_TZ = ZoneInfo("Asia/Seoul")
+# 시각을 고정한다. 오늘 곡선은 "최근 120분"에 매달려 있어, 실제 벽시계로
+# 돌리면 심어 둔 15시 판독이 앵커 창 밖으로 나가는 시간대가 생긴다 —
+# anchored 가 테스트 실행 시각에 따라 흔들린다. 2026-08-15 는 토요일.
+_FROZEN_NOW = datetime(2026, 8, 15, 15, 25)
 
 
 @pytest.fixture
@@ -620,6 +676,7 @@ def client(monkeypatch):
 
     monkeypatch.setattr(app.cache, "r", fakeredis.FakeRedis(decode_responses=True))
     monkeypatch.setattr(app.routes.mmca, "SessionLocal", Session)
+    monkeypatch.setattr(app.routes.mmca, "_now_seoul", lambda: _FROZEN_NOW)
 
     from app.main import app as fastapi_app
 
@@ -627,8 +684,8 @@ def client(monkeypatch):
 
 
 def _seed(Session, *, space_code="MMCA-SPACE-2001", days=14, hour=15, level="붐빔"):
-    """오늘 이전 `days` 일 동안 매일 같은 시각에 같은 등급을 심는다."""
-    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None).date()
+    """_FROZEN_NOW 이전 `days` 일 동안 매일 같은 시각에 같은 등급을 심는다."""
+    today = _FROZEN_NOW.date()
     with Session() as session:
         for offset in range(1, days + 1):
             day = today - timedelta(days=offset)
@@ -807,6 +864,17 @@ from app.schemas import MmcaPredictionPoint, MmcaRoomPrediction
 _PREDICTION_HOURS = range(10, 22)
 
 
+def _now_seoul() -> datetime:
+    """KST 벽시계의 현재 시각 (naive).
+
+    별도 함수인 이유는 테스트가 몽키패치할 자리가 필요해서다 — 오늘 곡선은
+    "최근 120분"에 매달려 있어, 심어 둔 판독이 실행 시각의 앵커 창 밖으로
+    나가면 `anchored` 가 벽시계에 따라 흔들린다. routes/prediction.py 의
+    _today_seoul() 과 같은 형태다.
+    """
+    return datetime.now(_SEOUL_TZ).replace(tzinfo=None)
+
+
 @router.get("/mmca/prediction", response_model=list[MmcaRoomPrediction])
 def mmca_prediction(
     venue: str, date: str | None = Query(default=None)
@@ -815,7 +883,7 @@ def mmca_prediction(
     if codes is None:
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
-    now = datetime.now(_SEOUL_TZ).replace(tzinfo=None)
+    now = _now_seoul()
     if date is None:
         target = now.date()
     else:
@@ -1230,9 +1298,10 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     );
 
     const d = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d")!;
-    // 20:00 이 살아 있으면 x 가 CHART_WIDTH(480) 를 넘는 좌표가 나온다.
-    const xs = [...d.matchAll(/([\d.]+)\s[\d.]+/g)].map((m) => Number(m[1]));
-    expect(Math.max(...xs)).toBeLessThanOrEqual(480);
+    // smoothPath 는 점 N개에서 C 세그먼트를 N-1개 낸다. 20:00 이 잘리면 2점이
+    // 남아 C 가 정확히 1개다. (좌표를 정규식으로 파싱하지 않는다 — smoothPath
+    // 는 쉼표와 공백을 섞어 출력해서 오파싱하기 쉽다.)
+    expect((d.match(/C/g) ?? []).length).toBe(1);
   });
 });
 ```
@@ -1354,10 +1423,15 @@ git commit -m "feat(fe): 전시실 차트에 파란 점선 예측선
 - Create: `backend/scripts/backtest_mmca_prediction.py`
 
 **Interfaces:**
-- Consumes: `build_profile`, `today_shift`, `curve`, 네 상수 (Task 1~3)
+- Consumes: `build_profile`, `today_shift`, `predict_tier`, `CONGESTION_RANKS`, `MIN_ANCHOR_OBSERVATIONS`, `ANCHOR_WINDOW_MINUTES`, `PROFILE_WINDOW_DAYS`, `RAMP_MINUTES` (Task 1~3)
 - Produces: 없음 (CLI 스크립트)
 
 이 태스크는 TDD 대상이 아니다 — 검증 도구이며 프로덕션 경로가 아니다. CI에 넣지 않는다(프로덕션 DB 스냅샷이 필요하고 실행이 길다).
+
+**핵심 제약:** 스크립트는 예측 로직을 **재구현하지 않는다.** `build_profile` /
+`today_shift` / `predict_tier` 를 그대로 호출하고, 스윕은 그 함수들의
+`anchor_minutes` · `ramp_minutes` 인자로만 한다. 재구현하면 근거가 프로덕션
+코드와 갈라져서 근거가 아니게 된다.
 
 - [ ] **Step 1: 스크립트를 쓴다**
 
@@ -1370,6 +1444,8 @@ app/prediction/mmca.py 의 네 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTE
 / RAMP_MINUTES / 클램프 없음)의 근거를 만드는 스크립트다. 상수를 바꾸려면
 먼저 이걸 돌려서 새 근거를 만들 것.
 
+프로덕션 함수를 그대로 호출한다 — 로직을 재구현하면 근거가 갈라진다.
+
 스펙 문서의 수치가 이 스크립트의 출력이어야 한다:
   docs/superpowers/specs/2026-08-26-mmca-prediction-chart-design.md
 
@@ -1381,104 +1457,117 @@ CI 에 넣지 않는다 — 프로덕션 스냅샷이 필요하고 실행이 길
 import sqlite3
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.prediction.mmca import (  # noqa: E402
     ANCHOR_WINDOW_MINUTES,
     CONGESTION_RANKS,
-    MIN_ANCHOR_OBSERVATIONS,
     PROFILE_WINDOW_DAYS,
     RAMP_MINUTES,
+    build_profile,
+    predict_tier,
+    today_shift,
 )
 
 HORIZONS = [10, 20, 30, 60, 90, 120]
 TEST_LEN_DAYS = 5
+# 스펙과 같은 창 시작점. 데이터 첫날로부터의 일수.
+WINDOW_OFFSETS = (14, 17, 20, 23, 26)
 
 
-def load(path: str) -> list[tuple[str, datetime, int]]:
+@dataclass
+class Reading:
+    """build_profile / today_shift 가 기대하는 최소 인터페이스.
+
+    ORM 인스턴스를 쓰지 않는 이유는 스크립트가 스냅샷 파일을 직접 열기
+    때문이다 — 세 필드만 있으면 프로덕션 함수가 그대로 돈다.
+    """
+
+    space_code: str
+    observed_at: datetime
+    congestion_nm: str
+
+
+def load(path: str) -> list[Reading]:
     con = sqlite3.connect(path)
     rows = con.execute(
         "select space_code, observed_at, congestion_nm from raw_mmca_congestion "
         "where congestion_nm is not null order by observed_at"
     ).fetchall()
-    out = []
+    out: list[Reading] = []
     for code, raw, level in rows:
-        rank = CONGESTION_RANKS.get(level)
-        if rank is None:
+        if level not in CONGESTION_RANKS:
             continue
         stamp = datetime.fromisoformat(raw).replace(second=0, microsecond=0)
         # 수집은 10분 그리드에 정렬돼 있다(scheduler.py). 초/마이크로초 편차를
         # 지워야 "정확히 h분 뒤" 조회가 성립한다.
-        out.append((code, stamp.replace(minute=stamp.minute // 10 * 10), rank))
+        out.append(Reading(code, stamp.replace(minute=stamp.minute // 10 * 10), level))
     return out
 
 
 def evaluate(
-    data,
+    data: list[Reading],
     days: list[date],
     test_start: date,
     *,
     train_days: int = PROFILE_WINDOW_DAYS,
-    anchor: int | None = ANCHOR_WINDOW_MINUTES,
+    anchor: int = ANCHOR_WINDOW_MINUTES,
     ramp: int = RAMP_MINUTES,
     use_shift: bool = True,
-    clamp: float | None = None,
 ) -> tuple[int, int, float] | None:
-    by_day: dict[tuple[str, date], dict[datetime, int]] = defaultdict(dict)
-    for code, stamp, rank in data:
-        by_day[(code, stamp.date())][stamp] = rank
-
-    train = [d for d in data if test_start - timedelta(days=train_days) <= d[1].date() < test_start]
-    test_days = [d for d in days if test_start <= d < test_start + timedelta(days=TEST_LEN_DAYS)]
+    """한 테스트 창의 (n, 적중, 절대오차합). 데이터가 모자라면 None."""
+    train = [r for r in data if test_start - timedelta(days=train_days) <= r.observed_at.date() < test_start]
+    test_days = {d for d in days if test_start <= d < test_start + timedelta(days=TEST_LEN_DAYS)}
     if len(train) < 300 or not test_days:
         return None
 
-    cells: dict[tuple[str, int, int], list[int]] = defaultdict(list)
-    for code, stamp, rank in train:
-        cells[(code, stamp.weekday(), stamp.hour)].append(rank)
-    profile = {key: sum(v) / len(v) for key, v in cells.items()}
+    profile = build_profile(train)
+
+    by_room_day: dict[tuple[str, date], list[Reading]] = defaultdict(list)
+    for reading in data:
+        if reading.observed_at.date() in test_days:
+            by_room_day[(reading.space_code, reading.observed_at.date())].append(reading)
 
     n = hit = 0
     mae = 0.0
-    for (code, day), obs in by_day.items():
-        if day not in test_days:
-            continue
-        times = sorted(obs)
-        for i, now in enumerate(times):
-            if anchor is None:
-                seen = times[: i + 1]
-            else:
-                seen = [t for t in times[: i + 1] if (now - t).total_seconds() / 60 <= anchor]
-            if len(seen) < MIN_ANCHOR_OBSERVATIONS:
-                continue
-            expected = [profile.get((code, day.weekday(), t.hour)) for t in seen]
-            if any(e is None for e in expected):
-                continue
+    for (code, day), readings in by_room_day.items():
+        readings.sort(key=lambda r: r.observed_at)
+        ranks = {r.observed_at: CONGESTION_RANKS[r.congestion_nm] for r in readings}
+        for i, reading in enumerate(readings):
+            now = reading.observed_at
             shift = 0.0
             if use_shift:
-                shift = sum(obs[t] for t in seen) / len(seen) - sum(expected) / len(expected)
-                if clamp is not None:
-                    shift = max(-clamp, min(clamp, shift))
-            current = obs[now]
+                shifts = today_shift(profile, readings[: i + 1], now, anchor_minutes=anchor)
+                if code not in shifts:
+                    # 앵커 관측이 모자라거나 프로파일 셀이 없다 — 스킵해서
+                    # 변형끼리 같은 표본을 비교하게 한다.
+                    continue
+                shift = shifts[code]
+            elif not any(
+                (code, day.weekday(), r.observed_at.hour) in profile
+                for r in readings[: i + 1]
+            ):
+                continue
+            current = ranks[now]
             for horizon in HORIZONS:
                 target = now + timedelta(minutes=horizon)
                 cell = profile.get((code, day.weekday(), target.hour))
-                if target not in obs or cell is None:
+                if target not in ranks or cell is None:
                     continue
-                weight = 1.0 if ramp == 0 else min(1.0, horizon / ramp)
-                anchored = max(0.0, min(3.0, cell + shift))
-                value = (1 - weight) * current + weight * anchored
+                value = predict_tier(cell, shift, current, horizon, ramp_minutes=ramp)
                 n += 1
-                hit += max(0, min(3, round(value))) == obs[target]
-                mae += abs(value - obs[target])
+                hit += max(0, min(3, round(value))) == ranks[target]
+                mae += abs(value - ranks[target])
     return (n, hit, mae) if n else None
 
 
 def sweep(data, days, starts, label: str, variants: list[tuple[str, dict]]) -> None:
     print(f"\n{label}")
-    print(f"  {'변형':<18}{'정확도':>9}{'MAE':>8}{'n':>9}")
+    print(f"  {'변형':<14}{'정확도':>10}{'MAE':>8}{'n':>9}")
     for name, kwargs in variants:
         total = [0, 0, 0.0]
         for start in starts:
@@ -1489,23 +1578,24 @@ def sweep(data, days, starts, label: str, variants: list[tuple[str, dict]]) -> N
             total[1] += got[1]
             total[2] += got[2]
         if not total[0]:
-            print(f"  {name:<18}{'측정 불가':>9}")
+            print(f"  {name:<14}{'측정 불가':>10}")
             continue
-        print(f"  {name:<18}{total[1] / total[0]:>8.1%}{total[2] / total[0]:>8.2f}{total[0]:>9}")
+        print(f"  {name:<14}{total[1] / total[0]:>9.1%}{total[2] / total[0]:>8.2f}{total[0]:>9}")
 
 
 def main() -> None:
     path = sys.argv[1] if len(sys.argv) > 1 else "congestion.db"
     data = load(path)
-    days = sorted({stamp.date() for _, stamp, _ in data})
+    days = sorted({r.observed_at.date() for r in data})
     print(f"데이터: {len(data)}행 / {len(days)}일 / {days[0]} ~ {days[-1]}")
-    starts = [days[0] + timedelta(days=k) for k in (14, 17, 20, 23, 26)]
+    starts = [days[0] + timedelta(days=k) for k in WINDOW_OFFSETS]
 
     sweep(data, days, starts, "① 앵커 창", [
-        ("오늘 전체", {"anchor": None}),
         ("최근 60분", {"anchor": 60}),
         ("최근 120분", {"anchor": 120}),
         ("최근 240분", {"anchor": 240}),
+        # "오늘 전체" 는 아주 큰 창으로 흉내낸다 — 영업시간이 최대 11시간이다.
+        ("오늘 전체", {"anchor": 660}),
     ])
     sweep(data, days, starts, "② 학습 창", [
         (f"{d}일", {"train_days": d}) for d in (7, 14, 21, 28)
@@ -1516,11 +1606,9 @@ def main() -> None:
         ("90분", {"ramp": 90}),
         ("180분", {"ramp": 180}),
     ])
-    sweep(data, days, starts, "④ 편차 클램프", [
+    sweep(data, days, starts, "④ 오늘 편차", [
         ("보정 없음", {"use_shift": False}),
-        ("±0.5", {"clamp": 0.5}),
-        ("±1.0", {"clamp": 1.0}),
-        ("없음", {"clamp": None}),
+        ("보정 있음", {"use_shift": True}),
     ])
 
 
@@ -1532,9 +1620,12 @@ if __name__ == "__main__":
 
 Run: `cd backend && .venv/bin/python scripts/backtest_mmca_prediction.py congestion.db`
 
-Expected: 스펙 문서의 표와 일치한다 — 앵커 120분 64.0%, 학습 14일 64.0%,
-램프 90분 64.0%, 클램프 없음 64.0%가 각 스윕의 최고값. 각 항목의 최적값이
-스펙과 다르면 **상수를 바꾸지 말고** 불일치를 보고할 것.
+Expected: 각 스윕의 최고값이 스펙의 확정 상수와 일치한다 — 앵커 **120분**,
+학습 **14일**, 램프 **90분**, 편차 **보정 있음**. 절대 수치는 스펙 표와
+±1%p 내에서 일치한다 (스펙은 앵커 120·학습 14·램프 90 조합에서 64.0%).
+
+각 항목의 **최적값이 스펙과 다르면 상수를 바꾸지 말고 불일치를 보고할 것** —
+스펙의 네 상수는 확정된 근거이고, 스크립트 쪽 버그가 더 그럴듯하다.
 
 - [ ] **Step 3: 커밋**
 
@@ -1544,6 +1635,10 @@ git commit -m "test(prediction): MMCA 예측 롤링 오리진 백테스트 스�
 
 네 상수의 근거를 재생산한다. 상수를 바꾸려면 먼저 이걸 돌려 새 근거를
 만들 것.
+
+예측 로직을 재구현하지 않는다 - build_profile / today_shift / predict_tier
+를 그대로 호출하고 스윕은 anchor_minutes / ramp_minutes 인자로만 한다.
+재구현하면 근거가 프로덕션 코드와 갈라진다.
 
 CI 에 넣지 않는다 - 프로덕션 스냅샷이 필요하고 실행이 길다."
 ```
