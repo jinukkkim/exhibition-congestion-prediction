@@ -18,6 +18,7 @@ from app.prediction.mmca import (
     CONGESTION_RANKS,
     MIN_SAMPLE_DAYS,
     PROFILE_WINDOW_DAYS,
+    RAMP_MINUTES,
     build_profile,
     curve,
     sample_days,
@@ -249,19 +250,33 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
             continue
         latest[row.space_code] = (row.observed_at.hour * 60 + row.observed_at.minute, rank)
 
+    now_minutes = now.hour * 60 + now.minute
+    if is_today:
+        # 지나간 시각에 점선을 그리지 않는다. last 를 떨어뜨렸을 때
+        # curve 가 10~21시 전부를 내는 것도 이 필터가 막는다.
+        hours = [hour for hour in _PREDICTION_HOURS if hour * 60 >= now_minutes]
+    else:
+        hours = list(_PREDICTION_HOURS)
+
     names = {row.space_code: row.space_nm for row in profile_rows if row.space_nm}
     result: list[MmcaRoomPrediction] = []
     for code in sorted(codes):
         if days_by_code.get(code, 0) < MIN_SAMPLE_DAYS:
             continue
         shift = shifts.get(code)
+        last = latest.get(code) if is_today else None
+        # 램프의 측정된 유효 범위는 판독으로부터 90분이다. 그보다 낡은 점은
+        # 어차피 weight=1.0 이라 곡선에 기여하지 않으면서, 수집기 장애 구간을
+        # 가로지르는 가짜 이음매만 만든다 — anchored:false 와도 모순된다.
+        if last is not None and now_minutes - last[0] > RAMP_MINUTES:
+            last = None
         points = curve(
             profile,
             code,
             target,
-            hours=_PREDICTION_HOURS,
+            hours=hours,
             shift=shift or 0.0,
-            last=latest.get(code) if is_today else None,
+            last=last,
         )
         if not points:
             continue

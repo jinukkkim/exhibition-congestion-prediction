@@ -127,6 +127,9 @@ def test_todays_curve_is_anchored_to_todays_readings(client):
 
     room = response.json()[0]
     assert room["anchored"] is True
+    # 프로파일은 오늘을 뺀 직전 14일로만 만든다 (라우트의 `< day_start`).
+    # 오늘 판독이 프로파일 쿼리로 새면 15가 된다.
+    assert room["sample_days"] == 14
     # 첫 점은 마지막 실측점(15:20 여유)이어야 한다 — 실선과의 이음매.
     assert room["points"][0]["observed_at"].endswith("T15:20:00")
     assert room["points"][0]["tier"] == 0.0
@@ -148,3 +151,55 @@ def test_past_date_returns_an_empty_list(client):
     import app.cache
 
     assert app.cache.r.keys("mmca:prediction:*") == []
+
+
+def test_stale_last_reading_is_not_used_as_a_seam(client):
+    api, Session = client
+    today = _seed(Session, days=14)
+    # 오후 늦은 시각에도 프로파일 셀이 있어야 검증할 점이 남는다 — 오늘 곡선은
+    # 지금(15:25) 이후 시각만 내므로 15시 셀 하나뿐이면 방이 통째로 빠진다.
+    _seed(Session, days=14, hour=17, level="보통")
+    # 수집기가 11시에 멈춘 상황. _FROZEN_NOW 는 15:25 이다.
+    with Session() as session:
+        for minute in (0, 10, 20):
+            session.add(
+                RawMmcaCongestion(
+                    observed_at=datetime.combine(today, datetime.min.time()).replace(
+                        hour=11, minute=minute
+                    ),
+                    space_code="MMCA-SPACE-2001",
+                    space_nm="1전시실",
+                    congestion_nm="여유",
+                )
+            )
+        session.commit()
+
+    response = api.get(f"/mmca/prediction?venue=gwacheon&date={today.isoformat()}")
+
+    room = response.json()[0]
+    assert room["anchored"] is False
+    # 11시 판독을 이음매로 쓰면 안 되고, 지나간 시각(12~15시)에도 점을 내면 안 된다.
+    minutes = [
+        int(p["observed_at"][11:13]) * 60 + int(p["observed_at"][14:16]) for p in room["points"]
+    ]
+    assert min(minutes) >= 15 * 60 + 25
+
+
+def test_second_request_is_served_from_the_cache(client):
+    api, Session = client
+    today = _seed(Session, days=14)
+    target = today + timedelta(days=1)
+
+    first = api.get(f"/mmca/prediction?venue=gwacheon&date={target.isoformat()}")
+    assert first.status_code == 200
+    assert first.json() != []
+
+    import app.cache
+
+    assert app.cache.r.keys(f"mmca:prediction:gwacheon:{target.isoformat()}")
+
+    # 두 번째 요청은 MmcaRoomPrediction(**room) 재수화 경로를 탄다 — 이 경로가
+    # 깨져도 한 번만 GET 하는 테스트는 전부 통과한다.
+    second = api.get(f"/mmca/prediction?venue=gwacheon&date={target.isoformat()}")
+    assert second.status_code == 200
+    assert second.json() == first.json()
