@@ -614,7 +614,7 @@ describe("MmcaRoomChartCard 예측 점선", () => {
 
     const line = screen.getByTestId("mmca-room-chart-prediction-line");
     expect(line).toHaveAttribute("stroke-dasharray");
-    // 실선과 같은 파랑 — 같은 축의 같은 대상이고 확정/예상만 다르다.
+    // 실선과 같은 파랑 — 같은 축의 같은 대상이고 확정/예측만 다르다.
     expect(line).toHaveAttribute("stroke", "#0071E3");
   });
 
@@ -966,32 +966,33 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     expect(tooltip.queryByText(/예측/)).not.toBeInTheDocument();
   });
 
+  // MmcaPage 는 미래 탭에서 chartDate(=D−7)를 viewDate 로 넘기고 lastWeekDaily
+  // 를 null 로 둔다 — daily 는 오늘의 판독이 아니라 지난주 같은 요일의 대리
+  // 기록이라 하루가 다 차 있고, 그 회색 곡선이 이 탭의 비교 시리즈다.
+  const FUTURE_TAB = {
+    room: makeRoom(),
+    viewDate: "2026-07-08",
+    daily: [
+      dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+      dailyPoint("2026-07-08T12:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+      dailyPoint("2026-07-08T14:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+    ],
+    lastWeekDaily: null,
+    prediction: prediction([
+      ["2026-07-22T10:00:00", 0],
+      ["2026-07-22T12:00:00", 1],
+      ["2026-07-22T14:00:00", 2],
+      ["2026-07-22T16:00:00", 3],
+    ]),
+    open: OPEN,
+    close: CLOSE,
+    nowMinutes: WITHIN_HOURS,
+    now: NOW,
+    isOpenToday: true,
+  };
+
   it("미래 탭에서는 D−7 대리 기록이 예측을 가리지 않는다", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        // MmcaPage 는 미래 탭에서 chartDate(=D−7)를 viewDate 로 넘긴다 — daily 는
-        // 오늘의 판독이 아니라 지난주 같은 요일의 대리 기록이라 하루가 다 차 있다.
-        viewDate="2026-07-08"
-        daily={[
-          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-08T12:00:00", { "MMCA-SPACE-2001": "붐빔" }),
-          dailyPoint("2026-07-08T14:00:00", { "MMCA-SPACE-2001": "붐빔" }),
-        ]}
-        lastWeekDaily={null}
-        prediction={prediction([
-          ["2026-07-22T10:00:00", 0],
-          ["2026-07-22T12:00:00", 1],
-          ["2026-07-22T14:00:00", 2],
-          ["2026-07-22T16:00:00", 3],
-        ])}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday
-      />
-    );
+    render(<MmcaRoomChartCard {...FUTURE_TAB} />);
 
     // 대리 기록이 붐빔인 12:00 을 짚는다 — 실측 억제를 isTodayView 로 가두지
     // 않으면 여기서 예측이 사라진다.
@@ -1000,6 +1001,18 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
     expect(tooltip.getByText(/예측/)).toBeInTheDocument();
     expect(tooltip.getByText(/^보통$/)).toBeInTheDocument();
+  });
+
+  it("미래 탭의 괄호는 D−7 대리 기록으로 채운다 — 비교 시리즈가 탭마다 다른 prop 에 있다", () => {
+    render(<MmcaRoomChartCard {...FUTURE_TAB} />);
+
+    hoverAtMinute(12 * 60);
+
+    // 회색 곡선에 마커를 찍어놓고 툴팁은 예측만 말하면, 마커와 툴팁이 커서
+    // 아래에 무엇이 있는지를 두고 서로 다른 말을 한다.
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/예측/)).toBeInTheDocument();
+    expect(tooltip.getByText(/\(지난주 붐빔\)/)).toBeInTheDocument();
   });
 
   it("시간 단위 예측 점 사이를 짚어도 값이 나온다 — 선형 보간", () => {
@@ -1082,5 +1095,56 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
 
     // 빈 껍데기도, "정보 없음" 줄도 놓지 않는다.
     expect(screen.queryByTestId("mmca-room-chart-tooltip")).not.toBeInTheDocument();
+  });
+
+  it("예측 구간의 마지막 점을 지난 x 에는 예측값이 없다", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom({ congestion_nm: null, observed_at: null })}
+        daily={[]}
+        lastWeekDaily={[dailyPoint("2026-07-08T17:00:00", { "MMCA-SPACE-2001": "보통" })]}
+        prediction={prediction([
+          ["2026-07-15T15:00:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 17:00 — 예측의 마지막 점(16:00)보다 뒤다. 마지막 점의 값을 오른쪽으로
+    // 무한히 끌고 가면 안 된다.
+    hoverAtMinute(17 * 60);
+
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
+    expect(tooltip.queryByText(/예측/)).not.toBeInTheDocument();
+  });
+
+  it("시계는 커서의 x 가 아니라 걸린 판독 자신의 시각을 적는다", () => {
+    render(<MmcaRoomChartCard {...TODAY_WITH_PREDICTION} />);
+
+    // 14:32 를 짚으면 매칭 창(5분) 안의 14:30 판독이 걸린다 — 등급은 14:30 것
+    // 이므로 시계도 14:30 이라야 한다.
+    hoverAtMinute(14 * 60 + 32);
+
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText("14:30")).toBeInTheDocument();
+    expect(tooltip.queryByText("14:32")).not.toBeInTheDocument();
+  });
+
+  it("값이 있는 계열마다 자기 y 에 마커를 하나씩 찍는다", () => {
+    const { container } = render(<MmcaRoomChartCard {...TODAY_WITH_PREDICTION} />);
+
+    // 14:00 — 오늘은 보통(tier 1), 지난주는 여유(tier 0).
+    hoverAtMinute(14 * 60);
+
+    // r=4 는 hover 마커만 쓴다 (실시간 글로우는 r=14 / r=4.5).
+    const markers = Array.from(container.querySelectorAll('circle[r="4"]'));
+    expect(markers).toHaveLength(2);
+    expect(new Set(markers.map((c) => c.getAttribute("cy"))).size).toBe(2);
   });
 });
