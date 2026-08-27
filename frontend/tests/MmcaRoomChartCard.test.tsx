@@ -848,4 +848,45 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     expect(screen.getByText("예상")).toBeInTheDocument();
     expect(screen.queryByText("예상 (오늘 반영)")).not.toBeInTheDocument();
   });
+
+  it("keeps the whole future-tab curve — the D−7 proxy line must not re-anchor it", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        // MmcaPage 는 미래 탭에서 chartDate(=D−7)를 viewDate 로 넘긴다 — 그래서
+        // daily 는 오늘의 판독이 아니라 지난주 같은 요일의 대리 기록이고,
+        // 늦은 시각(17:50)까지 이미 다 차 있다.
+        viewDate="2026-07-08"
+        daily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-08T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-08T17:50:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        // 예측은 미래 날짜의 하루 전체를 덮는다.
+        prediction={prediction([
+          ["2026-07-22T10:00:00", 0],
+          ["2026-07-22T12:00:00", 1],
+          ["2026-07-22T14:00:00", 2],
+          ["2026-07-22T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const dashedD = screen
+      .getByTestId("mmca-room-chart-prediction-line")
+      .getAttribute("d") ?? "";
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(dashedStart).not.toBeNull();
+    // 점선은 예측의 첫 점(OPEN 10:00 → x 0)에서 시작한다. 실선의 마지막 판독
+    // (17:50 → x 470)로 재이음되면 10:00~17:00 이 전부 걸러져 점이 하나만 남고
+    // 곡선이 아예 사라진다.
+    expect(Number(dashedStart![1])).toBe(0);
+    // 네 점이 모두 살아남아 C 세그먼트는 3개다.
+    expect((dashedD.match(/C/g) ?? []).length).toBe(3);
+  });
 });

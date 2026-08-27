@@ -203,10 +203,17 @@ export function MmcaRoomChartCard({
   // 버리고 실선의 마지막 점을 그대로 앞에 붙인다. 신선한 페이로드는 버림+
   // 재삽입이 같은 값이라 결과가 그대로고(분기 없음), 낡았을 때만 실질적으로
   // 이음매가 바뀐다.
+  //
+  // 단, 이 재이음은 오늘 탭에서만 옳다. 미래 탭의 `points` 는 오늘의 판독이
+  // 아니라 D−7(지난주 같은 요일)의 대리 기록이라 하루가 이미 다 차 있고,
+  // 예측은 그 날 하루 전체를 덮는다 — 여기서 재이음하면 실선의 마지막 시각
+  // 이하인 예측 점이 전부 걸려 곡선이 통째로 사라진다. 애초에 미래 탭에는
+  // 지킬 이음매가 없다(실선과 예측이 서로 다른 날짜다).
   const predPointsRaw = predictionPoints(prediction, open, close);
-  const predPoints = lastPoint
-    ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
-    : predPointsRaw;
+  const predPoints =
+    isTodayView && lastPoint
+      ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
+      : predPointsRaw;
   const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
   const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
   // 예측만 있어도 차트는 보여야 한다.
