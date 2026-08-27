@@ -267,7 +267,18 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
         last = latest.get(code) if is_today else None
         # 램프의 측정된 유효 범위는 판독으로부터 90분이다. 그보다 낡은 점은
         # 어차피 weight=1.0 이라 곡선에 기여하지 않으면서, 수집기 장애 구간을
-        # 가로지르는 가짜 이음매만 만든다 — anchored:false 와도 모순된다.
+        # 가로지르는 가짜 이음매만 만든다.
+        #
+        # 이 창(90분)은 anchored 를 정하는 창(ANCHOR_WINDOW_MINUTES, 120분)과
+        # 일부러 다르다. 두 값이 각각 독립적으로 측정돼 확정됐고 서로 다른
+        # 질문에 답한다 — 90분은 "이 판독에서 램프를 시작해도 되는가",
+        # 120분은 "오늘 수준으로 곡선을 옮겨도 되는가". 그래서 마지막 판독이
+        # 90~120분 낡은 좁은 구간에서는 anchored:true 이면서 램프 없이 보정된
+        # 프로파일에서 곡선이 시작한다. 이는 결함이 아니다: 편차는 실제로
+        # 오늘 판독에서 나왔고(범례의 "오늘 반영"이 정확하다), 실선이 끝난
+        # 지점과 점선이 시작하는 지점 사이의 빈 구간이 곧 그 시간 동안
+        # 수집이 없었다는 사실이다. 한쪽 상수를 다른 쪽에 맞추지 말 것 —
+        # 그러려면 scripts/backtest_mmca_prediction.py 로 다시 재야 한다.
         if last is not None and now_minutes - last[0] > RAMP_MINUTES:
             last = None
         points = curve(
@@ -275,7 +286,7 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
             code,
             target,
             hours=hours,
-            shift=shift or 0.0,
+            shift=shift if shift is not None else 0.0,
             last=last,
         )
         # 점 하나로는 프론트가 경로를 그릴 수 없다 (smoothPath 는 2점 이상 필요) —
