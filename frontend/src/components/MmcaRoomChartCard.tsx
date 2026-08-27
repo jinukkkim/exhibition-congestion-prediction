@@ -195,12 +195,22 @@ export function MmcaRoomChartCard({
   const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
-  const predPoints = predictionPoints(prediction, open, close);
+  const lastPoint = points[points.length - 1];
+  // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한 폴링
+  // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 최신
+  // 판독보다 한 그리드 스텝(10분) 뒤처져 실선과 겹쳐 그려진다. 페이로드를
+  // 믿는 대신 프론트가 항상 다시 고정한다: 실선 마지막 시각 이하의 예측 점을
+  // 버리고 실선의 마지막 점을 그대로 앞에 붙인다. 신선한 페이로드는 버림+
+  // 재삽입이 같은 값이라 결과가 그대로고(분기 없음), 낡았을 때만 실질적으로
+  // 이음매가 바뀐다.
+  const predPointsRaw = predictionPoints(prediction, open, close);
+  const predPoints = lastPoint
+    ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
+    : predPointsRaw;
   const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
   const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
   // 예측만 있어도 차트는 보여야 한다.
   const hasAnySeries = Boolean(linePath || lastWeekLinePath || predictionPath);
-  const lastPoint = points[points.length - 1];
 
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");

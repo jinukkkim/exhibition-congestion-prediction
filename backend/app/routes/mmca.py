@@ -278,7 +278,10 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
             shift=shift or 0.0,
             last=last,
         )
-        if not points:
+        # 점 하나로는 프론트가 경로를 그릴 수 없다 (smoothPath 는 2점 이상 필요) —
+        # 폐관 직후처럼 이음매만 살아남은 방은 통째로 빼야, 프론트가 조용히
+        # 버리는 대신 애초에 응답에 없는 방이 된다.
+        if len(points) <= 1:
             continue
         result.append(
             MmcaRoomPrediction(

@@ -89,6 +89,9 @@ def test_rooms_below_the_sample_day_gate_are_omitted(client):
 def test_future_date_returns_the_unanchored_profile(client):
     api, Session = client
     today = _seed(Session, days=14, hour=15, level="붐빔")
+    # 셀이 하나뿐이면 curve() 가 1점만 내 방 자체가 응답에서 빠진다 (2점
+    # 미만은 경로를 못 그린다) — 검증할 15시 점을 남기려면 셀이 하나 더 필요.
+    _seed(Session, days=14, hour=16, level="여유")
     target = today + timedelta(days=1)
 
     response = api.get(f"/mmca/prediction?venue=gwacheon&date={target.isoformat()}")
@@ -108,6 +111,10 @@ def test_future_date_returns_the_unanchored_profile(client):
 def test_todays_curve_is_anchored_to_todays_readings(client):
     api, Session = client
     today = _seed(Session, days=14, hour=15, level="붐빔")
+    # 이음매 이후로 남는 시각(16~21시)에 셀이 하나 더 있어야 한다 — 셀이 15시
+    # 하나뿐이면(이음매보다 앞선 시각) curve() 가 이음매 1점만 내 방이 응답에서
+    # 빠진다 (2점 미만은 경로를 못 그린다).
+    _seed(Session, days=14, hour=16, level="여유")
     # 오늘 같은 시각에 여유가 3개 — 프로파일(3.0)보다 훨씬 한산하다.
     with Session() as session:
         for minute in (0, 10, 20):
@@ -158,7 +165,10 @@ def test_stale_last_reading_is_not_used_as_a_seam(client):
     today = _seed(Session, days=14)
     # 오후 늦은 시각에도 프로파일 셀이 있어야 검증할 점이 남는다 — 오늘 곡선은
     # 지금(15:25) 이후 시각만 내므로 15시 셀 하나뿐이면 방이 통째로 빠진다.
+    # 2점 미만은 경로를 못 그려 방이 응답에서 통째로 빠지므로 셀이 두 개는
+    # 있어야 한다.
     _seed(Session, days=14, hour=17, level="보통")
+    _seed(Session, days=14, hour=19, level="여유")
     # 수집기가 11시에 멈춘 상황. _FROZEN_NOW 는 15:25 이다.
     with Session() as session:
         for minute in (0, 10, 20):
@@ -185,9 +195,67 @@ def test_stale_last_reading_is_not_used_as_a_seam(client):
     assert min(minutes) >= 15 * 60 + 25
 
 
+def test_a_room_whose_curve_yields_only_the_seam_is_omitted(client, monkeypatch):
+    api, Session = client
+    # 프로파일은 15시 셀만 있다 — 21시대 셀이 없다.
+    today = _seed(Session, days=14, hour=15, level="붐빔")
+    # 폐관 직전 마지막 판독 하나만 오늘 심는다. 지금(21:55) 이후로 남는
+    # 프로파일 시각(10~21시, 정시)이 하나도 없어 curve() 가 이 이음매 1점만
+    # 낸다 — 프론트는 2점 미만이면 경로를 못 그리므로 방 자체가 응답에서
+    # 빠져야 한다.
+    with Session() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=datetime.combine(today, datetime.min.time()).replace(
+                    hour=21, minute=50
+                ),
+                space_code="MMCA-SPACE-2001",
+                space_nm="1전시실",
+                congestion_nm="여유",
+            )
+        )
+        session.commit()
+
+    import app.routes.mmca
+
+    monkeypatch.setattr(
+        app.routes.mmca,
+        "_now_seoul",
+        lambda: datetime.combine(today, datetime.min.time()).replace(hour=21, minute=55),
+    )
+
+    response = api.get(f"/mmca/prediction?venue=gwacheon&date={today.isoformat()}")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_cache_ttl_is_60s_for_today_and_3600s_for_a_future_date(client):
+    api, Session = client
+    today = _seed(Session, days=14)
+    future = today + timedelta(days=1)
+
+    api.get(f"/mmca/prediction?venue=gwacheon&date={today.isoformat()}")
+    api.get(f"/mmca/prediction?venue=gwacheon&date={future.isoformat()}")
+
+    import app.cache
+
+    today_ttl = app.cache.r.ttl(f"mmca:prediction:gwacheon:{today.isoformat()}")
+    future_ttl = app.cache.r.ttl(f"mmca:prediction:gwacheon:{future.isoformat()}")
+
+    # set 과 읽기 사이에 1초 정도 줄어들 수 있다 — 정확히 60/3600 이 아니라
+    # 범위로 허용한다. 둘이 뒤바뀌면(오늘이 3600, 미래가 60) 이 범위를 벗어나
+    # 반드시 걸린다.
+    assert 59 <= today_ttl <= 60
+    assert 3599 <= future_ttl <= 3600
+
+
 def test_second_request_is_served_from_the_cache(client):
     api, Session = client
     today = _seed(Session, days=14)
+    # 셀이 하나뿐이면 curve() 가 1점만 내 방 자체가 응답에서 빠진다 (2점
+    # 미만은 경로를 못 그린다) — 캐시에 실제 값이 있어야 검증이 된다.
+    _seed(Session, days=14, hour=16, level="여유")
     target = today + timedelta(days=1)
 
     first = api.get(f"/mmca/prediction?venue=gwacheon&date={target.isoformat()}")

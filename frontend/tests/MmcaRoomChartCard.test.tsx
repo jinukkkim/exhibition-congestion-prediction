@@ -33,7 +33,6 @@ function prediction(
     space_code: "MMCA-SPACE-2001",
     space_nm: "1전시실",
     anchored: true,
-    sample_days: 14,
     points: points.map(([observed_at, tier]) => ({
       observed_at,
       tier,
@@ -730,6 +729,82 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     const dashed = paths.findIndex((p) => p.dataset.testid === "mmca-room-chart-prediction-line");
     expect(solid).toBeGreaterThanOrEqual(0);
     expect(dashed).toBeGreaterThan(solid);
+  });
+
+  it("joins the dashed line's first point to the solid line's last point", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T14:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        // 예측의 첫 점이 실선의 마지막 판독(14:30, 약간 붐빔=tier 2)과
+        // 정확히 같다 — 이음매가 이 기능의 전제다.
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const solidD = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    const dashedD = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d") ?? "";
+
+    // solidD 는 "...C cp1x cp1y, cp2x cp2y, LASTX LASTY" 로 끝난다 — 마지막
+    // 좌표쌍은 끝에서 가장 가까운 쉼표 뒤에 온다. dashedD 는 "M X Y ..." 로
+    // 시작한다. smoothPath 가 쉼표와 공백을 섞어 써서 전체를 정규식으로 잘라
+    // 읽으면 오파싱하기 쉬우니, 이 두 토큰만 짚는다.
+    const solidEnd = solidD.match(/,\s*(-?[\d.]+)\s+(-?[\d.]+)$/);
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(solidEnd).not.toBeNull();
+    expect(dashedStart).not.toBeNull();
+    expect(Number(dashedStart![1])).toBe(Number(solidEnd![1]));
+    expect(Number(dashedStart![2])).toBe(Number(solidEnd![2]));
+  });
+
+  it("re-anchors a stale prediction seam to the solid line's real last point", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T15:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T15:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한
+        // 폴링만큼 예측이 낡아, 이음매(15:20)가 실선의 실제 마지막 판독
+        // (15:30)보다 한 그리드 스텝 뒤처진 상황을 흉내낸다.
+        prediction={prediction([
+          ["2026-07-15T15:20:00", 1],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const solidD = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    const dashedD = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d") ?? "";
+
+    const solidEnd = solidD.match(/,\s*(-?[\d.]+)\s+(-?[\d.]+)$/);
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(solidEnd).not.toBeNull();
+    expect(dashedStart).not.toBeNull();
+    // 점선은 낡은 15:20 이 아니라 실선의 실제 마지막 점(15:30)에서 시작한다.
+    expect(Number(dashedStart![1])).toBe(Number(solidEnd![1]));
+    expect(Number(dashedStart![2])).toBe(Number(solidEnd![2]));
+    // 15:20 이 이음매 뒤에 별도 점으로 끼어들지 않는다 — 남는 점은 15:30(이음매)
+    // 과 16:00 뿐이라 세그먼트("C")는 정확히 1개다. 15:20 이 살아남으면
+    // (재이음 없이 그대로 붙거나, 걸러지지 않고 끼어들면) 2개가 된다.
+    expect((dashedD.match(/C/g) ?? []).length).toBe(1);
   });
 
   it("labels the prediction in the legend, noting when today anchors it", () => {

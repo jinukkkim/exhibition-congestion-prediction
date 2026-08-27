@@ -49,7 +49,6 @@ export interface MmcaRoomPrediction {
   space_code: string;
   space_nm: string | null;
   anchored: boolean;
-  sample_days: number;
   points: MmcaPredictionPoint[];
 }
 
