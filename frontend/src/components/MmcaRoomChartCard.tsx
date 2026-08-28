@@ -13,14 +13,17 @@ const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
 // value there — applies to every grid series (today's, last week's, the
 // future tab's D−7 proxy), not just the last-week comparison.
 //
-// MMCA readings snap to a 10-minute grid (see collector.py), so a genuine
-// same-time match is always distance 0, and the next reading on the grid
-// is always exactly 10 minutes away. A window of exactly 10 (nearestWithin
-// uses `dist <= maxDistance`) would let that adjacent, different-time
-// reading match when the series is simply missing the exact time slot
-// (e.g. a confirmed-empty skip in collector.py) — same boundary bug as
-// CongestionCard's bucket-width window, fixed the same way: strictly less
-// than the grid spacing so only distance 0 admits.
+// MMCA readings snap to a 10-minute grid (see collector.py) and the hovered
+// x is snapped to that same grid (handleHoverMove), so in practice this
+// window only ever admits distance 0: an exact-slot match. It stays a
+// window rather than an equality test for the case the grid assumption
+// breaks — a series whose points drift off the multiples of 10 (a rescued
+// backfill, a schedule change) still matches within a few minutes instead
+// of going silent. The width must stay strictly below the grid spacing
+// (nearestWithin uses `dist <= maxDistance`): at exactly 10 the adjacent,
+// different-time reading would match whenever a series is simply missing
+// the hovered slot (e.g. a confirmed-empty skip in collector.py) — the same
+// boundary bug as CongestionCard's bucket-width window.
 const HOVER_MATCH_MINUTES = 5;
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
@@ -178,8 +181,9 @@ export function MmcaRoomChartCard({
   isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  // 커서의 x 를 분으로 되돌린 값 하나. 계열 위의 점으로 스냅하지 않는다 —
-  // 그 x 에서 각 계열을 따로 조회해 있는 것만 말한다.
+  // 커서의 x 를 분으로 되돌려 10분 격자에 맞춘 값 하나. 계열 위의 점으로
+  // 스냅하는 게 아니다 — 격자 위의 그 시각에서 각 계열을 따로 조회해 있는
+  // 것만 말한다.
   const [hoverMinutes, setHoverMinutes] = useState<number | null>(null);
 
   const spaceCode = room.space_code;
@@ -262,8 +266,12 @@ export function MmcaRoomChartCard({
     const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
     // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
     const minutes = open + (svgX / CHART_WIDTH) * (close - open || 1);
-    // 영업시간 밖을 읽지 못하게 양 끝으로 가둔다.
-    setHoverMinutes(Math.round(Math.min(Math.max(minutes, open), close)));
+    // 수집이 10분 격자(스케줄러의 */10 cron)라 짚은 위치도 같은 격자로 맞춘다 —
+    // 십자선이 미끄러지지 않고 10분 단위로 튀고, 시계에 12:43 같은 임의의 분이
+    // 뜨지 않는다. 스냅을 먼저, 영업시간 가두기를 나중에 (순서를 바꾸면
+    // open/close 가 10의 배수가 아닐 때 영업시간 밖으로 튀어나간다).
+    const snapped = Math.round(minutes / 10) * 10;
+    setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 
   // 비교 시리즈는 탭에 따라 다른 prop 에 담긴다. 오늘 탭은 lastWeekPoints(회색
@@ -502,12 +510,11 @@ export function MmcaRoomChartCard({
                 left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
               }}
             >
-              {/* 그리드 계열이 걸렸으면 그 판독의 시각을 적는다 — 짚은 x 를
-                  그대로 적으면 14:32 에 14:30 판독의 등급이 붙어 시계가
-                  거짓말을 한다. 예측만 걸린 x 에서는 예측이 곧 그 x 의 값이라
-                  짚은 x 를 그대로 쓴다. */}
+              {/* 짚은 x 는 이미 10분 격자 위라 걸린 그리드 판독의 시각과 항상
+                  같고, 예측만 걸린 x 에서는 예측이 곧 그 x 의 값이다 — 어느
+                  쪽이든 짚은 시각을 그대로 적으면 된다. */}
               <span className="font-mono tabular-nums text-ink-soft">
-                {formatMinutes((hoverActual ?? hoverCompare)?.minutes ?? hoverMinutes)}
+                {formatMinutes(hoverMinutes)}
               </span>
               <span className="mx-1 text-ink-soft">·</span>
               {hoverPrefix && <span className="text-ink-soft">{hoverPrefix}</span>}

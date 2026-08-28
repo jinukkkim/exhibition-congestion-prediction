@@ -1124,16 +1124,56 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     expect(tooltip.queryByText(/예측/)).not.toBeInTheDocument();
   });
 
-  it("시계는 커서의 x 가 아니라 걸린 판독 자신의 시각을 적는다", () => {
+  it("시계는 격자로 스냅된 시각을 적는다 — 커서의 임의의 분이 아니다", () => {
     render(<MmcaRoomChartCard {...TODAY_WITH_PREDICTION} />);
 
-    // 14:32 를 짚으면 매칭 창(5분) 안의 14:30 판독이 걸린다 — 등급은 14:30 것
-    // 이므로 시계도 14:30 이라야 한다.
+    // 14:32 를 짚으면 10분 격자의 14:30 슬롯으로 스냅되고, 그 자리에 실제로
+    // 있는 판독(약간 붐빔)의 시각과 시계가 같아진다.
     hoverAtMinute(14 * 60 + 32);
 
     const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
     expect(tooltip.getByText("14:30")).toBeInTheDocument();
     expect(tooltip.queryByText("14:32")).not.toBeInTheDocument();
+  });
+
+  // 수집은 10분 그리드(스케줄러가 */10 cron)다 — 짚은 위치도 같은 격자로
+  // 스냅하므로 예측만 있는 x 에서도 시계에 12:43 같은 임의의 분이 뜨지 않는다.
+  const PREDICTION_ONLY = {
+    room: makeRoom({ congestion_nm: null, observed_at: null }),
+    daily: [],
+    prediction: prediction([
+      ["2026-07-15T12:00:00", 1],
+      ["2026-07-15T13:00:00", 2],
+    ]),
+    open: OPEN,
+    close: CLOSE,
+    nowMinutes: WITHIN_HOURS,
+    now: NOW,
+    isOpenToday: true,
+  };
+
+  it("두 슬롯 사이를 짚으면 가까운 쪽 10분 슬롯으로 스냅한다", () => {
+    render(<MmcaRoomChartCard {...PREDICTION_ONLY} />);
+
+    hoverAtMinute(12 * 60 + 43);
+    expect(within(screen.getByTestId("mmca-room-chart-tooltip")).getByText("12:40")).toBeInTheDocument();
+
+    hoverAtMinute(12 * 60 + 47);
+    expect(within(screen.getByTestId("mmca-room-chart-tooltip")).getByText("12:50")).toBeInTheDocument();
+  });
+
+  it("십자선의 x 는 같은 10분 슬롯 안에서 움직이지 않는다 — 미끄러지지 않고 튄다", () => {
+    const { container } = render(<MmcaRoomChartCard {...PREDICTION_ONLY} />);
+    const crosshairX = () =>
+      container.querySelector('line[stroke-width="1"]:not([stroke-dasharray])')?.getAttribute("x1");
+
+    hoverAtMinute(12 * 60 + 41);
+    const first = crosshairX();
+    hoverAtMinute(12 * 60 + 44);
+
+    // 12:40 슬롯의 x (1분 = 1px 축이므로 760 - OPEN).
+    expect(first).toBe("160");
+    expect(crosshairX()).toBe(first);
   });
 
   it("값이 있는 계열마다 자기 y 에 마커를 하나씩 찍는다", () => {
