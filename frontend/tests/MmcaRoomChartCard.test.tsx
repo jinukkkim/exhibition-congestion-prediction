@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
-import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../src/api/mmca";
+import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../src/api/mmca";
 
 function dailyPoint(observedAt: string, byCode: Record<string, string | null>): MmcaDailyLogPoint {
   return {
@@ -21,6 +21,23 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
     space_nm: "1전시실",
     congestion_nm: "약간 붐빔",
     observed_at: "2026-07-15T14:30:00",
+    ...overrides,
+  };
+}
+
+function prediction(
+  points: [string, number][],
+  overrides: Partial<MmcaRoomPrediction> = {}
+): MmcaRoomPrediction {
+  return {
+    space_code: "MMCA-SPACE-2001",
+    space_nm: "1전시실",
+    anchored: true,
+    points: points.map(([observed_at, tier]) => ({
+      observed_at,
+      tier,
+      label: ["여유", "보통", "약간 붐빔", "붐빔"][Math.round(tier)],
+    })),
     ...overrides,
   };
 }
@@ -569,5 +586,307 @@ describe("MmcaRoomChartCard past-day view", () => {
     expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
     expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument();
+  });
+});
+
+describe("MmcaRoomChartCard 예측 점선", () => {
+  it("draws a dashed prediction line", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const line = screen.getByTestId("mmca-room-chart-prediction-line");
+    expect(line).toHaveAttribute("stroke-dasharray");
+    // 실선과 같은 파랑 — 같은 축의 같은 대상이고 확정/예상만 다르다.
+    expect(line).toHaveAttribute("stroke", "#0071E3");
+  });
+
+  it("does not fill an area under the prediction", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 실선의 그라디언트 면은 "쌓인 사실"을 뜻한다. 예측에 같은 면을 주면
+    // 확정된 것처럼 읽힌다.
+    expect(screen.getByTestId("mmca-room-chart-prediction-line")).toHaveAttribute("fill", "none");
+    expect(screen.queryByTestId("mmca-room-chart-prediction-area")).not.toBeInTheDocument();
+  });
+
+  it("renders the chart normally when there is no prediction", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T14:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        prediction={null}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mmca-room-chart-prediction-line")
+    ).not.toBeInTheDocument();
+  });
+
+  it("skips a single-point prediction — one point cannot make a path", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction([["2026-07-15T14:30:00", 2]])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(
+      screen.queryByTestId("mmca-room-chart-prediction-line")
+    ).not.toBeInTheDocument();
+  });
+
+  it("clips prediction points outside business hours", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+          ["2026-07-15T20:00:00", 3], // CLOSE(18:00) 밖 — 잘려야 한다
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const d = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d")!;
+    // smoothPath 는 점 N개에서 C 세그먼트를 N-1개 낸다. 20:00 이 잘리면 2점이
+    // 남아 C 가 정확히 1개다. (좌표를 정규식으로 파싱하지 않는다 — smoothPath
+    // 는 쉼표와 공백을 섞어 출력해서 오파싱하기 쉽다.)
+    expect((d.match(/C/g) ?? []).length).toBe(1);
+  });
+
+  it("draws the dashed line on top of the solid one", () => {
+    const { container } = render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T14:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // SVG 는 그린 순서대로 겹친다 — 예측선이 실선보다 뒤에 와야 위에 보인다.
+    const paths = Array.from(container.querySelectorAll("path"));
+    const solid = paths.findIndex((p) => p.dataset.testid === "mmca-room-chart-line");
+    const dashed = paths.findIndex((p) => p.dataset.testid === "mmca-room-chart-prediction-line");
+    expect(solid).toBeGreaterThanOrEqual(0);
+    expect(dashed).toBeGreaterThan(solid);
+  });
+
+  it("joins the dashed line's first point to the solid line's last point", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T14:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        // 예측의 첫 점이 실선의 마지막 판독(14:30, 약간 붐빔=tier 2)과
+        // 정확히 같다 — 이음매가 이 기능의 전제다.
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const solidD = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    const dashedD = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d") ?? "";
+
+    // solidD 는 "...C cp1x cp1y, cp2x cp2y, LASTX LASTY" 로 끝난다 — 마지막
+    // 좌표쌍은 끝에서 가장 가까운 쉼표 뒤에 온다. dashedD 는 "M X Y ..." 로
+    // 시작한다. smoothPath 가 쉼표와 공백을 섞어 써서 전체를 정규식으로 잘라
+    // 읽으면 오파싱하기 쉬우니, 이 두 토큰만 짚는다.
+    const solidEnd = solidD.match(/,\s*(-?[\d.]+)\s+(-?[\d.]+)$/);
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(solidEnd).not.toBeNull();
+    expect(dashedStart).not.toBeNull();
+    expect(Number(dashedStart![1])).toBe(Number(solidEnd![1]));
+    expect(Number(dashedStart![2])).toBe(Number(solidEnd![2]));
+  });
+
+  it("re-anchors a stale prediction seam to the solid line's real last point", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T15:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T15:30:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+        ]}
+        // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한
+        // 폴링만큼 예측이 낡아, 이음매(15:20)가 실선의 실제 마지막 판독
+        // (15:30)보다 한 그리드 스텝 뒤처진 상황을 흉내낸다.
+        prediction={prediction([
+          ["2026-07-15T15:20:00", 1],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const solidD = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    const dashedD = screen.getByTestId("mmca-room-chart-prediction-line").getAttribute("d") ?? "";
+
+    const solidEnd = solidD.match(/,\s*(-?[\d.]+)\s+(-?[\d.]+)$/);
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(solidEnd).not.toBeNull();
+    expect(dashedStart).not.toBeNull();
+    // 점선은 낡은 15:20 이 아니라 실선의 실제 마지막 점(15:30)에서 시작한다.
+    expect(Number(dashedStart![1])).toBe(Number(solidEnd![1]));
+    expect(Number(dashedStart![2])).toBe(Number(solidEnd![2]));
+    // 15:20 이 이음매 뒤에 별도 점으로 끼어들지 않는다 — 남는 점은 15:30(이음매)
+    // 과 16:00 뿐이라 세그먼트("C")는 정확히 1개다. 15:20 이 살아남으면
+    // (재이음 없이 그대로 붙거나, 걸러지지 않고 끼어들면) 2개가 된다.
+    expect((dashedD.match(/C/g) ?? []).length).toBe(1);
+  });
+
+  it("labels the prediction in the legend, noting when today anchors it", () => {
+    const { rerender } = render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction([
+          ["2026-07-15T14:30:00", 2],
+          ["2026-07-15T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByText("예상 (오늘 반영)")).toBeInTheDocument();
+
+    rerender(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        prediction={prediction(
+          [
+            ["2026-07-15T14:30:00", 2],
+            ["2026-07-15T16:00:00", 3],
+          ],
+          { anchored: false }
+        )}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    expect(screen.getByText("예상")).toBeInTheDocument();
+    expect(screen.queryByText("예상 (오늘 반영)")).not.toBeInTheDocument();
+  });
+
+  it("keeps the whole future-tab curve — the D−7 proxy line must not re-anchor it", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        // MmcaPage 는 미래 탭에서 chartDate(=D−7)를 viewDate 로 넘긴다 — 그래서
+        // daily 는 오늘의 판독이 아니라 지난주 같은 요일의 대리 기록이고,
+        // 늦은 시각(17:50)까지 이미 다 차 있다.
+        viewDate="2026-07-08"
+        daily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-08T14:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-08T17:50:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        // 예측은 미래 날짜의 하루 전체를 덮는다.
+        prediction={prediction([
+          ["2026-07-22T10:00:00", 0],
+          ["2026-07-22T12:00:00", 1],
+          ["2026-07-22T14:00:00", 2],
+          ["2026-07-22T16:00:00", 3],
+        ])}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    const dashedD = screen
+      .getByTestId("mmca-room-chart-prediction-line")
+      .getAttribute("d") ?? "";
+    const dashedStart = dashedD.match(/^M\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+    expect(dashedStart).not.toBeNull();
+    // 점선은 예측의 첫 점(OPEN 10:00 → x 0)에서 시작한다. 실선의 마지막 판독
+    // (17:50 → x 470)로 재이음되면 10:00~17:00 이 전부 걸러져 점이 하나만 남고
+    // 곡선이 아예 사라진다.
+    expect(Number(dashedStart![1])).toBe(0);
+    // 네 점이 모두 살아남아 C 세그먼트는 3개다.
+    expect((dashedD.match(/C/g) ?? []).length).toBe(3);
   });
 });

@@ -1,6 +1,6 @@
 import { useRef, useState, type MouseEvent } from "react";
 
-import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
+import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
@@ -123,10 +123,19 @@ function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: 
     .filter((p) => p.minutes >= open && p.minutes <= close);
 }
 
+// 예측 점은 이미 방별로 갈라져 있고 tier 가 소수다 — roomPoints 처럼 등급명을
+// 인덱스로 되돌릴 필요가 없다.
+function predictionPoints(prediction: MmcaRoomPrediction | null, open: number, close: number): Point[] {
+  return (prediction?.points ?? [])
+    .map((p) => ({ minutes: minutesOfDay(p.observed_at), tier: p.tier, label: p.label }))
+    .filter((p) => p.minutes >= open && p.minutes <= close);
+}
+
 export function MmcaRoomChartCard({
   room,
   daily,
   lastWeekDaily = null,
+  prediction = null,
   open,
   close,
   nowMinutes,
@@ -137,6 +146,8 @@ export function MmcaRoomChartCard({
   room: MmcaRoomStatus;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
+  // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다.
+  prediction?: MmcaRoomPrediction | null;
   open: number;
   close: number;
   nowMinutes: number;
@@ -185,6 +196,28 @@ export function MmcaRoomChartCard({
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = points[points.length - 1];
+  // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한 폴링
+  // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 최신
+  // 판독보다 한 그리드 스텝(10분) 뒤처져 실선과 겹쳐 그려진다. 페이로드를
+  // 믿는 대신 프론트가 항상 다시 고정한다: 실선 마지막 시각 이하의 예측 점을
+  // 버리고 실선의 마지막 점을 그대로 앞에 붙인다. 신선한 페이로드는 버림+
+  // 재삽입이 같은 값이라 결과가 그대로고(분기 없음), 낡았을 때만 실질적으로
+  // 이음매가 바뀐다.
+  //
+  // 단, 이 재이음은 오늘 탭에서만 옳다. 미래 탭의 `points` 는 오늘의 판독이
+  // 아니라 D−7(지난주 같은 요일)의 대리 기록이라 하루가 이미 다 차 있고,
+  // 예측은 그 날 하루 전체를 덮는다 — 여기서 재이음하면 실선의 마지막 시각
+  // 이하인 예측 점이 전부 걸려 곡선이 통째로 사라진다. 애초에 미래 탭에는
+  // 지킬 이음매가 없다(실선과 예측이 서로 다른 날짜다).
+  const predPointsRaw = predictionPoints(prediction, open, close);
+  const predPoints =
+    isTodayView && lastPoint
+      ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
+      : predPointsRaw;
+  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
+  const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
+  // 예측만 있어도 차트는 보여야 한다.
+  const hasAnySeries = Boolean(linePath || lastWeekLinePath || predictionPath);
 
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
@@ -293,7 +326,7 @@ export function MmcaRoomChartCard({
         )}
 
         <div className="relative mt-8">
-          {(linePath || lastWeekLinePath) && (
+          {hasAnySeries && (
             <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
               <span className="flex items-center gap-1.5">
                 <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
@@ -306,6 +339,15 @@ export function MmcaRoomChartCard({
                   {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
                 </span>
               )}
+              {predictionPath && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-0 w-3 border-t-2 border-dashed"
+                    style={{ borderColor: CHART_BLUE }}
+                  />
+                  {prediction?.anchored ? "예상 (오늘 반영)" : "예상"}
+                </span>
+              )}
             </div>
           )}
           <svg
@@ -314,7 +356,7 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {(linePath || lastWeekLinePath) && (
+            {hasAnySeries && (
               <>
                 <defs>
                   <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
@@ -355,6 +397,18 @@ export function MmcaRoomChartCard({
                     fill="none"
                     stroke={lineStroke}
                     strokeWidth={2.5}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )}
+                {predictionPath && (
+                  <path
+                    data-testid="mmca-room-chart-prediction-line"
+                    d={predictionPath}
+                    fill="none"
+                    stroke={CHART_BLUE}
+                    strokeWidth={2.5}
+                    strokeDasharray="5 5"
                     strokeLinejoin="round"
                     strokeLinecap="round"
                   />
