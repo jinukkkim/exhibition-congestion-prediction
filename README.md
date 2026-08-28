@@ -28,17 +28,41 @@ cp .env.example .env   # fill in SEOUL_API_KEY
 
 ### Developing against real data
 
-`scripts/dev.sh` pulls a fresh snapshot of the production DB into
-`congestion.db` before starting uvicorn, so local dev always sees current
-data instead of whatever's been collected locally. Needs `DEPLOY_HOST` /
-`DEPLOY_USER` / `DEPLOY_SSH_KEY` set in `.env.local` (see `.env.local.example`).
+`scripts/dev.sh` refreshes `congestion.db` from production before starting
+uvicorn, so local dev sees current data instead of whatever's been collected
+locally. Needs `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` set in
+`.env.local` (see `.env.local.example`).
 
 ```bash
 scripts/dev.sh
 ```
 
+The pull is skipped when the local DB is less than 30 minutes old — production
+only moves every 5 minutes (Seoul) / 10 minutes (MMCA), so restarting the
+backend a few times while working on one thing does not re-download it:
+
+```bash
+DB_MAX_AGE=0 scripts/dev.sh     # always pull
+DB_MAX_AGE=inf scripts/dev.sh   # never pull, use what's on disk
+```
+
 Run `scripts/pull_prod_db.sh` on its own to refresh the DB without
 restarting the server.
+
+The snapshot is gzipped on the server and streamed through one ssh
+connection, and archived `/citydata` bodies older than 7 days are dropped
+from it first — production is ~213MB, of which ~172MB is
+`raw_congestion.raw_response` that only the logs page reads, one day at a
+time. That brings the local file to ~14MB and the pull to under 30 seconds.
+Days past the cutoff still show every parsed column on `/logs`, just not the
+~25 extra fields the archived body would have added:
+
+```bash
+RAW_RESPONSE_KEEP_DAYS=30 scripts/pull_prod_db.sh   # keep a month of bodies
+```
+
+Production keeps every archived body — the trim only ever touches the
+server-side `/tmp` snapshot.
 
 ## Frontend setup
 
