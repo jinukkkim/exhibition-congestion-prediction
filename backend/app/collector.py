@@ -103,8 +103,13 @@ def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
     # design could not be changed on evidence. These numbers are what make
     # that decision possible next time.
     #
-    # Success is logged at debug so a healthy day stays quiet; failures carry
-    # the elapsed time at warning, where the journal already keeps them.
+    # Success is logged at info, not debug: it is the only record of when a
+    # poll actually ran. raw_congestion.observed_at is the Open API's own
+    # publication time, not ours, so the DB cannot answer "when did we
+    # collect" — reconstructing a collection gap from it means assuming the
+    # ~30 minute publication lag, which is exactly the assumption that made
+    # the first reconstruction of 2026-08-30 come out as zero outage windows
+    # instead of five.
     started = monotonic()
     for attempt in range(1, _FETCH_ATTEMPTS + 1):
         attempt_started = monotonic()
@@ -143,7 +148,7 @@ def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
                     monotonic() - started,
                 )
             else:
-                logger.debug("Seoul fetch ok in %.1fs", monotonic() - attempt_started)
+                logger.info("Seoul fetch ok in %.1fs", monotonic() - attempt_started)
             return reading
     raise AssertionError("unreachable")  # pragma: no cover
 
