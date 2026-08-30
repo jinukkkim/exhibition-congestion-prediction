@@ -156,6 +156,10 @@ def test_a_rough_upstream_hour_is_not_reported_as_an_outage(client):
     and one bad upstream day mailed "server down" five times for a process
     that never restarted.
 
+    75 was picked against 45 days of gap history rather than a formula —
+    alerting days by threshold were 45 → 2, 60 → 1, 75 → 0, and nothing past
+    75 buys anything. The full table is in SEOUL_STALE_MINUTES's comment.
+
     This pins the headroom rather than the constant: if someone tightens the
     threshold back toward the publication lag, this fails.
     """

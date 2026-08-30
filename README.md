@@ -89,7 +89,7 @@ Two endpoints, deliberately separate:
 | `GET /health` | Is the process up? | `deploy/deploy.sh`, right after a restart |
 | `GET /health/collection` | Is data still arriving? | An external uptime monitor |
 
-`/health/collection` returns 503 once the Seoul poll is more than 45 minutes
+`/health/collection` returns 503 once the Seoul poll is more than 75 minutes
 old, or an MMCA round is more than 25 minutes old *while a venue is open* —
 overnight staleness is expected, not a failure. The Seoul threshold is that
 wide because its `observed_at` is the Open API's own publication time, which
@@ -97,6 +97,26 @@ already lags roughly 30 minutes on a perfectly healthy system; tightening it
 is what once pinned this endpoint at a permanent 503. The body also carries
 MMCA's call count for the day, as a floor on quota spent against the
 1,000/day cap.
+
+**This endpoint reports the collector, not the server.** A 503 here means
+data stopped arriving; it does not mean the process is down, and an uptime
+monitor phrasing it as "server down" is the monitor's wording, not a
+diagnosis. On 2026-08-30 the Seoul Open API answered ~17% of polls with a
+`ReadTimeout` all day, collection gaps reached 40 minutes, and five alert
+mails arrived for a backend that had been running unrestarted since 8/26.
+Check `NRestarts` and the journal before assuming an outage:
+
+```bash
+systemctl show exhibition-backend -p NRestarts
+sudo journalctl -u exhibition-backend --since "24 hours ago" | grep "Seoul fetch"
+```
+
+Every fetch attempt logs its elapsed time, so a bad spell leaves behind how
+long it actually lasted — `recovered on attempt 2/3 after 14.2s` bounds it
+from above, which is what any change to the retry budget has to be sized
+against. The 75-minute threshold itself was picked against 45 days of gap
+history; the table and the reasoning are in `SEOUL_STALE_MINUTES`'s comment
+in `backend/app/routes/health.py`.
 
 Point an external monitor (UptimeRobot, Better Stack, cron-job.org — any of
 them will do) at `/health/collection` on a 5–10 minute interval. It has to be
