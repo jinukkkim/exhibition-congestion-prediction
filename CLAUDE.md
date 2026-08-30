@@ -21,6 +21,10 @@ Never commit directly on `main` or `develop`. Always create a new branch off
 or small changes. `develop` is protected against force-push, so a mistaken
 direct commit can only be undone with a revert PR, not erased.
 
+Never force-push or amend a commit already pushed to an open PR either — push
+a new commit instead. Reviewers lose their place and inline comments detach
+from the code they cite.
+
 **The branch prefix is the commit type**: a branch whose commits are
 `perf(dev): …` is `perf/…`. Any of the types below, not just `feat`/`fix`.
 
@@ -31,6 +35,9 @@ skill. Only what is true of *this* repo belongs here:
 
 - **Commit format** — Conventional Commits: `type(scope): subject`. Types:
   `feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci` `revert`.
+  Subject in English, imperative ("add", not "added"), no trailing period,
+  under 100 characters. Lowercase means the **first letter** — acronyms and
+  identifiers keep their case (`fix(fe): size MMCA room cards`).
   `style` here means **visual** changes (layout, color, spacing, copy), not
   code formatting — no formatter is enforced, so formatting-only commits do
   not occur. If one ever lands in CI, the two meanings collide and the visual
