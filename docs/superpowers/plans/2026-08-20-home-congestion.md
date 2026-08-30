@@ -14,7 +14,7 @@
 
 - 백엔드(`backend/`) 파일은 건드리지 않는다. 새 엔드포인트·스키마 없음.
 - 새 npm 의존성 없음.
-- 커밋 메시지는 Conventional Commits (`CONTRIBUTING.md`): `type(scope): subject`, scope는 `fe`, subject는 소문자 명령형, 마침표 없음.
+- 커밋 메시지는 Conventional Commits (`CLAUDE.md`): `type(scope): subject`, scope는 `fe`, subject는 소문자 명령형, 마침표 없음.
 - 브랜치는 이미 `feat/home-congestion`. `main`/`develop`에 직접 커밋 금지.
 - 표시 문구는 스펙에 적힌 그대로 쓴다: `불러오는 중`, `정보 없음`, `서비스 예정`, `휴관일`, `영업 전`, `영업 종료`, `집계 중`.
 - 무데이터 카드는 `opacity-60`으로 흐리게 하되 `Link`는 유지한다.
