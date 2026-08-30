@@ -15,16 +15,28 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DB_MAX_AGE="${DB_MAX_AGE:-1800}"
+# Same .env.local as pull_prod_db.sh, so DB_MAX_AGE set there works too — it
+# used to be read only by the child process, which never looks at it. An
+# inline DB_MAX_AGE=0 still wins: `set -a` + source would overwrite the
+# inherited value, so it is saved first and restored after.
+DB_MAX_AGE_INLINE="${DB_MAX_AGE:-}"
+set -a
+[ -f .env.local ] && source .env.local
+set +a
+DB_MAX_AGE="${DB_MAX_AGE_INLINE:-${DB_MAX_AGE:-1800}}"
 
-if [ "$DB_MAX_AGE" = "inf" ]; then
-  echo "DB_MAX_AGE=inf — using the local congestion.db as-is."
-elif [ ! -f congestion.db ]; then
+if [ ! -f congestion.db ]; then
+  # Checked before DB_MAX_AGE: "never pull" cannot mean "start with no DB",
+  # so a fresh checkout pulls even under DB_MAX_AGE=inf.
   scripts/pull_prod_db.sh
+elif [ "$DB_MAX_AGE" = "inf" ]; then
+  echo "DB_MAX_AGE=inf — using the local congestion.db as-is."
 else
-  # stat's flags differ between BSD (macOS) and GNU (Linux); dev happens on
-  # macOS but CI/servers are Linux, so try both rather than assuming.
-  MTIME="$(stat -f %m congestion.db 2>/dev/null || stat -c %Y congestion.db)"
+  # Not `stat`: -f is a format flag on BSD but --file-system on GNU, and the
+  # dialect that fails still prints a block to stdout, so a `stat -f ... ||
+  # stat -c ...` chain quietly yields garbage instead of falling through.
+  # This script already requires .venv, so ask the interpreter.
+  MTIME="$(.venv/bin/python3 -c 'import os, sys; print(int(os.path.getmtime(sys.argv[1])))' congestion.db)"
   AGE=$(( $(date +%s) - MTIME ))
   if [ "$AGE" -ge "$DB_MAX_AGE" ]; then
     echo "Local DB is ${AGE}s old (limit ${DB_MAX_AGE}s) — refreshing."
