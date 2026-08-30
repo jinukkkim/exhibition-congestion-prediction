@@ -42,12 +42,22 @@ skill. Only what is true of *this* repo belongs here:
   code formatting — no formatter is enforced, so formatting-only commits do
   not occur. If one ever lands in CI, the two meanings collide and the visual
   one needs a different name.
-- **Scope** — one of `fe` (`frontend/`), `be` (`backend/app/`), `dev`
-  (`backend/scripts/`, dev tooling that never ships), `deploy` (`deploy/`).
-  Documentation and CI take no scope: `docs:` and `ci:` already say it. A
-  change spanning `fe` and `be` is two commits, not a new scope — that has
-  happened 4 times in this repo's history, so it is rare enough to split.
+- **Scope** — one of `fe` (`frontend/`, tests and e2e included), `be`
+  (`backend/app/` and `backend/tests/`), `dev` (`backend/scripts/`),
+  `deploy` (`deploy/`). Documentation and CI take no scope: `docs:` and
+  `ci:` already say it. A change spanning `fe` and `be` is two commits, not
+  a new scope — that has happened 4 times in this repo's history, so it is
+  rare enough to split.
+
+  `dev` is not "never ships": `deploy/deploy.sh` runs three of those scripts
+  (`migrate_add_*.py`, `migrate_drop_*.py`) on **every** production deploy.
+  Only the one-off data backfills stay out, per that script's own comment.
+  Treat a migration change as production risk, not tooling.
 - **Merging** — merge commit, never squash or rebase. Every commit stays as
   itself in `develop`/`main` history. GitHub has squash enabled too; that is
   the default, not permission.
+- **PR body** — Korean, 명사형 종결 (`~수정`, `~추가`, `~분리`; not
+  `~수정했습니다`, not `~추가함`). The section structure lives in the `ship`
+  skill, but the language does not: it is true of this repo only, and the
+  skill is not versioned with it.
 - **Tests** — PRs adding a feature or fixing a bug include tests.
