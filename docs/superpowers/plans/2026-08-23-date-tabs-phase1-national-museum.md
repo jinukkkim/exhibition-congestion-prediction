@@ -16,7 +16,7 @@
 - 응답의 `curve` 필드를 **삭제하지 않는다**. `deploy/deploy.sh`가 백엔드를 먼저 재시작하고 프론트 번들을 마지막에 발행하므로 "구 프론트 + 신 백엔드" 구간이 존재한다.
 - 공휴일 판정은 `backend/app/prediction/model.py`의 `_KR_HOLIDAYS`를 그대로 쓴다. 새로 만들지 않는다 — 피처와 표시의 판정 출처가 갈리면 안 된다.
 - 시각은 항상 `Asia/Seoul` 기준. 프로덕션 서버는 `Etc/UTC`이므로 naive `datetime.now()`는 날짜를 하루 어긋나게 만든다.
-- 커밋 메시지는 Conventional Commits (`CONTRIBUTING.md`): `type(scope): subject`, scope는 `be`/`fe`, subject는 영어 소문자 명령형, 마침표 없음.
+- 커밋 메시지는 Conventional Commits (`CLAUDE.md`): `type(scope): subject`, scope는 `be`/`fe`, subject는 영어 소문자 명령형, 마침표 없음.
 - 브랜치는 이미 `feat/date-tabs`. `main`/`develop`에 직접 커밋 금지.
 - 실행: 백엔드 `cd backend && .venv/bin/python -m pytest -q`, 프론트 `cd frontend && npm test`, 타입 `cd frontend && npm run type-check`.
 - MMCA는 이 계획의 범위가 아니다 (2단계).

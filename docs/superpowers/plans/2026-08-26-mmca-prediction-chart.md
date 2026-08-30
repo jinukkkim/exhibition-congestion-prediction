@@ -1657,4 +1657,4 @@ CI 에 넣지 않는다 - 프로덕션 스냅샷이 필요하고 실행이 길�
 - [ ] `cd frontend && npm run type-check` — 오류 없음
 - [ ] `cd frontend && npm test` — 전부 통과
 - [ ] `docs/superpowers/specs/2026-08-26-mmca-prediction-chart-design.md`의 "적지 않는 것" 확인 — UI에 정확도 숫자가 없는지, 예측 면이 없는지
-- [ ] PR 본문은 한국어로 작성한다. `CONTRIBUTING.md`를 먼저 읽는다
+- [ ] PR 본문은 한국어로 작성한다. `CLAUDE.md` 와 `ship` 스킬을 먼저 읽는다

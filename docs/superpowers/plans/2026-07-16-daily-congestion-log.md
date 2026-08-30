@@ -19,7 +19,7 @@
   `MALE_PPLTN_RATE`→`male_ppltn_rate`, `FEMALE_PPLTN_RATE`→`female_ppltn_rate`, `PPLTN_RATE_0`→`ppltn_rate_0`, `PPLTN_RATE_10`→`ppltn_rate_10`, `PPLTN_RATE_20`→`ppltn_rate_20`, `PPLTN_RATE_30`→`ppltn_rate_30`, `PPLTN_RATE_40`→`ppltn_rate_40`, `PPLTN_RATE_50`→`ppltn_rate_50`, `PPLTN_RATE_60`→`ppltn_rate_60`, `PPLTN_RATE_70`→`ppltn_rate_70`, `RESNT_PPLTN_RATE`→`resnt_ppltn_rate`, `NON_RESNT_PPLTN_RATE`→`non_resnt_ppltn_rate`.
   Existing fields (do not rename): `PPLTN_TIME`→`observed_at`, `AREA_CONGEST_LVL`→`congest_level`, `AREA_PPLTN_MIN`→`population_min`, `AREA_PPLTN_MAX`→`population_max`.
   Field order in `DailyLogPoint`/`CongestionReading`/`RawCongestion` additions and in the frontend `COLUMNS` array MUST be: `observed_at`, `congest_level`, `population_min`, `population_max`, `male_ppltn_rate`, `female_ppltn_rate`, `ppltn_rate_0`, `ppltn_rate_10`, `ppltn_rate_20`, `ppltn_rate_30`, `ppltn_rate_40`, `ppltn_rate_50`, `ppltn_rate_60`, `ppltn_rate_70`, `resnt_ppltn_rate`, `non_resnt_ppltn_rate` (16 fields, this exact order, in every task that touches them).
-  Commit messages follow `CONTRIBUTING.md`: `type(scope): subject`.
+  Commit messages follow `CLAUDE.md`: `type(scope): subject`.
 - Backend tests: `cd backend && .venv/bin/pytest`. Frontend unit tests: `cd frontend && npx vitest run`. Frontend type check: `cd frontend && npm run type-check`. E2E: `cd frontend && npx playwright test`.
 
 ---
