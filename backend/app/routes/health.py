@@ -24,10 +24,22 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # that can never be satisfied, which is how this endpoint sat at a permanent
 # 503 and made the uptime monitor it exists for useless.
 #
-# 45 = ~30 publication lag + 5 minute granularity + two missed 5-minute cycles.
+# 75 = ~30 publication lag + 5 minute granularity + eight missed 5-minute
+# cycles. It was 45 (two missed cycles) until 2026-08-30, when the Open API
+# spent the day answering ~17% of polls with a ReadTimeout on a 10s budget
+# while healthy responses took 0.23s. Collection gaps of 15-40 minutes pushed
+# the age past 45 five times, and the uptime monitor mailed "server down" five
+# times for a process that never restarted (NRestarts=0).
+#
+# The headroom was the real problem: a healthy age is already ~34 minutes, so
+# 45 left barely 11 minutes — one missed cycle plus jitter tripped it. This
+# endpoint exists to catch collection actually dying, and a dead collector
+# stays dead, so waiting longer costs nothing while a threshold that cannot
+# survive one bad upstream day costs its own credibility.
+#
 # Widen it rather than tightening if false alarms appear; measuring our own
 # collection gap directly would need a separate collected_at column.
-SEOUL_STALE_MINUTES = 45
+SEOUL_STALE_MINUTES = 75
 
 # collect_mmca_once polls every 10 minutes, but only while a venue is open, so
 # this threshold only applies inside opening hours.

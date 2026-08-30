@@ -133,7 +133,7 @@ def test_reports_503_when_seoul_collection_stops(client):
     _freeze(monkeypatch, OPEN_HOURS)
     _add(
         session_factory,
-        seoul=OPEN_HOURS - timedelta(minutes=60),
+        seoul=OPEN_HOURS - timedelta(minutes=90),
         mmca=[OPEN_HOURS - timedelta(minutes=8)],
     )
 
@@ -144,6 +144,34 @@ def test_reports_503_when_seoul_collection_stops(client):
     assert body["status"] == "stale"
     assert body["seoul"]["stale"] is True
     assert body["mmca"]["stale"] is False
+
+
+def test_a_rough_upstream_hour_is_not_reported_as_an_outage(client):
+    """A 60-minute-old reading is upstream being slow, not collection dying.
+
+    Seoul's observed_at is the API's own publication time, which already lags
+    ~30 minutes on a healthy day, so the age this endpoint measures starts at
+    ~34 and every missed 5-minute cycle adds five. The threshold was 45 until
+    2026-08-30, leaving 11 minutes of headroom — two missed cycles tripped it,
+    and one bad upstream day mailed "server down" five times for a process
+    that never restarted.
+
+    This pins the headroom rather than the constant: if someone tightens the
+    threshold back toward the publication lag, this fails.
+    """
+    test_client, session_factory, monkeypatch = client
+    _freeze(monkeypatch, OPEN_HOURS)
+    _add(
+        session_factory,
+        seoul=OPEN_HOURS - timedelta(minutes=60),
+        mmca=[OPEN_HOURS - timedelta(minutes=8)],
+    )
+
+    response = test_client.get("/health/collection")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["seoul"]["stale"] is False
 
 
 def test_reports_503_when_mmca_stops_during_opening_hours(client):
