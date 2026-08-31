@@ -3,6 +3,23 @@
 # everything the backend owns has to be routed here explicitly, because the
 # catch-all below falls back to the SPA.
 exhibition-traffic.duckdns.org {
+	# Without this Caddy journals warnings only, so there is no record that a
+	# request ever arrived. On 2026-08-30 an uptime monitor mailed "server
+	# down" five times and the first question — did those checks reach the box
+	# at all, or did DNS/network drop them — had no answer anywhere. It was
+	# eventually settled from other evidence, but the opposite cause would
+	# have been unprovable.
+	#
+	# JSON to a rolling file rather than the journal: the journal is already
+	# carrying the backend's own logs, and access lines are the volume here.
+	# 20MiB x 5 caps this at 100MB on a 45GB disk.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+
 	handle /congestion/* {
 		reverse_proxy localhost:8000
 	}

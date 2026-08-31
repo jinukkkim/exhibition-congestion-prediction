@@ -3,7 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, time
-from time import sleep
+from time import monotonic, sleep
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -94,18 +94,62 @@ _FETCH_FAILURES = (httpx.HTTPError, json.JSONDecodeError, KeyError)
 
 
 def _fetch_congestion_with_retry(client: httpx.Client) -> CongestionReading:
+    # Elapsed time is logged on every attempt, success included, because a
+    # ReadTimeout alone cannot answer the question that decides what to do
+    # about it: did the response arrive at 11 seconds, or never? The timeout
+    # says only "not within the budget". On 2026-08-30 the API failed 17% of
+    # polls this way while healthy responses took 0.23s, and there was no way
+    # to tell whether a longer timeout would have caught them — so the retry
+    # design could not be changed on evidence. These numbers are what make
+    # that decision possible next time.
+    #
+    # Success is logged at info, not debug: it is the only record of when a
+    # poll actually ran. raw_congestion.observed_at is the Open API's own
+    # publication time, not ours, so the DB cannot answer "when did we
+    # collect" — reconstructing a collection gap from it means assuming the
+    # ~30 minute publication lag, which is exactly the assumption that made
+    # the first reconstruction of 2026-08-30 come out as zero outage windows
+    # instead of five.
+    started = monotonic()
     for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        attempt_started = monotonic()
         try:
-            return fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
+            reading = fetch_congestion(client, settings.seoul_area_name, settings.seoul_api_key)
         except _FETCH_FAILURES as exc:
+            elapsed = monotonic() - attempt_started
             # Still raised once the attempts run out: a sustained outage should
             # reach the scheduler's error listener, unlike a single flake.
             if attempt == _FETCH_ATTEMPTS:
+                logger.warning(
+                    "Seoul fetch gave up after %d attempts in %.1fs, last %s after %.1fs",
+                    _FETCH_ATTEMPTS,
+                    monotonic() - started,
+                    type(exc).__name__,
+                    elapsed,
+                )
                 raise
             logger.warning(
-                "Seoul fetch attempt %d/%d failed, retrying: %r", attempt, _FETCH_ATTEMPTS, exc
+                "Seoul fetch attempt %d/%d failed after %.1fs, retrying: %r",
+                attempt,
+                _FETCH_ATTEMPTS,
+                elapsed,
+                exc,
             )
             sleep(_FETCH_RETRY_SECONDS)
+        else:
+            if attempt > 1:
+                # The recovery case is the informative one: it bounds how long
+                # a bad spell actually lasts, which is exactly what a retry
+                # change would have to be sized against.
+                logger.warning(
+                    "Seoul fetch recovered on attempt %d/%d after %.1fs total",
+                    attempt,
+                    _FETCH_ATTEMPTS,
+                    monotonic() - started,
+                )
+            else:
+                logger.info("Seoul fetch ok in %.1fs", monotonic() - attempt_started)
+            return reading
     raise AssertionError("unreachable")  # pragma: no cover
 
 
