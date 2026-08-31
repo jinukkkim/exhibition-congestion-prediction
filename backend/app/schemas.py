@@ -59,3 +59,22 @@ class MmcaDailyRoom(BaseModel):
 class MmcaDailyLogPoint(BaseModel):
     observed_at: str
     rooms: list[MmcaDailyRoom]
+
+
+class MmcaPredictionPoint(BaseModel):
+    # /mmca/daily 와 같은 형태 — 프론트가 minutesOfDay 를 그대로 재사용한다.
+    observed_at: str
+    # 0.0~3.0. 정수가 아닌 이유는 평행이동과 램프가 소수를 만들고, 차트의
+    # yOf(tier) 가 이미 소수를 받기 때문이다.
+    tier: float
+    label: str
+
+
+class MmcaRoomPrediction(BaseModel):
+    space_code: str
+    space_nm: str | None
+    # 오늘 실측으로 곡선을 평행이동했는지. 미래 날짜와 개관 직후에는 False.
+    anchored: bool
+    # 14일 창 안에서 판독이 있는 날의 수. 방 단위이며 셀 단위가 아니다.
+    sample_days: int
+    points: list[MmcaPredictionPoint]

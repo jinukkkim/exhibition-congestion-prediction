@@ -4,6 +4,7 @@ import { fetchMmcaDaily, type MmcaDailyLogPoint, type MmcaVenue } from "../api/m
 import { shiftDate, todayString } from "../lib/date";
 import { statusOf } from "../lib/status";
 import { STICKY_TIME_CELL } from "../lib/stickyTimeColumn";
+import { VENUES } from "../venues";
 
 export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
   const [selectedDate, setSelectedDate] = useState(todayString());
@@ -27,6 +28,9 @@ export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
   }, [venue, selectedDate]);
 
   const isToday = selectedDate === todayString();
+  // 수집 시작일보다 앞은 아무리 넘겨도 "데이터 없음"이다 — 거기서 멈춘다.
+  const earliestDate = VENUES.find((v) => v.mmcaVenue === venue)?.earliestDate;
+  const isEarliest = earliestDate !== undefined && selectedDate <= earliestDate;
   const displayRows = rows ? [...rows].reverse() : rows;
   const columns = rows && rows.length > 0 ? rows[0].rooms : [];
 
@@ -34,7 +38,8 @@ export function MmcaDailyLogTable({ venue }: { venue: MmcaVenue }) {
     <div className="overflow-hidden rounded-apple border border-hairline/60 bg-white/70 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
       <div className="flex items-center justify-between border-b border-hairline/60 px-8 py-6">
         <button
-          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-ink/5 hover:text-ink disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          disabled={isEarliest}
           onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
         >
           ← 이전 날짜

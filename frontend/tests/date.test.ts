@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { monthDay, monthDayWeekday, todayString, upcomingDates, weekdayKo } from "../src/lib/date";
+import {
+  formatMinutes,
+  monthDay,
+  monthDayWeekday,
+  todayString,
+  upcomingDates,
+  weekdayKo,
+} from "../src/lib/date";
 
 describe("upcomingDates", () => {
   it("lists the given day and the following ones in order", () => {
@@ -58,5 +65,16 @@ describe("todayString", () => {
     vi.setSystemTime(new Date("2026-08-23T16:00:00Z"));
 
     expect(todayString()).toBe("2026-08-24");
+  });
+});
+
+describe("formatMinutes", () => {
+  it("pads both halves so times line up in tabular-nums columns", () => {
+    // 축 눈금과 헤더의 영업시간이 같은 표기를 써야 한다 — 사본이 셋이던 동안에는
+    // 하나만 고치면 둘이 조용히 어긋날 수 있었다.
+    expect(formatMinutes(9 * 60 + 30)).toBe("09:30");
+    expect(formatMinutes(21 * 60)).toBe("21:00");
+    expect(formatMinutes(0)).toBe("00:00");
+    expect(formatMinutes(23 * 60 + 59)).toBe("23:59");
   });
 });

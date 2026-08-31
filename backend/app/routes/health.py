@@ -24,10 +24,37 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # that can never be satisfied, which is how this endpoint sat at a permanent
 # 503 and made the uptime monitor it exists for useless.
 #
-# 45 = ~30 publication lag + 5 minute granularity + two missed 5-minute cycles.
-# Widen it rather than tightening if false alarms appear; measuring our own
-# collection gap directly would need a separate collected_at column.
-SEOUL_STALE_MINUTES = 45
+# 75 was chosen against 45 days of collection history (2026-07-16..08-31),
+# not from a formula. Worst observed age per day, where age = gap + the ~30
+# minute publication lag:
+#
+#   2026-08-30   70 min   ← Open API answered ~17% of polls with ReadTimeout
+#   2026-07-27   50 min       on a 10s budget; healthy responses took 0.23s
+#   2026-08-11   45 min
+#   2026-08-31   45 min
+#   7 other days 40 min
+#   36 days      no gap over 6 minutes
+#
+# Alerting days by threshold: 45 → 2, 60 → 1, 75 → 0, 90 → 0, 120 → 0.
+# Past 75 there is nothing left to buy — 90 and 120 alert on the same zero
+# days while taking longer to notice a collector that has actually died.
+#
+# It was 45 until 2026-08-30, when the uptime monitor mailed "server down"
+# five times for a process that never restarted (NRestarts=0). The headroom
+# was the real problem: a healthy age is already ~34 minutes, so 45 left
+# barely 11 — one missed cycle plus jitter tripped it.
+#
+# The asymmetry decides the direction. A dead collector stays dead, so
+# noticing 30 minutes later costs almost nothing; false alarms cost the
+# monitor its credibility, which is the one thing it has.
+#
+# 8/30 is an outlier at twice the second-worst day, so the margin above it is
+# thin (5 minutes) on purpose: a day worse than 8/30 leaves the prediction's
+# 120-minute anchor window short of readings and puts a hole in the chart,
+# which is worth hearing about. Re-run this table before moving the number;
+# measuring our own collection gap directly would need a separate
+# collected_at column.
+SEOUL_STALE_MINUTES = 75
 
 # collect_mmca_once polls every 10 minutes, but only while a venue is open, so
 # this threshold only applies inside opening hours.

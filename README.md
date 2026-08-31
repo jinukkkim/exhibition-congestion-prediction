@@ -28,17 +28,41 @@ cp .env.example .env   # fill in SEOUL_API_KEY
 
 ### Developing against real data
 
-`scripts/dev.sh` pulls a fresh snapshot of the production DB into
-`congestion.db` before starting uvicorn, so local dev always sees current
-data instead of whatever's been collected locally. Needs `DEPLOY_HOST` /
-`DEPLOY_USER` / `DEPLOY_SSH_KEY` set in `.env.local` (see `.env.local.example`).
+`scripts/dev.sh` refreshes `congestion.db` from production before starting
+uvicorn, so local dev sees current data instead of whatever's been collected
+locally. Needs `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` set in
+`.env.local` (see `.env.local.example`).
 
 ```bash
 scripts/dev.sh
 ```
 
+The pull is skipped when the local DB is less than 30 minutes old — production
+only moves every 5 minutes (Seoul) / 10 minutes (MMCA), so restarting the
+backend a few times while working on one thing does not re-download it:
+
+```bash
+DB_MAX_AGE=0 scripts/dev.sh     # always pull
+DB_MAX_AGE=inf scripts/dev.sh   # never pull, use what's on disk
+```
+
 Run `scripts/pull_prod_db.sh` on its own to refresh the DB without
 restarting the server.
+
+The snapshot is gzipped on the server and streamed through one ssh
+connection, and archived `/citydata` bodies older than 7 days are dropped
+from it first — production is ~213MB, of which ~172MB is
+`raw_congestion.raw_response` that only the logs page reads, one day at a
+time. That brings the local file to ~14MB and the pull to under 30 seconds.
+Days past the cutoff still show every parsed column on `/logs`, just not the
+~25 extra fields the archived body would have added:
+
+```bash
+RAW_RESPONSE_KEEP_DAYS=30 scripts/pull_prod_db.sh   # keep a month of bodies
+```
+
+Production keeps every archived body — the trim only ever touches the
+server-side `/tmp` snapshot.
 
 ## Frontend setup
 
@@ -65,7 +89,7 @@ Two endpoints, deliberately separate:
 | `GET /health` | Is the process up? | `deploy/deploy.sh`, right after a restart |
 | `GET /health/collection` | Is data still arriving? | An external uptime monitor |
 
-`/health/collection` returns 503 once the Seoul poll is more than 45 minutes
+`/health/collection` returns 503 once the Seoul poll is more than 75 minutes
 old, or an MMCA round is more than 25 minutes old *while a venue is open* —
 overnight staleness is expected, not a failure. The Seoul threshold is that
 wide because its `observed_at` is the Open API's own publication time, which
@@ -73,6 +97,26 @@ already lags roughly 30 minutes on a perfectly healthy system; tightening it
 is what once pinned this endpoint at a permanent 503. The body also carries
 MMCA's call count for the day, as a floor on quota spent against the
 1,000/day cap.
+
+**This endpoint reports the collector, not the server.** A 503 here means
+data stopped arriving; it does not mean the process is down, and an uptime
+monitor phrasing it as "server down" is the monitor's wording, not a
+diagnosis. On 2026-08-30 the Seoul Open API answered ~17% of polls with a
+`ReadTimeout` all day, collection gaps reached 40 minutes, and five alert
+mails arrived for a backend that had been running unrestarted since 8/26.
+Check `NRestarts` and the journal before assuming an outage:
+
+```bash
+systemctl show exhibition-backend -p NRestarts
+sudo journalctl -u exhibition-backend --since "24 hours ago" | grep "Seoul fetch"
+```
+
+Every fetch attempt logs its elapsed time, so a bad spell leaves behind how
+long it actually lasted — `recovered on attempt 2/3 after 14.2s` bounds it
+from above, which is what any change to the retry budget has to be sized
+against. The 75-minute threshold itself was picked against 45 days of gap
+history; the table and the reasoning are in `SEOUL_STALE_MINUTES`'s comment
+in `backend/app/routes/health.py`.
 
 Point an external monitor (UptimeRobot, Better Stack, cron-job.org — any of
 them will do) at `/health/collection` on a 5–10 minute interval. It has to be
@@ -119,13 +163,12 @@ empty. Rotate *after* the crontab
 points at this script; while the token is still inline, recreating it breaks
 renewal silently.
 
-Expect failures in that log: duckdns returned 502 for roughly a fifth of these
-calls over a measured 23-hour window (55 of 276 runs, 52 of them 502), while ten
-consecutive manual requests in the same period all returned 200 — short,
-scattered upstream errors rather than outages, which is why the call retries.
-None of it threatens the hostname, which only needs one success every 30 days,
-and the log costs about 1.2MB a year at that rate. The timestamps exist so this
-question can be answered from the file instead of re-measured.
+A line in that log means a renewal actually failed. duckdns returned 502 for
+roughly a fifth of these calls over a measured 23-hour window (55 of 276 runs,
+52 of them 502), which is why the call retries — and curl prints a line for each
+failed attempt even when the retry then succeeds, so its stderr is held back and
+only surfaced if the whole call failed. Nothing threatens the hostname either
+way: it needs one success every 30 days and gets a few hundred.
 
 ## Backups
 

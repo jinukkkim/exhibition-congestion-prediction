@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 배경을 칠해 둔다 — 투명 배경 + 파란 마크는 다크 탭바에서 거의 안 보인다. -->
+  <rect width="32" height="32" rx="7" fill="#0071E3"/>
+  <!-- 시간대별로 높아지는 혼잡도 막대 3개. 16px에서도 읽히게 굵고 단순하게. -->
+  <g fill="#fff">
+    <rect x="6" y="19" width="5" height="7" rx="1.5"/>
+    <rect x="13.5" y="13" width="5" height="13" rx="1.5"/>
+    <rect x="21" y="6" width="5" height="20" rx="1.5"/>
+  </g>
+</svg>

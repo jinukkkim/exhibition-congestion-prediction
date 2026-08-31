@@ -4,8 +4,14 @@
 // 국중박의 observed_at 은 서울 Open API 가 준 PPLTN_TIME — 우리가 폴링한 시각이
 // 아니라 상류가 발행한 측정 시각이다. 발행이 약 30분 지연되므로 정상 수집 중에도
 // 그만큼 낡아 있다 (2026-08-22 실측 34.1분, 같은 시각 당일 판독은 5분 간격 결손
-// 0). 45 = ~30 발행 지연 + 5분 단위 + 5분 주기 2회 유실.
-export const SEOUL_STALE_MINUTES = 45;
+// 0).
+//
+// 45 였다가 2026-08-30 에 75 로 넓혔다. 그날 서울 Open API 가 폴의 17%에
+// ReadTimeout 으로 답해 수집에 10~40분 공백이 24번 생겼고, 45 는 정상 나이
+// ~34분 위로 여유가 11분뿐이라 한 사이클만 밀려도 넘겼다. 45일치 기록에서
+// 알림 발생일이 45분 2일 / 60분 1일 / 75분 0일이고 그 위로는 이득이 없다.
+// 근거표 전체는 backend/app/routes/health.py 의 짝에 있다.
+export const SEOUL_STALE_MINUTES = 75;
 
 // MMCA 는 mmca_api.py 가 폴링 시각을 그대로 찍으므로 발행 지연이 없다. 10분
 // 주기 × 2회 유실 + 여유.
@@ -21,4 +27,19 @@ export function isStale(observedAt: string | null, now: Date, staleAfterMinutes:
   if (observedAt === null) return true;
   const ageMinutes = (now.getTime() - new Date(observedAt).getTime()) / 60_000;
   return ageMinutes > staleAfterMinutes;
+}
+
+// 신선도 배지의 점 색. 혼잡도 팔레트(status.ts)와 값이 겹치지만 **뜻이 다르다**
+// — 여기서 초록은 "여유"가 아니라 "지금 값", 주황은 "약간 붐빔"이 아니라
+// "갱신이 밀렸다"는 뜻이다. 혼잡도 자체는 옆의 큰 글자와 카드 배경 글로우가
+// 말하므로, 점은 신선도 한 축만 담당한다.
+//
+// 영업시간 밖(영업 전·종료·휴관일)에는 신선도를 주장할 일이 없어 회색이다.
+const LIVE_DOT = "#34C759";
+const STALE_DOT = "#FF9F0A";
+const IDLE_DOT = "#C7C7CC";
+
+export function freshnessDotColor(isOpen: boolean, stale: boolean): string {
+  if (!isOpen) return IDLE_DOT;
+  return stale ? STALE_DOT : LIVE_DOT;
 }

@@ -36,3 +36,31 @@ export async function fetchMmcaDaily(venue: MmcaVenue, date: string): Promise<Mm
   }
   return res.json();
 }
+
+export interface MmcaPredictionPoint {
+  observed_at: string;
+  // 0.0~3.0 의 소수. 평행이동과 90분 램프가 등급 사이 값을 만들고, 차트의
+  // yOf 가 이미 소수를 받는다 — 반올림하면 정보가 줄어든다.
+  tier: number;
+  label: string;
+}
+
+export interface MmcaRoomPrediction {
+  space_code: string;
+  space_nm: string | null;
+  anchored: boolean;
+  points: MmcaPredictionPoint[];
+}
+
+// 이력이 모자란 방은 배열에서 아예 빠진다 — 없는 방은 에러가 아니라 "예측
+// 없음"이다. 지나간 날짜는 빈 배열이 온다.
+export async function fetchMmcaPrediction(
+  venue: MmcaVenue,
+  date: string
+): Promise<MmcaRoomPrediction[]> {
+  const res = await fetch(`/mmca/prediction?venue=${venue}&date=${date}`);
+  if (!res.ok) {
+    throw new Error(`failed to fetch MMCA prediction: ${res.status}`);
+  }
+  return res.json();
+}

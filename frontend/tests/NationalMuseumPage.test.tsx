@@ -60,6 +60,16 @@ describe("NationalMuseumPage", () => {
     );
   }
 
+  it("names the venue in the heading, without the home page branding", async () => {
+    // 홈과 글자 하나까지 같은 h1 을 쓰던 탓에 상세 페이지가 어느 관인지 말하지
+    // 못했다. eyebrow 도 홈의 브랜딩이라 다른 상세 페이지에는 없다.
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "국립중앙박물관" })).toBeInTheDocument();
+    expect(screen.queryByText("전시 혼잡도 예측")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exhibition · Seoul")).not.toBeInTheDocument();
+  });
+
   it("renders the current level once loaded", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("보통")).toBeInTheDocument());
@@ -196,6 +206,28 @@ describe("NationalMuseumPage date tabs", () => {
       expect(screen.getByText(/8\/22\(토\)의 시간대별 예측/)).toBeInTheDocument()
     );
     expect(api.fetchDaily).toHaveBeenCalledWith("2026-08-15");
+  });
+
+  it("shows the business hours once in the header and moves them to the selected date", async () => {
+    // 영업시간은 관 단위 값이라 카드가 아니라 헤더에 한 줄만 둔다. 수·토는
+    // 21:00 폐관이므로 탭을 옮기면 날짜와 시간이 함께 바뀐다.
+    render(
+      <MemoryRouter>
+        <NationalMuseumPage />
+      </MemoryRouter>
+    );
+
+    // 2026-08-20 은 목요일 → 17:30 폐관
+    expect(
+      screen.getAllByText("8/20(목) 영업시간 09:30–17:30")
+    ).toHaveLength(1);
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/22" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("8/22(토) 영업시간 09:30–21:00")).toBeInTheDocument()
+    );
   });
 
   it("keeps the live headline only on the today tab", async () => {

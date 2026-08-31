@@ -1,23 +1,30 @@
 import { useRef, useState, type MouseEvent } from "react";
 
-import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../api/mmca";
+import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { monthDayWeekday, shiftDate, todayString } from "../lib/date";
-import { MMCA_STALE_MINUTES, isStale } from "../lib/freshness";
+import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-// MMCA readings snap to a 10-minute grid (see collector.py), so a genuine
-// same-time match is always distance 0, and the next reading on the grid
-// is always exactly 10 minutes away. A window of exactly 10 (nearestWithin
-// uses `dist <= maxDistance`) would let that adjacent, different-time
-// reading match when last week is simply missing the exact time slot
-// (e.g. a confirmed-empty skip in collector.py) — same boundary bug as
-// CongestionCard's bucket-width window, fixed the same way: strictly less
-// than the grid spacing so only distance 0 admits.
-const LAST_WEEK_MATCH_MINUTES = 5;
+// How close a 10-minute-grid reading must sit to the hovered x to count as a
+// value there — applies to every grid series (today's, last week's, the
+// future tab's D−7 proxy), not just the last-week comparison.
+//
+// MMCA readings snap to a 10-minute grid (see collector.py) and the hovered
+// x is snapped to that same grid (handleHoverMove), so in practice this
+// window only ever admits distance 0: an exact-slot match. It stays a
+// window rather than an equality test for the case the grid assumption
+// breaks — a series whose points drift off the multiples of 10 (a rescued
+// backfill, a schedule change) still matches within a few minutes instead
+// of going silent. The width must stay strictly below the grid spacing
+// (nearestWithin uses `dist <= maxDistance`): at exactly 10 the adjacent,
+// different-time reading would match whenever a series is simply missing
+// the hovered slot (e.g. a confirmed-empty skip in collector.py) — the same
+// boundary bug as CongestionCard's bucket-width window.
+const HOVER_MATCH_MINUTES = 5;
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're
@@ -28,12 +35,6 @@ const MIN_GAP_MINUTES = 35;
 
 function minutesOfDay(isoString: string): number {
   return Number(isoString.slice(11, 13)) * 60 + Number(isoString.slice(14, 16));
-}
-
-function formatMinutes(minutes: number): string {
-  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
-  const mm = String(minutes % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
 }
 
 function tickLabel(minutes: number): string {
@@ -80,6 +81,20 @@ function nearestWithin(points: Point[], minutes: number, maxDistance: number): P
     }
   }
   return nearest && nearestDist <= maxDistance ? nearest : undefined;
+}
+
+// 예측은 시간 단위로 표본되지만 연속 곡선으로 그려진다 — 곡선 위 어디를 짚어도
+// 값이 나와야 한다. 보여주는 건 등급명이고 실제로 그린 Catmull-Rom 과의 차이는
+// 0.1 등급 수준이라 등급명이 바뀌는 일이 사실상 없으므로 선형 보간으로 족하다.
+// 구간 밖(첫 점 이전·마지막 점 이후)에는 예측값이 없다.
+function predictionAt(points: Point[], minutes: number): Point | undefined {
+  for (let i = 0; i < points.length - 1; i++) {
+    const [a, b] = [points[i], points[i + 1]];
+    if (minutes < a.minutes || minutes > b.minutes) continue;
+    const tier = a.tier + ((b.tier - a.tier) * (minutes - a.minutes)) / (b.minutes - a.minutes || 1);
+    return { minutes, tier, label: TIERS[Math.round(tier)] };
+  }
+  return undefined;
 }
 
 // Centripetal Catmull-Rom -> cubic Bezier, ported from CongestionCard.tsx.
@@ -129,10 +144,19 @@ function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: 
     .filter((p) => p.minutes >= open && p.minutes <= close);
 }
 
+// 예측 점은 이미 방별로 갈라져 있고 tier 가 소수다 — roomPoints 처럼 등급명을
+// 인덱스로 되돌릴 필요가 없다.
+function predictionPoints(prediction: MmcaRoomPrediction | null, open: number, close: number): Point[] {
+  return (prediction?.points ?? [])
+    .map((p) => ({ minutes: minutesOfDay(p.observed_at), tier: p.tier, label: p.label }))
+    .filter((p) => p.minutes >= open && p.minutes <= close);
+}
+
 export function MmcaRoomChartCard({
   room,
   daily,
   lastWeekDaily = null,
+  prediction = null,
   open,
   close,
   nowMinutes,
@@ -143,6 +167,8 @@ export function MmcaRoomChartCard({
   room: MmcaRoomStatus;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
+  // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다.
+  prediction?: MmcaRoomPrediction | null;
   open: number;
   close: number;
   nowMinutes: number;
@@ -155,7 +181,10 @@ export function MmcaRoomChartCard({
   isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
+  // 커서의 x 를 분으로 되돌려 10분 격자에 맞춘 값 하나. 계열 위의 점으로
+  // 스냅하는 게 아니다 — 격자 위의 그 시각에서 각 계열을 따로 조회해 있는
+  // 것만 말한다.
+  const [hoverMinutes, setHoverMinutes] = useState<number | null>(null);
 
   const spaceCode = room.space_code;
   const title = room.space_nm ?? spaceCode;
@@ -191,6 +220,28 @@ export function MmcaRoomChartCard({
   const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = points[points.length - 1];
+  // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한 폴링
+  // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 최신
+  // 판독보다 한 그리드 스텝(10분) 뒤처져 실선과 겹쳐 그려진다. 페이로드를
+  // 믿는 대신 프론트가 항상 다시 고정한다: 실선 마지막 시각 이하의 예측 점을
+  // 버리고 실선의 마지막 점을 그대로 앞에 붙인다. 신선한 페이로드는 버림+
+  // 재삽입이 같은 값이라 결과가 그대로고(분기 없음), 낡았을 때만 실질적으로
+  // 이음매가 바뀐다.
+  //
+  // 단, 이 재이음은 오늘 탭에서만 옳다. 미래 탭의 `points` 는 오늘의 판독이
+  // 아니라 D−7(지난주 같은 요일)의 대리 기록이라 하루가 이미 다 차 있고,
+  // 예측은 그 날 하루 전체를 덮는다 — 여기서 재이음하면 실선의 마지막 시각
+  // 이하인 예측 점이 전부 걸려 곡선이 통째로 사라진다. 애초에 미래 탭에는
+  // 지킬 이음매가 없다(실선과 예측이 서로 다른 날짜다).
+  const predPointsRaw = predictionPoints(prediction, open, close);
+  const predPoints =
+    isTodayView && lastPoint
+      ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
+      : predPointsRaw;
+  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
+  const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
+  // 예측만 있어도 차트는 보여야 한다.
+  const hasAnySeries = Boolean(linePath || lastWeekLinePath || predictionPath);
 
   const currentLabel = room.congestion_nm;
   const currentStatus = statusOf(currentLabel ?? "");
@@ -213,46 +264,42 @@ export function MmcaRoomChartCard({
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
-
-    let thisWeekIndex: number | null = null;
-    let thisWeekDist = Infinity;
-    points.forEach((p, i) => {
-      const dist = Math.abs(xOf(p.minutes, open, close) - svgX);
-      if (dist < thisWeekDist) {
-        thisWeekDist = dist;
-        thisWeekIndex = i;
-      }
-    });
-
-    let lastWeekIndex: number | null = null;
-    let lastWeekDist = Infinity;
-    lastWeekPoints.forEach((p, i) => {
-      const dist = Math.abs(xOf(p.minutes, open, close) - svgX);
-      if (dist < lastWeekDist) {
-        lastWeekDist = dist;
-        lastWeekIndex = i;
-      }
-    });
-
-    // Whichever series has an actual point closer to the hovered x wins —
-    // not a fixed "does this week have any data at all" switch. See
-    // CongestionCard.tsx's handleHoverMove for the same pattern and
-    // rationale (today's partial-day data shouldn't re-anchor a hover over
-    // a time slot today hasn't reached yet).
-    if (thisWeekIndex !== null && (lastWeekIndex === null || thisWeekDist <= lastWeekDist)) {
-      setHover({ isLastWeek: false, index: thisWeekIndex });
-    } else if (lastWeekIndex !== null) {
-      setHover({ isLastWeek: true, index: lastWeekIndex });
-    } else {
-      setHover(null);
-    }
+    // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
+    const minutes = open + (svgX / CHART_WIDTH) * (close - open || 1);
+    // 수집이 10분 격자(스케줄러의 */10 cron)라 짚은 위치도 같은 격자로 맞춘다 —
+    // 십자선이 미끄러지지 않고 10분 단위로 튀고, 시계에 12:43 같은 임의의 분이
+    // 뜨지 않는다. 스냅을 먼저, 영업시간 가두기를 나중에 (순서를 바꾸면
+    // open/close 가 10의 배수가 아닐 때 영업시간 밖으로 튀어나간다).
+    const snapped = Math.round(minutes / 10) * 10;
+    setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 
-  const hoverSeriesPoints = hover ? (hover.isLastWeek ? lastWeekPoints : points) : undefined;
-  const hoverPoint = hover && hoverSeriesPoints ? hoverSeriesPoints[hover.index] : undefined;
-  const hoverIsThisWeek = hover ? !hover.isLastWeek : false;
-  const hoverLastWeekMatch =
-    hoverIsThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
+  // 비교 시리즈는 탭에 따라 다른 prop 에 담긴다. 오늘 탭은 lastWeekPoints(회색
+  // 지난주선), 미래 탭은 points — MmcaPage 가 미래 탭에서 lastWeekDaily 를 null
+  // 로 두고 D−7 실측을 daily 로 내려보내기 때문이다. 여기서 prop 을 고정하면
+  // 미래 탭의 괄호가 영구히 빈다.
+  const comparePoints = isTodayView ? lastWeekPoints : points;
+
+  // 10분 그리드 계열은 짚은 x 에 판독이 실제로 있을 때만 값을 낸다 (창을 넓히면
+  // 없는 시각을 있는 것처럼 말한다 — HOVER_MATCH_MINUTES 주석 참고).
+  //
+  // 오늘의 실측은 오늘 탭에만 있다: 미래 탭의 `points` 는 오늘의 판독이 아니라
+  // D−7 대리 기록(= 비교 시리즈)이다. 이 게이트를 빼면 미래 탭의 대리 기록이
+  // 오늘의 실측인 척하며 예측값을 온종일 가린다 (같은 원인의 버그가 예측 점선
+  // 자체에서 한 번 있었다 — predPoints 재이음 주석 참고).
+  const hoverActual =
+    hoverMinutes == null || !isTodayView ? undefined : nearestWithin(points, hoverMinutes, HOVER_MATCH_MINUTES);
+  const hoverCompare =
+    hoverMinutes == null ? undefined : nearestWithin(comparePoints, hoverMinutes, HOVER_MATCH_MINUTES);
+  // 실측이 있는 x 에서는 예측을 지운다 — 값이 확정된 자리에 나란히 놓인 추정치는
+  // 잡음이다.
+  const hoverPrediction = hoverMinutes == null || hoverActual ? undefined : predictionAt(predPoints, hoverMinutes);
+
+  // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교
+  // 시리즈 자신일 때만 괄호를 생략한다.
+  const hoverPrimary = hoverPrediction ?? hoverActual ?? hoverCompare;
+  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : "지난주 ";
+  const hoverSuffix = hoverPrediction || hoverActual ? hoverCompare : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
@@ -266,21 +313,13 @@ export function MmcaRoomChartCard({
 
       <div className="relative">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
-            <p className="mt-1 text-[11px] text-ink-soft/70">
-              {isOpenToday
-                ? `${isTodayView ? "오늘 " : ""}영업시간 ${formatMinutes(open)}–${formatMinutes(close)}`
-                : isTodayView
-                  ? "오늘은 휴관일입니다"
-                  : "휴관일입니다"}
-            </p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span
+                data-testid="freshness-dot"
                 className={`h-1.5 w-1.5 rounded-full ${isLive ? "motion-safe:animate-pulse-live" : ""}`}
-                style={{ backgroundColor: isLive ? currentStatus.core : "#C7C7CC" }}
+                style={{ backgroundColor: freshnessDotColor(isOpen, stale) }}
               />
               {openBadge}
             </span>
@@ -307,7 +346,7 @@ export function MmcaRoomChartCard({
         )}
 
         <div className="relative mt-8">
-          {(linePath || lastWeekLinePath) && (
+          {hasAnySeries && (
             <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
               <span className="flex items-center gap-1.5">
                 <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
@@ -320,6 +359,15 @@ export function MmcaRoomChartCard({
                   {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
                 </span>
               )}
+              {predictionPath && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-0 w-3 border-t-2 border-dashed"
+                    style={{ borderColor: CHART_BLUE }}
+                  />
+                  {prediction?.anchored ? "예측 (오늘 반영)" : "예측"}
+                </span>
+              )}
             </div>
           )}
           <svg
@@ -328,7 +376,7 @@ export function MmcaRoomChartCard({
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
             className="w-full overflow-visible"
           >
-            {(linePath || lastWeekLinePath) && (
+            {hasAnySeries && (
               <>
                 <defs>
                   <linearGradient id={`fill-${spaceCode}`} x1="0" y1="0" x2="0" y2="1">
@@ -373,6 +421,18 @@ export function MmcaRoomChartCard({
                     strokeLinecap="round"
                   />
                 )}
+                {predictionPath && (
+                  <path
+                    data-testid="mmca-room-chart-prediction-line"
+                    d={predictionPath}
+                    fill="none"
+                    stroke={CHART_BLUE}
+                    strokeWidth={2.5}
+                    strokeDasharray="5 5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )}
                 {isOpen && lastPoint && (
                   <>
                     <line
@@ -400,24 +460,34 @@ export function MmcaRoomChartCard({
                     />
                   </>
                 )}
-                {hoverPoint && (
+                {hoverPrimary && hoverMinutes != null && (
                   <>
                     <line
-                      x1={xOf(hoverPoint.minutes, open, close)}
+                      x1={xOf(hoverMinutes, open, close)}
                       y1={0}
-                      x2={xOf(hoverPoint.minutes, open, close)}
+                      x2={xOf(hoverMinutes, open, close)}
                       y2={CHART_HEIGHT}
                       stroke="#D2D2D7"
                       strokeWidth={1}
                     />
-                    <circle
-                      cx={xOf(hoverPoint.minutes, open, close)}
-                      cy={yOf(hoverPoint.tier)}
-                      r={4}
-                      fill="#FFFFFF"
-                      stroke={hoverIsThisWeek ? lineStroke : LAST_WEEK_STROKE}
-                      strokeWidth={2}
-                    />
+                    {/* 그 x 에서 값이 있는 계열마다 자기 y 에 점을 하나씩. */}
+                    {[
+                      [hoverActual, lineStroke] as const,
+                      [hoverCompare, LAST_WEEK_STROKE] as const,
+                      [hoverPrediction, CHART_BLUE] as const,
+                    ].map(([point, stroke], i) =>
+                      point ? (
+                        <circle
+                          key={i}
+                          cx={xOf(hoverMinutes, open, close)}
+                          cy={yOf(point.tier)}
+                          r={4}
+                          fill="#FFFFFF"
+                          stroke={stroke}
+                          strokeWidth={2}
+                        />
+                      ) : null
+                    )}
                   </>
                 )}
                 <rect
@@ -427,38 +497,31 @@ export function MmcaRoomChartCard({
                   height={CHART_HEIGHT}
                   fill="transparent"
                   onMouseMove={handleHoverMove}
-                  onMouseLeave={() => setHover(null)}
+                  onMouseLeave={() => setHoverMinutes(null)}
                 />
               </>
             )}
           </svg>
-          {hoverPoint && (
+          {hoverPrimary && hoverMinutes != null && (
             <div
               data-testid="mmca-room-chart-tooltip"
               className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
               style={{
-                left: `${Math.min(Math.max((xOf(hoverPoint.minutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
+                left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
               }}
             >
-              <span className="font-mono tabular-nums text-ink-soft">{formatMinutes(hoverPoint.minutes)}</span>
+              {/* 짚은 x 는 이미 10분 격자 위라 걸린 그리드 판독의 시각과 항상
+                  같고, 예측만 걸린 x 에서는 예측이 곧 그 x 의 값이다 — 어느
+                  쪽이든 짚은 시각을 그대로 적으면 된다. */}
+              <span className="font-mono tabular-nums text-ink-soft">
+                {formatMinutes(hoverMinutes)}
+              </span>
               <span className="mx-1 text-ink-soft">·</span>
-              {hoverIsThisWeek ? (
-                <>
-                  <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
-                    {hoverPoint.label}
-                  </span>
-                  {hoverLastWeekMatch && (
-                    <span className="ml-1 text-ink-soft">(지난주 {hoverLastWeekMatch.label})</span>
-                  )}
-                </>
-              ) : (
-                <span className="text-ink-soft">
-                  지난주{" "}
-                  <span className="font-semibold" style={{ color: statusOf(hoverPoint.label).text }}>
-                    {hoverPoint.label}
-                  </span>
-                </span>
-              )}
+              {hoverPrefix && <span className="text-ink-soft">{hoverPrefix}</span>}
+              <span className="font-semibold" style={{ color: statusOf(hoverPrimary.label).text }}>
+                {hoverPrimary.label}
+              </span>
+              {hoverSuffix && <span className="ml-1 text-ink-soft">(지난주 {hoverSuffix.label})</span>}
             </div>
           )}
           <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">

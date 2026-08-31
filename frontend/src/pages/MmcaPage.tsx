@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   fetchMmcaDaily,
+  fetchMmcaPrediction,
   fetchMmcaRooms,
   type MmcaDailyLogPoint,
   type MmcaRoomStatus,
@@ -11,21 +12,28 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
+import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
 const COLLECTION_START_DELAY_MINUTES = 10;
 
-export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) {
+export function MmcaPage({ venue }: { venue: MmcaVenue }) {
+  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  // MmcaVenue 는 셋 다 VENUES 에 있으므로 못 찾는 경우는 없다.
+  const name = VENUES.find((v) => v.mmcaVenue === venue)!.name;
+  useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
 
-  // MMCA 는 예측 모델이 없다(등급만 수집하고 인원수가 없어 회귀의 목표변수가
-  // 없다). 그래서 미래 탭에서는 지난주 같은 요일의 실제 기록을 대리로 그린다.
-  // 오늘 탭은 지금까지처럼 오늘 실선 + 지난주 회색선.
+  // 미래 탭의 회색선은 지난주 같은 요일의 실제 기록이다(대리값). 그 위에
+  // 파란 점선으로 예측을 겹친다 — 예측은 selectedDate 기준이고, chartDate 는
+  // 회색선을 가져오는 날짜(미래 탭에서 D-7)라 예측에 쓰면 안 된다.
   const chartDate = selectedDate === today ? today : shiftDate(selectedDate, -7);
   const isTodayTab = selectedDate === today;
   // 국중박과 달리 따라갈 서버 목록이 없어 프론트가 날짜를 만든다.
@@ -53,6 +61,14 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
     [venue, lastWeek]
   );
 
+  // 오늘 탭은 곡선이 최근 120분 실측에 매달려 있어 판독마다 바뀌므로 계속
+  // 폴링한다. 미래 탭은 편차가 없어 정적이라 한 번 받고 멈춘다.
+  const predictionPoll = usePolledFetch(
+    () => fetchMmcaPrediction(venue, selectedDate),
+    { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: !isTodayTab },
+    [venue, selectedDate]
+  );
+
   const rooms = roomsPoll.data;
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
@@ -63,11 +79,19 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
   // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
   // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
   const trendError = dailyPoll.error || (isTodayTab && lastWeekPoll.error);
+  // 예측은 없어도 차트가 그려져야 한다 — trendError 에 넣지 않는다. 이력이
+  // 모자란 방은 응답에서 빠지므로 조회 실패는 곧 "그 방은 점선 없음"이다.
+  const predictionByCode = new Map(
+    (predictionPoll.data ?? []).map((room) => [room.space_code, room])
+  );
 
   const now = new Date();
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00 폐관이라 요일에 따라
   // 축의 오른쪽 끝이 달라진다. (D 와 D-7 은 같은 요일이라 결과는 같지만,
   // 그리는 날짜를 기준으로 두는 편이 읽기에 분명하다.)
+  // 헤더의 영업시간 한 줄도 이 값을 그대로 쓴다: chartDate 는 selectedDate 이거나
+  // 그 -7 일이고 -7 은 요일을 보존하므로, 고른 날짜의 영업시간·휴관 여부와 항상
+  // 같다. 두 번 계산할 이유가 없다.
   const { open, close, isOpenToday } = mmcaBusinessHours(
     venue,
     isTodayTab ? now : new Date(`${chartDate}T00:00:00`)
@@ -118,11 +142,15 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
             to="/"
             className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft hover:text-accent"
           >
-            ← 미술관 선택
+            ← 전체 보기
           </Link>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            {title}
+            {name}
           </h1>
+          {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
+          <p className="mt-3 text-sm text-ink-soft">
+            {businessHoursLine(selectedDate, open, close, isOpenToday)}
+          </p>
         </header>
 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
@@ -144,6 +172,7 @@ export function MmcaPage({ venue, title }: { venue: MmcaVenue; title: string }) 
                 room={room}
                 daily={daily}
                 lastWeekDaily={lastWeekDaily}
+                prediction={predictionByCode.get(room.space_code) ?? null}
                 open={open}
                 close={close}
                 nowMinutes={nowMinutes}

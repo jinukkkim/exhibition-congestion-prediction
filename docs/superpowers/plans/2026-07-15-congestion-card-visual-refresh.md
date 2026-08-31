@@ -15,7 +15,7 @@
 - Status color mapping (exact hex, from the dataviz skill's validated status palette): 여유 `#0ca30c`, 보통 `#fab219`, 약간붐빔 `#ec835a`, 붐빔 `#d03b3b`; unknown level falls back to `#94a3b8`. Never rely on color alone — the level text label is always shown alongside.
 - History window: backend endpoint defaults to `hours=6`, accepts `1..24`; frontend always calls it with `6`. No live/SSE updates for the sparkline — fetched once on page load.
 - No new npm or pip dependencies.
-- Commit messages follow `CONTRIBUTING.md`: `type(scope): subject`.
+- Commit messages follow `CLAUDE.md`: `type(scope): subject`.
 - Backend tests: `cd backend && .venv/bin/pytest`. Frontend unit tests: `cd frontend && npx vitest run`. Frontend type check: `cd frontend && npm run type-check`. E2E: `cd frontend && npx playwright test`.
 
 ---
