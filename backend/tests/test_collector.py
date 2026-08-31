@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 import fakeredis
@@ -100,6 +101,48 @@ def test_collect_once_retries_a_non_json_body(monkeypatch, session_factory):
     assert result.congest_level == "보통"
     with session_factory() as session:
         assert session.query(RawCongestion).count() == 1
+
+
+def test_a_recovered_fetch_records_how_long_the_bad_spell_lasted(
+    monkeypatch, session_factory, caplog
+):
+    """The recovery line is the only measurement of an upstream bad spell.
+
+    raw_congestion.observed_at is the Open API's publication time, so the DB
+    cannot say when a poll ran or how long it was blocked. Reconstructing the
+    2026-08-30 outage windows from it meant assuming the ~30 minute lag. This
+    log line is what makes the next one measurable — and it has to be at
+    warning, because that is the level the journal keeps.
+
+    Asserted on substance, not on the elapsed number: timing assertions are
+    brittle and the seconds are not the contract.
+    """
+    import app.collector as collector_module
+
+    fake_reading = CongestionReading(
+        observed_at=datetime(2026, 7, 15, 14, 30),
+        congest_level="보통",
+        population_min=1000,
+        population_max=2000,
+    )
+    calls = []
+
+    def flake_once(client, area, key):
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("timed out")
+        return fake_reading
+
+    monkeypatch.setattr(collector_module, "fetch_congestion", flake_once)
+    monkeypatch.setattr(collector_module, "_FETCH_RETRY_SECONDS", 0)
+
+    with caplog.at_level(logging.WARNING, logger="app.collector"):
+        collector_module.collect_once(session_factory=session_factory)
+
+    recovered = [r for r in caplog.records if "recovered" in r.message]
+    assert len(recovered) == 1, "a recovery must leave exactly one line"
+    assert recovered[0].levelno == logging.WARNING
+    assert "after" in recovered[0].getMessage()
 
 
 def test_collect_once_stores_population_breakdown_fields(monkeypatch, session_factory):

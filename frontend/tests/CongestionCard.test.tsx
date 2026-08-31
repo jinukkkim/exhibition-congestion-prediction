@@ -153,7 +153,7 @@ describe("CongestionCard", () => {
     render(
       <CongestionCard
         data={{
-          observed_at: "2026-07-15T13:00:00", // 90분 전 — 임계값 45분 초과
+          observed_at: "2026-07-15T13:00:00", // 90분 전 — 임계값 75분 초과
           congest_level: "보통",
           population_avg: 1500,
         }}

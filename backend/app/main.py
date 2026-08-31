@@ -23,6 +23,13 @@ from app.scheduler import build_scheduler
 # journal's usage (307MB across 45 days), and it is what makes "when did we
 # actually poll" answerable. observed_at cannot answer it, because it is the
 # Open API's publication time rather than ours.
+# basicConfig is a no-op when the root logger already has a handler, which is
+# deliberate rather than a hole: in that case something else — pytest's capture,
+# a container's log setup — already owns the output and adding a second handler
+# would duplicate every line. Under uvicorn root has none (its dictConfig
+# touches only the uvicorn.* loggers), so this is what installs one. Verified
+# by running the app: without it, app-level info lines print zero times while
+# looking configured.
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("app").setLevel(logging.INFO)
 

@@ -37,8 +37,9 @@ describe("thresholds", () => {
   it("gives Seoul room for its upstream publication lag", () => {
     // 국중박 observed_at 은 서울 API 의 PPLTN_TIME(상류 발행 측정 시각)이라
     // 정상 수집 중에도 30분가량 낡아 있다. MMCA 는 폴링 시각을 그대로 쓰므로
-    // 그 여유가 필요 없다. backend/app/routes/health.py 의 짝과 같은 값.
-    expect(SEOUL_STALE_MINUTES).toBe(45);
+    // 그 여유가 필요 없다. backend/app/routes/health.py 의 짝과 같은 값이어야
+    // 한다 — 한쪽만 바꾸면 배지와 헬스체크가 같은 판독을 다르게 부른다.
+    expect(SEOUL_STALE_MINUTES).toBe(75);
     expect(MMCA_STALE_MINUTES).toBe(25);
   });
 });
