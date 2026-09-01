@@ -1,26 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { businessHoursLine } from "../src/lib/businessHoursLine";
+import { VENUES } from "../src/venues";
+
+const lineOf = (id: string) => businessHoursLine(VENUES.find((v) => v.id === id)!);
 
 describe("businessHoursLine", () => {
-  it("names the date the hours belong to", () => {
-    // 날짜 탭이 위에 있어도 이 줄만 읽고 뜻이 닫혀야 한다 — 어느 날의 시간인지
-    // 줄 안에서 말한다.
-    expect(businessHoursLine("2026-08-25", 9 * 60 + 30, 17 * 60 + 30)).toBe(
-      "8/25(화) 영업시간 09:30–17:30"
-    );
-    expect(businessHoursLine("2026-07-28", 10 * 60, 18 * 60)).toBe("7/28(화) 영업시간 10:00–18:00");
-  });
-
-  it("takes the close time it is given rather than deriving it", () => {
-    // 수·토는 21:00 폐관이지만 그 규칙은 호출부(관별 businessHours 함수)가 안다.
-    // 이 함수는 받은 값을 적을 뿐이라 관이 늘어도 고칠 데가 없다.
-    expect(businessHoursLine("2026-08-29", 9 * 60 + 30, 21 * 60)).toBe(
-      "8/29(토) 영업시간 09:30–21:00"
-    );
-  });
-
-  it("claims no hours on a closed day", () => {
-    expect(businessHoursLine("2026-07-27", 10 * 60, 18 * 60, false)).toBe("7/27(월) 휴관일입니다");
+  it("folds a week into one line per venue", () => {
+    // 야간개장만 있는 관, 요일 휴관만 있는 관, 둘 다 있는 관, 둘 다 없는 관 —
+    // 괄호가 생기고 사라지는 네 경우가 실제 관에 다 있다.
+    expect(lineOf("national-museum")).toBe("09:30~17:30 (수·토 21:00까지)");
+    expect(lineOf("mmca-seoul")).toBe("10:00~18:00 (수·토 21:00까지)");
+    expect(lineOf("mmca-gwacheon")).toBe("10:00~18:00 (월요일 휴무)");
+    expect(lineOf("mmca-deoksugung")).toBe("10:00~18:00 (수·토 21:00까지, 월요일 휴무)");
   });
 });

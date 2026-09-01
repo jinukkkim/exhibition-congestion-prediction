@@ -1,17 +1,59 @@
-import { formatMinutes, monthDayWeekday } from "./date";
+import type { Venue } from "../venues";
+import { formatMinutes } from "./date";
+import { mmcaBusinessHours } from "./mmcaBusinessHours";
+import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
 
-// 영업시간은 관 단위 정보다(방마다 다르지 않다) — 카드마다 같은 값을 반복하지
-// 않고 페이지 헤더에 한 줄로 둔다.
+const WEEKDAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 요일별 영업시간을 모으려면 요일마다 Date 가 하나씩 필요하다. 영업시간 함수는
+// getDay() 만 보므로 어느 주를 골라도 답이 같다 — 일요일로 시작하는 주 하나를
+// 기준으로 쓴다.
+const REFERENCE_SUNDAY = "2026-01-04";
+
+function dayHours(venue: Venue, weekday: number) {
+  const date = new Date(`${REFERENCE_SUNDAY}T12:00:00`);
+  date.setDate(date.getDate() + weekday);
+  // 국중박은 요일 휴관이 없어 isOpenToday 를 돌려주지 않는다.
+  return venue.mmcaVenue
+    ? mmcaBusinessHours(venue.mmcaVenue, date)
+    : { ...nationalMuseumBusinessHours(date), isOpenToday: true };
+}
+
+function joinWeekdays(weekdays: number[]): string {
+  return weekdays.map((weekday) => WEEKDAY_NAMES[weekday]).join("·");
+}
+
+// 한 주 전체를 "10:00~18:00 (수·토 21:00까지, 월요일 휴무)" 한 줄로 접는다.
 //
-// 어느 날의 시간인지를 줄 안에서 직접 말한다. 날짜 탭이 위에 있긴 하지만,
-// 이 줄만 읽어도 뜻이 닫히는 편이 낫다.
-export function businessHoursLine(
-  date: string,
-  open: number,
-  close: number,
-  isOpenToday = true
-): string {
-  const day = monthDayWeekday(date);
-  if (!isOpenToday) return `${day} 휴관일입니다`;
-  return `${day} 영업시간 ${formatMinutes(open)}–${formatMinutes(close)}`;
+// 고른 날짜가 아니라 관을 받는다 — 관 정보 표에 실리는 값이라 날짜 탭과 함께
+// 바뀌지 않는다. 대신 영업시간 로직에서 직접 뽑으므로 차트 축과 어긋날 수 없다
+// (과천관이 어긋나 있던 자리다).
+export function businessHoursLine(venue: Venue): string {
+  const week = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    weekday,
+    ...dayHours(venue, weekday),
+  }));
+  const openDays = week.filter((day) => day.isOpenToday);
+  const closedDays = week.filter((day) => !day.isOpenToday);
+
+  // 기본 폐관 시각은 가장 이른 것으로 잡고, 그보다 늦게 닫는 요일만 괄호에
+  // 따로 적는다 (야간개장).
+  const baseClose = Math.min(...openDays.map((day) => day.close));
+  const lateDays = openDays.filter((day) => day.close > baseClose);
+
+  const notes: string[] = [];
+  if (lateDays.length > 0) {
+    // ponytail: 야간개장 요일의 폐관 시각은 관마다 하나뿐이라 가장 늦은 것
+    // 하나로 적는다. 요일마다 다른 시각이 생기면 요일별로 쪼개야 한다.
+    const lateClose = Math.max(...lateDays.map((day) => day.close));
+    notes.push(
+      `${joinWeekdays(lateDays.map((day) => day.weekday))} ${formatMinutes(lateClose)}까지`
+    );
+  }
+  if (closedDays.length > 0) {
+    notes.push(`${joinWeekdays(closedDays.map((day) => day.weekday))}요일 휴무`);
+  }
+
+  const hours = `${formatMinutes(openDays[0].open)}~${formatMinutes(baseClose)}`;
+  return notes.length > 0 ? `${hours} (${notes.join(", ")})` : hours;
 }

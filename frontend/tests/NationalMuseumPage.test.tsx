@@ -208,26 +208,24 @@ describe("NationalMuseumPage date tabs", () => {
     expect(api.fetchDaily).toHaveBeenCalledWith("2026-08-15");
   });
 
-  it("shows the business hours once in the header and moves them to the selected date", async () => {
-    // 영업시간은 관 단위 값이라 카드가 아니라 헤더에 한 줄만 둔다. 수·토는
-    // 21:00 폐관이므로 탭을 옮기면 날짜와 시간이 함께 바뀐다.
+  it("shows the business hours once in the header and keeps them on the selected date", async () => {
+    // 영업시간은 관 단위 값이라 카드가 아니라 헤더에 한 줄만 둔다. 한 주 전체를
+    // 한 줄로 접으므로 탭을 옮겨도 바뀌지 않는다 — 요일별 폐관 시각은 괄호 안에
+    // 이미 다 적혀 있다.
     render(
       <MemoryRouter>
         <NationalMuseumPage />
       </MemoryRouter>
     );
 
-    // 2026-08-20 은 목요일 → 17:30 폐관
-    expect(
-      screen.getAllByText("8/20(목) 영업시간 09:30–17:30")
-    ).toHaveLength(1);
+    const line = "09:30~17:30 (수·토 21:00까지)";
+    expect(screen.getAllByText(line)).toHaveLength(1);
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
     fireEvent.click(screen.getByRole("tab", { name: "토 8/22" }));
 
-    await waitFor(() =>
-      expect(screen.getByText("8/22(토) 영업시간 09:30–21:00")).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole("tab", { name: "토 8/22" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getAllByText(line)).toHaveLength(1);
   });
 
   it("keeps the live headline only on the today tab", async () => {

@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { mmcaBusinessHours } from "../src/lib/mmcaBusinessHours";
-import { nationalMuseumBusinessHours } from "../src/lib/nationalMuseumBusinessHours";
+import { businessHoursLine } from "../src/lib/businessHoursLine";
 import { VENUES } from "../src/venues";
-
-// venues.ts 의 휴관일·야간개장 문구는 영업시간 로직과 같은 사실을 말로 옮긴
-// 것이다. 과천관이 실제로 어긋나 있었으므로(헤더는 공식 안내를, 차트는 서울관
-// 시간표를 따랐다) 둘이 같은 말을 하는지 여기서 잠근다.
-const MONDAY = new Date("2026-08-24T12:00:00");
-const WEDNESDAY = new Date("2026-08-26T12:00:00");
-const SATURDAY = new Date("2026-08-29T12:00:00");
-const THURSDAY = new Date("2026-08-27T12:00:00");
 
 describe("VENUES info", () => {
   it("gives every venue a full info block", () => {
@@ -28,28 +19,19 @@ describe("VENUES info", () => {
     }
   });
 
-  it("matches the weekly closure the business-hours logic applies", () => {
+  it("only promises a night-opening discount where there is a night opening", () => {
+    // 관람료 문구는 정적이고 야간개장 여부는 영업시간 로직에서 나온다 — 과천관
+    // 처럼 야간개장이 없는 관이 "야간개장 18시 이후 무료"를 달고 있으면 안 된다.
     for (const venue of VENUES) {
-      const saysMonday = venue.info.closedDays.includes("매주 월요일");
-      const isOpenMonday = venue.mmcaVenue
-        ? mmcaBusinessHours(venue.mmcaVenue, MONDAY).isOpenToday
-        : true; // 국중박은 요일 휴관이 없어 isOpenToday 인자 자체가 없다
-      expect(isOpenMonday, `${venue.id} 월요일 휴관`).toBe(!saysMonday);
+      if (!venue.info.admission.includes("야간개장")) continue;
+      expect(businessHoursLine(venue), `${venue.id} 야간개장`).toContain("까지");
     }
   });
 
-  it("matches the night opening the business-hours logic applies", () => {
+  it("keeps the weekly closure out of closedDays", () => {
+    // 요일 휴관은 영업시간 줄이 말한다. 여기에도 적으면 같은 말이 두 줄이 된다.
     for (const venue of VENUES) {
-      const closeAt = (date: Date) =>
-        venue.mmcaVenue
-          ? mmcaBusinessHours(venue.mmcaVenue, date).close
-          : nationalMuseumBusinessHours(date).close;
-      // 야간개장 문구가 있으면 수·토가 그 밖의 날보다 늦게 닫혀야 하고,
-      // 없으면 요일과 무관하게 같은 시각에 닫혀야 한다.
-      const weekday = closeAt(THURSDAY);
-      const late = venue.info.nightOpening !== null;
-      expect(closeAt(WEDNESDAY) > weekday, `${venue.id} 수요일 야간개장`).toBe(late);
-      expect(closeAt(SATURDAY) > weekday, `${venue.id} 토요일 야간개장`).toBe(late);
+      expect(venue.info.closedDays, `${venue.id}.closedDays`).not.toContain("요일");
     }
   });
 });

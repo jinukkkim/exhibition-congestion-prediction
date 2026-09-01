@@ -1,23 +1,22 @@
 import { Fragment } from "react";
 
-import type { VenueInfo } from "../venues";
+import { businessHoursLine } from "../lib/businessHoursLine";
+import type { Venue } from "../venues";
 
 // 관 이름 아래에 놓이는 관 단위 정보 표. MmcaPage 에서는 이 표가 헤더 왼쪽
 // 열의 높이를 오른쪽 전시 목록에 맞춘다 — 그전에는 이름과 영업시간 한 줄뿐이라
 // 오른쪽만 길었다. 국중박은 전시 목록이 없어 그냥 아래로 이어진다.
-//
-// 영업시간 한 줄(businessHoursLine)은 고른 날짜에 따라 바뀌는 값이라 여기에
-// 넣지 않는다. 이 표는 날짜와 무관한 값만 싣는다.
-export function VenueInfoList({ info }: { info: VenueInfo }) {
+export function VenueInfoList({ venue }: { venue: Venue }) {
+  const { info } = venue;
   const rows: [string, string][] = [
+    // 영업시간만 정적 문구가 아니라 영업시간 로직에서 뽑는다 — 차트 축과 같은
+    // 값이라 어긋날 수 없다. 나머지는 venues.ts 에 적힌 그대로다.
+    ["영업시간", businessHoursLine(venue)],
     ["주소", info.address],
     ["가는 길", info.transit],
     ["관람료", info.admission],
     ["휴관일", info.closedDays],
   ];
-  // 야간개장이 없는 관(과천관)은 줄을 지운다 — "없음"은 정보가 아니라 잡음이고,
-  // 없는 줄만큼 표가 짧아지는 편이 낫다.
-  if (info.nightOpening) rows.push(["야간개장", info.nightOpening]);
 
   return (
     <dl className="mt-6 grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">

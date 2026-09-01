@@ -7,21 +7,11 @@ export interface VenueInfo {
   address: string;
   transit: string;
   admission: string;
-  // 요일 휴관은 mmcaBusinessHours 의 VENUE_CLOSED_DAYS 와 같은 사실을 말로
-  // 옮긴 것이다 — 어긋나면 헤더와 차트가 서로 다른 말을 한다. 여기에는 요일
-  // 휴관에 없는 달력 휴관일(1월 1일·설날·추석)까지 함께 적는다.
+  // 달력 휴관일만 싣는다. 요일 휴관("월요일 휴무")은 영업시간 줄이 영업시간
+  // 로직에서 직접 뽑아 말하므로 여기 적으면 같은 말을 두 곳에서 하게 된다.
   closedDays: string;
-  // 야간개장이 없는 관은 null (과천관). LONG_CLOSE_DAYS 와 짝이다.
-  nightOpening: string | null;
   homepage: string;
 }
-
-// 위 두 필드가 영업시간 로직과 어긋나지 않는지는 tests/venueInfo.test.ts 가
-// 지킨다 — 과천관이 실제로 그렇게 어긋나 있었다.
-const MMCA_NIGHT_OPENING = "수·토 21:00까지 (18시 이후 무료)";
-// 서울관·과천관은 요일 휴관이 없고, 덕수궁관·과천관은 매주 월요일 쉰다.
-const MMCA_HOLIDAY_CLOSED_DAYS = "1월 1일, 설날, 추석";
-const MMCA_MONDAY_CLOSED_DAYS = "매주 월요일, 1월 1일";
 
 export interface Venue {
   id: string;
@@ -51,7 +41,6 @@ export const VENUES: Venue[] = [
       transit: "4호선·경의중앙선 이촌역 2번 출구",
       admission: "상설전시관 무료 (특별전은 별도)",
       closedDays: "1월 1일, 설날, 추석",
-      nightOpening: "수·토 21:00까지",
       homepage: "https://www.museum.go.kr/MUSEUM/contents/M0101000000.do",
     },
   },
@@ -64,9 +53,8 @@ export const VENUES: Venue[] = [
     info: {
       address: "서울 종로구 삼청로 30",
       transit: "3호선 안국역 1번 출구",
-      admission: "통합관람권 10,000원 (만 24세 이하·65세 이상 무료)",
-      closedDays: MMCA_HOLIDAY_CLOSED_DAYS,
-      nightOpening: MMCA_NIGHT_OPENING,
+      admission: "통합관람권 10,000원 (만 24세 이하·65세 이상, 야간개장 18시 이후 무료)",
+      closedDays: "1월 1일, 설날, 추석",
       homepage: "https://www.mmca.go.kr/visitingInfo/seoulInfo.do",
     },
   },
@@ -80,9 +68,7 @@ export const VENUES: Venue[] = [
       address: "경기 과천시 광명로 313",
       transit: "4호선 대공원역 4번 출구, 셔틀버스",
       admission: "3,000원 (만 24세 이하·65세 이상 무료)",
-      closedDays: MMCA_MONDAY_CLOSED_DAYS,
-      // 과천관만 야간개장이 없다 — 수·토도 18:00 폐관.
-      nightOpening: null,
+      closedDays: "1월 1일",
       homepage: "https://www.mmca.go.kr/visitingInfo/gwacheonInfo.do",
     },
   },
@@ -101,9 +87,8 @@ export const VENUES: Venue[] = [
       transit: "1·2호선 시청역 1번 출구",
       // 궁 안에 있어 미술관 관람료만으로는 못 들어간다 — 다른 관에 없는
       // 조건이라 금액보다 이 사실이 먼저 읽혀야 한다.
-      admission: "2,000원 (덕수궁 입장료 1,000원 별도)",
-      closedDays: MMCA_MONDAY_CLOSED_DAYS,
-      nightOpening: MMCA_NIGHT_OPENING,
+      admission: "2,000원 (덕수궁 입장료 1,000원 별도, 야간개장 18시 이후 무료)",
+      closedDays: "1월 1일",
       homepage: "https://www.mmca.go.kr/visitingInfo/deoksugungInfo.do",
     },
   },

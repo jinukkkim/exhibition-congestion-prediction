@@ -4,9 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DateTabs } from "../components/DateTabs";
-import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString } from "../lib/date";
-import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { PredictionChart } from "../components/PredictionChart";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
@@ -18,7 +16,8 @@ const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
 export function NationalMuseumPage() {
   // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
-  const { name, info } = VENUES.find((v) => v.id === "national-museum")!;
+  const venueMeta = VENUES.find((v) => v.id === "national-museum")!;
+  const name = venueMeta.name;
   useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -53,12 +52,6 @@ export function NationalMuseumPage() {
 
   const current = useCongestionStream(initial.data);
 
-  // 헤더의 영업시간 한 줄은 고른 날짜를 따른다 — 수·토는 21:00 폐관이라 탭을
-  // 옮기면 값이 바뀐다. chartDate(= 미래 탭이면 selectedDate - 7)를 써도 답은
-  // 같지만(-7 은 요일을 보존한다), 화면에 적힌 날짜가 selectedDate 이므로
-  // 그것을 기준으로 둔다. 국중박은 휴관일이 없어 isOpenToday 인자가 없다.
-  const { open, close } = nationalMuseumBusinessHours(new Date(`${selectedDate}T00:00:00`));
-
   return (
     <div className="min-h-screen bg-canvas">
       <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
@@ -72,15 +65,11 @@ export function NationalMuseumPage() {
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
             {name}
           </h1>
-          {/* 관 단위 정보 — 카드마다 반복하지 않는다. */}
-          <p className="mt-3 text-sm text-ink-soft">
-            {businessHoursLine(selectedDate, open, close)}
-          </p>
-          {/* MmcaPage 와 달리 전시 목록이 없어 헤더가 1열이다 — 표를 좁게
-              가둘 이유가 없지만, 값이 페이지 폭 전체로 늘어나면 라벨과 값이
-              멀어진다. */}
+          {/* 관 단위 정보 — 카드마다 반복하지 않는다. MmcaPage 와 달리 전시
+              목록이 없어 헤더가 1열이다. 값이 페이지 폭 전체로 늘어나면 라벨과
+              값이 멀어지므로 표만 좁게 가둔다. */}
           <div className="max-w-md">
-            <VenueInfoList info={info} />
+            <VenueInfoList venue={venueMeta} />
           </div>
         </header>
 

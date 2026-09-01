@@ -17,7 +17,6 @@ import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
-import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
 import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
@@ -35,7 +34,8 @@ function formatPeriod({ start_date, end_date }: MmcaExhibition): string {
 export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
   // MmcaVenue 는 셋 다 VENUES 에 있으므로 못 찾는 경우는 없다.
-  const { name, info } = VENUES.find((v) => v.mmcaVenue === venue)!;
+  const venueMeta = VENUES.find((v) => v.mmcaVenue === venue)!;
+  const name = venueMeta.name;
   useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -122,9 +122,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00 폐관이라 요일에 따라
   // 축의 오른쪽 끝이 달라진다. (D 와 D-7 은 같은 요일이라 결과는 같지만,
   // 그리는 날짜를 기준으로 두는 편이 읽기에 분명하다.)
-  // 헤더의 영업시간 한 줄도 이 값을 그대로 쓴다: chartDate 는 selectedDate 이거나
-  // 그 -7 일이고 -7 은 요일을 보존하므로, 고른 날짜의 영업시간·휴관 여부와 항상
-  // 같다. 두 번 계산할 이유가 없다.
   const { open, close, isOpenToday } = mmcaBusinessHours(
     venue,
     isTodayTab ? now : new Date(`${chartDate}T00:00:00`)
@@ -184,10 +181,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
             <div>
               <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">{name}</h1>
               {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
-              <p className="mt-3 text-sm text-ink-soft">
-                {businessHoursLine(selectedDate, open, close, isOpenToday)}
-              </p>
-              <VenueInfoList info={info} />
+              <VenueInfoList venue={venueMeta} />
             </div>
             {/* 전시실이 없는 공간(서울박스, 교육동 등)의 전시는 방 카드에 붙을
                 자리가 없어 여기에만 실린다. */}
