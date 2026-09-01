@@ -21,8 +21,10 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
     ["휴관일", info.closedDays],
   ];
 
+  // content-start: 이 표가 2열 그리드의 아이템이면 옆 열 높이에 맞춰 늘어나고,
+  // 그 여분이 행 사이로 퍼져 줄 간격이 벌어진다. 행은 위에 붙여 둔다.
   return (
-    <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+    <dl className="grid content-start grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
       {rows.map(([label, value]) => (
         <Fragment key={label}>
           <dt className="text-ink-soft">{label}</dt>
