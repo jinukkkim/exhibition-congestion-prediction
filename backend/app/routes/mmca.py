@@ -31,8 +31,8 @@ from app.prediction.mmca import (
 )
 from app.schemas import (
     MmcaDailyLogPoint,
-    MmcaExhibition,
     MmcaDailyRoom,
+    MmcaExhibition,
     MmcaPredictionPoint,
     MmcaRoomPrediction,
     MmcaRoomStatus,
@@ -326,7 +326,6 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
         MMCA_PREDICTION_TTL_TODAY_SECONDS if is_today else MMCA_PREDICTION_TTL_FUTURE_SECONDS,
     )
     return result
-
 
 
 @router.get("/mmca/exhibitions", response_model=list[MmcaExhibition])
