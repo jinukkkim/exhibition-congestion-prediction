@@ -694,7 +694,7 @@ describe("MmcaPage date tabs", () => {
       makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "보통" }),
     ]);
     vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
-      { title: "서도호", start_date: "2026-08-27", end_date: "2027-02-09" },
+      { title: "서도호", start_date: "2026-08-27", end_date: "2027-02-09", space_codes: [] },
     ]);
 
     render(
@@ -721,5 +721,62 @@ describe("MmcaPage date tabs", () => {
 
     await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
     expect(screen.queryByText("현재 전시")).not.toBeInTheDocument();
+  });
+
+  it("labels each room card with the exhibition running in it", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1006", space_nm: "6전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "올해의 작가상 2026",
+        start_date: "2026-07-24",
+        end_date: "2026-12-06",
+        space_codes: ["MMCA-SPACE-1001"],
+      },
+      {
+        title: "이것은 개념미술이 (아니)다",
+        start_date: "2026-06-19",
+        end_date: "2026-10-11",
+        space_codes: ["MMCA-SPACE-1006", "MMCA-SPACE-1007"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    // 헤더 목록에 한 번, 그 방 카드에 한 번.
+    await waitFor(() => expect(screen.getAllByText("올해의 작가상 2026")).toHaveLength(2));
+    expect(screen.getAllByText("이것은 개념미술이 (아니)다")).toHaveLength(2);
+    // 1007 은 이 관에 카드가 없으므로 헤더에만 남는다.
+    expect(screen.queryByText("7전시실")).not.toBeInTheDocument();
+  });
+
+  it("leaves a room card unlabelled when no exhibition maps to it", async () => {
+    // 서울박스·교육동처럼 전시실이 아닌 공간의 전시는 space_codes 가 비어
+    // 있어 헤더 목록에만 실린다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "MMCA×LG OLED 시리즈 2026",
+        start_date: "2026-07-31",
+        end_date: "2026-11-29",
+        space_codes: [],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByText("MMCA×LG OLED 시리즈 2026")).toHaveLength(1)
+    );
   });
 });

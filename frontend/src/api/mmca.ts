@@ -70,9 +70,11 @@ export interface MmcaExhibition {
   // YYYY-MM-DD
   start_date: string;
   end_date: string;
+  // 이 전시가 쓰는 전시실. 서울박스·교육동처럼 혼잡도를 수집하지 않는 공간
+  // 에서만 열리는 전시는 비어 있어 헤더 목록에만 실린다.
+  space_codes: string[];
 }
 
-// 관 단위 목록이다 — 이 API 에는 전시실 정보가 없어 방 카드에 붙일 수 없다.
 export async function fetchMmcaExhibitions(venue: MmcaVenue): Promise<MmcaExhibition[]> {
   const res = await fetch(`/mmca/exhibitions?venue=${venue}`);
   if (!res.ok) {

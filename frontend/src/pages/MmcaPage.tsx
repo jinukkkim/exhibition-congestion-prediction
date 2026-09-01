@@ -88,6 +88,14 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
 
   const rooms = roomsPoll.data;
   const exhibitions = exhibitionsPoll.data ?? [];
+  // 한 전시실이 두 전시에 걸리는 일은 없다. 그래도 먼저 온 쪽(누리집 순서상
+  // 최근 개막)을 남긴다 — 카드에는 한 줄만 들어간다.
+  const exhibitionByCode = new Map<string, string>();
+  for (const exhibition of exhibitions) {
+    for (const code of exhibition.space_codes) {
+      if (!exhibitionByCode.has(code)) exhibitionByCode.set(code, exhibition.title);
+    }
+  }
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
   // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이 기준인지
@@ -210,6 +218,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
               <MmcaRoomChartCard
                 key={room.space_code}
                 room={room}
+                exhibitionTitle={exhibitionByCode.get(room.space_code) ?? null}
                 daily={daily}
                 lastWeekDaily={lastWeekDaily}
                 prediction={predictionByCode.get(room.space_code) ?? null}
@@ -229,6 +238,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
               <MmcaRoomInactiveCard
                 key={room.space_code}
                 room={room}
+                exhibitionTitle={exhibitionByCode.get(room.space_code) ?? null}
                 reason={inactiveReason(room)}
               />
             ))}
