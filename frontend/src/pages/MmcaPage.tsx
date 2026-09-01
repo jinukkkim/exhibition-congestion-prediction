@@ -176,35 +176,42 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           >
             ← 전체 보기
           </Link>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            {name}
-          </h1>
-          {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
-          <p className="mt-3 text-sm text-ink-soft">
-            {businessHoursLine(selectedDate, open, close, isOpenToday)}
-          </p>
-          {/* 전시명은 전시실이 아니라 관에 붙는다 — 출처 API 가 전시실까지
-              내려주지 않는다. 방 카드 대신 헤더에 관 단위로 한 번 나열한다. */}
-          {exhibitions.length > 0 && (
-            <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                현재 전시
+          {/* 관 이름과 전시 목록을 2열로 가른다 — 제목 오른쪽이 통째로 비어
+              있었고, 세로로 쌓으면 차트에 닿기까지 목록 전체를 지나야 했다.
+              lg 미만에서는 열이 하나라 그냥 쌓인다. */}
+          <div className="mt-2 gap-x-16 gap-y-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <div>
+              <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">{name}</h1>
+              {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
+              <p className="mt-3 text-sm text-ink-soft">
+                {businessHoursLine(selectedDate, open, close, isOpenToday)}
               </p>
-              <ul className="mt-2 space-y-1.5">
-                {exhibitions.map((exhibition) => (
-                  <li
-                    key={`${exhibition.title}-${exhibition.start_date}`}
-                    className="flex flex-wrap items-baseline gap-x-3 text-sm text-ink"
-                  >
-                    <span>{exhibition.title}</span>
-                    <span className="text-xs tabular-nums text-ink-soft">
-                      {formatPeriod(exhibition)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
             </div>
-          )}
+            {/* 전시실이 없는 공간(서울박스, 교육동 등)의 전시는 방 카드에 붙을
+                자리가 없어 여기에만 실린다. */}
+            {exhibitions.length > 0 && (
+              <div className="mt-8 lg:mt-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                  현재 전시
+                </p>
+                <ul className="mt-3 space-y-1.5">
+                  {exhibitions.map((exhibition) => (
+                    <li
+                      key={`${exhibition.title}-${exhibition.start_date}`}
+                      className="flex flex-wrap items-baseline justify-between gap-x-6 text-sm text-ink"
+                    >
+                      <span>{exhibition.title}</span>
+                      {/* 기간은 열 오른쪽 끝에 맞춰 세운다 — 제목 길이가 제각각
+                          이라 왼쪽에 붙이면 날짜가 들쭉날쭉해진다. */}
+                      <span className="shrink-0 text-xs tabular-nums text-ink-soft">
+                        {formatPeriod(exhibition)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </header>
 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
