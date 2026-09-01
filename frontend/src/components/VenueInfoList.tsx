@@ -34,7 +34,7 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
       {/* 금액·시간은 우리가 베껴 둔 값이라 언젠가 어긋난다. 원본으로 가는 길을
           같은 표 안에 둔다. dl 은 dt 없는 dd 를 두면 안 되므로 dt 는 남기고
           화면에서만 감춘다. */}
-      <dt className="sr-only">공식 안내</dt>
+      <dt className="sr-only">공식 웹사이트</dt>
       <dd className="col-start-2 mt-1">
         <a
           href={info.homepage}
@@ -42,7 +42,7 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
           rel="noreferrer"
           className="text-ink-soft underline decoration-hairline underline-offset-4 hover:text-accent"
         >
-          공식 관람 안내 →
+          공식 웹사이트 →
         </a>
       </dd>
     </dl>
