@@ -78,3 +78,10 @@ class MmcaRoomPrediction(BaseModel):
     # 14일 창 안에서 판독이 있는 날의 수. 방 단위이며 셀 단위가 아니다.
     sample_days: int
     points: list[MmcaPredictionPoint]
+
+
+class MmcaExhibition(BaseModel):
+    title: str
+    # YYYY-MM-DD. 프론트는 점 표기로만 바꿔 그리므로 date 로 올릴 이유가 없다.
+    start_date: str
+    end_date: str

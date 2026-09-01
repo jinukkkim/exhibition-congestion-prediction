@@ -2,17 +2,21 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
 
 from app.cache import (
     MMCA_PREDICTION_TTL_FUTURE_SECONDS,
     MMCA_PREDICTION_TTL_TODAY_SECONDS,
+    get_mmca_exhibitions,
     get_mmca_prediction,
+    set_mmca_exhibitions,
     set_mmca_prediction,
 )
 from app.config import MMCA_DISABLED_SPACE_CODES, MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
+from app.mmca_exhibitions import current_exhibitions, fetch_exhibition_pages
 from app.models import RawMmcaCongestion
 from app.prediction.mmca import (
     CONGESTION_RANKS,
@@ -26,6 +30,7 @@ from app.prediction.mmca import (
 )
 from app.schemas import (
     MmcaDailyLogPoint,
+    MmcaExhibition,
     MmcaDailyRoom,
     MmcaPredictionPoint,
     MmcaRoomPrediction,
@@ -320,3 +325,25 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
         MMCA_PREDICTION_TTL_TODAY_SECONDS if is_today else MMCA_PREDICTION_TTL_FUTURE_SECONDS,
     )
     return result
+
+
+
+@router.get("/mmca/exhibitions", response_model=list[MmcaExhibition])
+def mmca_exhibitions(venue: str) -> list[MmcaExhibition]:
+    if venue not in settings.mmca_venue_space_codes:
+        raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
+
+    cached = get_mmca_exhibitions(venue)
+    if cached is not None:
+        return [MmcaExhibition(**row) for row in cached]
+
+    # 한 번 부르면 세 관의 목록이 한꺼번에 나온다. 관마다 따로 캐시에 넣어야
+    # 다른 관 페이지가 같은 호출을 반복하지 않는다 — 전시가 없는 관도 빈
+    # 목록으로 넣는다.
+    with httpx.Client() as client:
+        pages = fetch_exhibition_pages(client, settings.mmca_exhibition_api_key)
+    by_venue = current_exhibitions(pages, datetime.now(_SEOUL_TZ).date())
+
+    for venue_id, exhibitions in by_venue.items():
+        set_mmca_exhibitions(venue_id, [vars(e) for e in exhibitions])
+    return [MmcaExhibition(**vars(e)) for e in by_venue.get(venue, [])]

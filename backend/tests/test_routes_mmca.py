@@ -396,3 +396,48 @@ def test_mmca_daily_falls_back_to_static_room_name_when_room_missing_from_bucket
     room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
     assert room["space_nm"] == "2전시실"
     assert room["congestion_nm"] is None
+
+
+def _exhibition_page(*items: str) -> str:
+    return f"<response><body><items>{''.join(items)}</items></body></response>"
+
+
+def test_mmca_exhibitions_rejects_an_unknown_venue(client):
+    test_client, _ = client
+    assert test_client.get("/mmca/exhibitions?venue=nowhere").status_code == 400
+
+
+def test_mmca_exhibitions_serves_the_venue_and_caches_every_venue(client, monkeypatch):
+    # 외부 API 한 번에 세 관이 다 온다. 다른 관 페이지가 같은 호출을 반복하지
+    # 않도록 전시가 없는 관까지 캐시에 들어가야 한다.
+    test_client, _ = client
+    import app.routes.mmca as mmca_routes
+
+    today = datetime.now(_SEOUL_TZ).date()
+    calls = []
+
+    def fake_fetch(_client, api_key):
+        calls.append(api_key)
+        return [
+            _exhibition_page(
+                f"<item><title>서울 전시</title><venue>서울</venue>"
+                f"<eventPeriod>{today}~{today}</eventPeriod></item>",
+                f"<item><title>과천 전시</title><venue>과천</venue>"
+                f"<eventPeriod>{today}~{today}</eventPeriod></item>",
+            )
+        ]
+
+    monkeypatch.setattr(mmca_routes, "fetch_exhibition_pages", fake_fetch)
+
+    response = test_client.get("/mmca/exhibitions?venue=seoul")
+    assert response.status_code == 200
+    assert response.json() == [
+        {"title": "서울 전시", "start_date": str(today), "end_date": str(today)}
+    ]
+
+    # 덕수궁은 진행중 전시가 없지만, 빈 목록이 캐시돼 있어 다시 부르지 않는다.
+    assert test_client.get("/mmca/exhibitions?venue=deoksugung").json() == []
+    assert [e["title"] for e in test_client.get("/mmca/exhibitions?venue=gwacheon").json()] == [
+        "과천 전시"
+    ]
+    assert len(calls) == 1

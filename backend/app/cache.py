@@ -58,3 +58,22 @@ def set_mmca_prediction(venue: str, day: str, payload: list[dict], ttl: int) -> 
 def get_mmca_prediction(venue: str, day: str) -> list[dict] | None:
     raw = r.get(f"mmca:prediction:{venue}:{day}")
     return json.loads(raw) if raw else None
+
+
+# 전시 목록은 하루 단위로도 거의 안 바뀐다. 외부 API 를 3페이지씩 부르는
+# 호출이라 방문마다 나가지 않게 넉넉히 잡는다 — 새 전시 개막이 반나절 늦게
+# 보이는 것은 감수할 만하다.
+MMCA_EXHIBITIONS_TTL_SECONDS = 21600
+
+
+def set_mmca_exhibitions(venue: str, payload: list[dict]) -> None:
+    r.set(
+        f"mmca:exhibitions:{venue}",
+        json.dumps(payload),
+        ex=MMCA_EXHIBITIONS_TTL_SECONDS,
+    )
+
+
+def get_mmca_exhibitions(venue: str) -> list[dict] | None:
+    raw = r.get(f"mmca:exhibitions:{venue}")
+    return json.loads(raw) if raw else None
