@@ -88,14 +88,20 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
 
   const rooms = roomsPoll.data;
   const exhibitions = exhibitionsPoll.data ?? [];
-  // 한 전시실이 두 전시에 걸리는 일은 없다. 그래도 먼저 온 쪽(누리집 순서상
-  // 최근 개막)을 남긴다 — 카드에는 한 줄만 들어간다.
-  const exhibitionByCode = new Map<string, string>();
+  // 한 전시실에 두 전시가 겹치는 일은 드물지만 있다 — 1년짜리 다원예술
+  // 프로그램이 기획전과 같은 방을 쓴 전례가 있고, 전시 교체기에는 며칠씩
+  // 겹친다. 하나만 남기면 그 며칠 동안 카드가 조용히 거짓말을 하므로 다
+  // 잇는다. 넘치면 카드가 잘라내고 tooltip 에 전체가 남는다.
+  const exhibitionsByCode = new Map<string, string[]>();
   for (const exhibition of exhibitions) {
     for (const code of exhibition.space_codes) {
-      if (!exhibitionByCode.has(code)) exhibitionByCode.set(code, exhibition.title);
+      const titles = exhibitionsByCode.get(code);
+      if (titles) titles.push(exhibition.title);
+      else exhibitionsByCode.set(code, [exhibition.title]);
     }
   }
+  const exhibitionTitle = (spaceCode: string) =>
+    exhibitionsByCode.get(spaceCode)?.join(" · ") ?? null;
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
   // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이 기준인지
@@ -218,7 +224,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
               <MmcaRoomChartCard
                 key={room.space_code}
                 room={room}
-                exhibitionTitle={exhibitionByCode.get(room.space_code) ?? null}
+                exhibitionTitle={exhibitionTitle(room.space_code)}
                 daily={daily}
                 lastWeekDaily={lastWeekDaily}
                 prediction={predictionByCode.get(room.space_code) ?? null}
@@ -238,7 +244,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
               <MmcaRoomInactiveCard
                 key={room.space_code}
                 room={room}
-                exhibitionTitle={exhibitionByCode.get(room.space_code) ?? null}
+                exhibitionTitle={exhibitionTitle(room.space_code)}
                 reason={inactiveReason(room)}
               />
             ))}

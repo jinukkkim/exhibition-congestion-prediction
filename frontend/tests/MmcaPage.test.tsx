@@ -779,4 +779,38 @@ describe("MmcaPage date tabs", () => {
       expect(screen.getAllByText("MMCA×LG OLED 시리즈 2026")).toHaveLength(1)
     );
   });
+
+  it("joins both exhibitions when two share a room", async () => {
+    // 드물지만 있다 — 1년짜리 프로그램이 기획전과 같은 방을 쓰거나, 전시
+    // 교체기에 며칠 겹친다. 하나만 남기면 그동안 카드가 거짓말을 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-1005", space_nm: "5전시실" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "현대차 시리즈 2021",
+        start_date: "2021-09-03",
+        end_date: "2022-02-20",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+      {
+        title: "다원예술 2021: 멀티버스",
+        start_date: "2021-02-12",
+        end_date: "2021-12-05",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("현대차 시리즈 2021 · 다원예술 2021: 멀티버스")
+      ).toBeInTheDocument()
+    );
+  });
 });
