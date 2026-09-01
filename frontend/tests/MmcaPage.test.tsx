@@ -28,6 +28,7 @@ describe("MmcaPage", () => {
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -551,6 +552,7 @@ describe("MmcaPage date tabs", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // 화요일, 10:00-18:00 안
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -682,5 +684,133 @@ describe("MmcaPage date tabs", () => {
     fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
 
     await waitFor(() => expect(screen.queryByText("실시간")).not.toBeInTheDocument());
+  });
+
+  it("lists the venue's running exhibitions once in the header", async () => {
+    // 출처 API 가 전시실을 안 내려주므로 전시명은 방 카드가 아니라 헤더에
+    // 관 단위로 한 번만 나온다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      { title: "서도호", start_date: "2026-08-27", end_date: "2027-02-09", space_codes: [] },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("서도호")).toBeInTheDocument());
+    expect(screen.getAllByText("서도호")).toHaveLength(1);
+    expect(screen.getByText("2026.08.27 – 2027.02.09")).toBeInTheDocument();
+  });
+
+  it("hides the exhibition section when the fetch fails", async () => {
+    // 혼잡도는 전시 목록 없이도 온전히 읽혀야 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockRejectedValue(new Error("network error"));
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
+    expect(screen.queryByText("현재 전시")).not.toBeInTheDocument();
+  });
+
+  it("labels each room card with the exhibition running in it", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1006", space_nm: "6전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "올해의 작가상 2026",
+        start_date: "2026-07-24",
+        end_date: "2026-12-06",
+        space_codes: ["MMCA-SPACE-1001"],
+      },
+      {
+        title: "이것은 개념미술이 (아니)다",
+        start_date: "2026-06-19",
+        end_date: "2026-10-11",
+        space_codes: ["MMCA-SPACE-1006", "MMCA-SPACE-1007"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    // 헤더 목록에 한 번, 그 방 카드에 한 번.
+    await waitFor(() => expect(screen.getAllByText("올해의 작가상 2026")).toHaveLength(2));
+    expect(screen.getAllByText("이것은 개념미술이 (아니)다")).toHaveLength(2);
+    // 1007 은 이 관에 카드가 없으므로 헤더에만 남는다.
+    expect(screen.queryByText("7전시실")).not.toBeInTheDocument();
+  });
+
+  it("leaves a room card unlabelled when no exhibition maps to it", async () => {
+    // 서울박스·교육동처럼 전시실이 아닌 공간의 전시는 space_codes 가 비어
+    // 있어 헤더 목록에만 실린다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "MMCA×LG OLED 시리즈 2026",
+        start_date: "2026-07-31",
+        end_date: "2026-11-29",
+        space_codes: [],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByText("MMCA×LG OLED 시리즈 2026")).toHaveLength(1)
+    );
+  });
+
+  it("joins both exhibitions when two share a room", async () => {
+    // 드물지만 있다 — 1년짜리 프로그램이 기획전과 같은 방을 쓰거나, 전시
+    // 교체기에 며칠 겹친다. 하나만 남기면 그동안 카드가 거짓말을 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-1005", space_nm: "5전시실" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "현대차 시리즈 2021",
+        start_date: "2021-09-03",
+        end_date: "2022-02-20",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+      {
+        title: "다원예술 2021: 멀티버스",
+        start_date: "2021-02-12",
+        end_date: "2021-12-05",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("현대차 시리즈 2021 · 다원예술 2021: 멀티버스")
+      ).toBeInTheDocument()
+    );
   });
 });

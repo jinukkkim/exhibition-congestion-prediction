@@ -396,3 +396,88 @@ def test_mmca_daily_falls_back_to_static_room_name_when_room_missing_from_bucket
     room = next(r for r in bucket["rooms"] if r["space_code"] == "MMCA-SPACE-1002")
     assert room["space_nm"] == "2전시실"
     assert room["congestion_nm"] is None
+
+
+def test_mmca_exhibitions_rejects_an_unknown_venue(client):
+    test_client, _ = client
+    assert test_client.get("/mmca/exhibitions?venue=nowhere").status_code == 400
+
+
+def test_mmca_exhibitions_serves_the_venue_and_caches_every_venue(client, monkeypatch):
+    # 누리집 한 번에 세 관이 다 온다. 다른 관 페이지가 같은 호출을 반복하지
+    # 않도록 전시가 없는 관까지 캐시에 들어가야 한다.
+    test_client, _ = client
+    import app.routes.mmca as mmca_routes
+
+    calls = []
+
+    def fake_fetch(_client):
+        calls.append(1)
+        return [
+            {
+                "exhTitle": "서울 전시",
+                "exhPlaNm": "서울",
+                "exhPlaDtl": "지하1층 6, 7전시실",
+                "exhStDt": "2026-06-19",
+                "exhEdDt": "2026-10-11",
+            },
+            {
+                "exhTitle": "과천 전시",
+                "exhPlaNm": "과천",
+                "exhPlaDtl": "1층, 1원형전시실",
+                "exhStDt": "2025-10-02",
+                "exhEdDt": "2027-01-03",
+            },
+        ]
+
+    monkeypatch.setattr(mmca_routes, "fetch_exhibitions", fake_fetch)
+
+    assert test_client.get("/mmca/exhibitions?venue=seoul").json() == [
+        {
+            "title": "서울 전시",
+            "start_date": "2026-06-19",
+            "end_date": "2026-10-11",
+            "space_codes": ["MMCA-SPACE-1006", "MMCA-SPACE-1007"],
+        }
+    ]
+
+    # 덕수궁은 진행중 전시가 없지만, 빈 목록이 캐시돼 있어 다시 부르지 않는다.
+    assert test_client.get("/mmca/exhibitions?venue=deoksugung").json() == []
+    assert test_client.get("/mmca/exhibitions?venue=gwacheon").json()[0]["space_codes"] == [
+        "MMCA-SPACE-2007"
+    ]
+    assert len(calls) == 1
+
+
+def test_mmca_exhibitions_refetches_when_the_cache_holds_an_older_payload_shape(
+    client, monkeypatch
+):
+    # 배포로 응답에 필드가 하나 늘면, 직전 버전이 써 둔 캐시는 새 스키마로
+    # 되살릴 수 없다. 그걸 캐시 미스로 보지 않으면 TTL(6시간)이 다 될 때까지
+    # 모든 요청이 500 이다.
+    test_client, _ = client
+    import app.routes.mmca as mmca_routes
+    from app.cache import set_mmca_exhibitions
+
+    set_mmca_exhibitions(
+        "seoul",
+        [{"title": "옛 형태", "start_date": "2026-01-01", "end_date": "2026-12-31"}],
+    )
+
+    monkeypatch.setattr(
+        mmca_routes,
+        "fetch_exhibitions",
+        lambda _client: [
+            {
+                "exhTitle": "새로 받은 전시",
+                "exhPlaNm": "서울",
+                "exhPlaDtl": "지하1층 6, 7전시실",
+                "exhStDt": "2026-06-19",
+                "exhEdDt": "2026-10-11",
+            }
+        ],
+    )
+
+    response = test_client.get("/mmca/exhibitions?venue=seoul")
+    assert response.status_code == 200
+    assert [e["title"] for e in response.json()] == ["새로 받은 전시"]

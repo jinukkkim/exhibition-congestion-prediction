@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import undefer
 
-from app.cache import get_latest
+from app.cache import get_latest, revive
 from app.db import SessionLocal
 from app.models import RawCongestion
 from app.schemas import CongestionHistoryPoint, CurrentCongestion, DailyLogPoint, RawLogPoint
@@ -34,9 +34,9 @@ def _day_bounds(date: str | None) -> tuple[datetime, datetime]:
 
 @router.get("/congestion/current", response_model=CurrentCongestion)
 def current_congestion() -> CurrentCongestion:
-    cached = get_latest()
+    cached = revive(get_latest(), CurrentCongestion)
     if cached is not None:
-        return CurrentCongestion(**cached)
+        return cached
 
     with SessionLocal() as session:
         row = (
