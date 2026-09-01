@@ -6,6 +6,9 @@ import type { Venue } from "../venues";
 // 관 이름 아래에 놓이는 관 단위 정보 표. MmcaPage 에서는 이 표가 헤더 왼쪽
 // 열의 높이를 오른쪽 전시 목록에 맞춘다 — 그전에는 이름과 영업시간 한 줄뿐이라
 // 오른쪽만 길었다. 국중박은 전시 목록이 없어 그냥 아래로 이어진다.
+//
+// 위쪽 여백은 호출부가 준다 — 이 표의 첫 줄이 옆 열의 첫 줄과 같은 높이에
+// 서야 하므로, 여백이 컴포넌트 안에 있으면 두 열을 함께 맞출 수 없다.
 export function VenueInfoList({ venue }: { venue: Venue }) {
   const { info } = venue;
   const rows: [string, string][] = [
@@ -19,7 +22,7 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
   ];
 
   return (
-    <dl className="mt-6 grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+    <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
       {rows.map(([label, value]) => (
         <Fragment key={label}>
           <dt className="text-ink-soft">{label}</dt>

@@ -68,7 +68,7 @@ export function NationalMuseumPage() {
           {/* 관 단위 정보 — 카드마다 반복하지 않는다. MmcaPage 와 달리 전시
               목록이 없어 헤더가 1열이다. 값이 페이지 폭 전체로 늘어나면 라벨과
               값이 멀어지므로 표만 좁게 가둔다. */}
-          <div className="max-w-md">
+          <div className="mt-6 max-w-md">
             <VenueInfoList venue={venueMeta} />
           </div>
         </header>

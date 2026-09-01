@@ -174,19 +174,21 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           >
             ← 전체 보기
           </Link>
-          {/* 관 이름과 전시 목록을 2열로 가른다 — 제목 오른쪽이 통째로 비어
-              있었고, 세로로 쌓으면 차트에 닿기까지 목록 전체를 지나야 했다.
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+            {name}
+          </h1>
+          {/* 관 정보와 전시 목록을 2열로 가른다 — 세로로 쌓으면 차트에 닿기까지
+              목록 전체를 지나야 했다. 제목은 그리드 밖에 둔다: 안에 두면 왼쪽
+              열만 제목 높이만큼 밀려 두 열의 첫 줄이 어긋난다.
               lg 미만에서는 열이 하나라 그냥 쌓인다. */}
-          <div className="mt-2 gap-x-16 gap-y-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">{name}</h1>
-              {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
-              <VenueInfoList venue={venueMeta} />
-            </div>
+          <div className="mt-6 gap-x-16 gap-y-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            {/* 관 단위 정보 — 전시실 카드마다 같은 값을 반복하지 않는다. */}
+            <VenueInfoList venue={venueMeta} />
             {/* 전시실이 없는 공간(서울박스, 교육동 등)의 전시는 방 카드에 붙을
                 자리가 없어 여기에만 실린다. */}
             {exhibitions.length > 0 && (
               <div className="mt-8 lg:mt-0">
+                {/* 라벨은 옆 열 첫 줄(영업시간)과 같은 높이에 선다. */}
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
                   현재 전시
                 </p>
