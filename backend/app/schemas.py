@@ -85,3 +85,6 @@ class MmcaExhibition(BaseModel):
     # YYYY-MM-DD. 프론트는 점 표기로만 바꿔 그리므로 date 로 올릴 이유가 없다.
     start_date: str
     end_date: str
+    # 이 전시가 쓰는 전시실. 전시실이 없는 공간(서울박스, 교육동 등)에서만
+    # 열리는 전시는 비어 있고, 헤더 목록에만 실린다.
+    space_codes: list[str]

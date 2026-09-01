@@ -9,4 +9,3 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # without a local .env file.
 os.environ.setdefault("SEOUL_API_KEY", "test-key")
 os.environ.setdefault("MMCA_API_KEY", "test-key")
-os.environ.setdefault("MMCA_EXHIBITION_API_KEY", "test-key")

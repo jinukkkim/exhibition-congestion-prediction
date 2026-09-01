@@ -1,115 +1,82 @@
-from datetime import date
-
-from app.mmca_exhibitions import current_exhibitions
-
-TODAY = date(2026, 9, 1)
+from app.mmca_exhibitions import current_exhibitions, space_codes
 
 
-def _page(*items: str) -> str:
-    return f"<response><body><items>{''.join(items)}</items></body></response>"
+def _row(title: str, venue: str, place_detail: str, start: str = "2026-01-01", end: str = "2026-12-31") -> dict:
+    return {
+        "exhTitle": title,
+        "exhPlaNm": venue,
+        "exhPlaDtl": place_detail,
+        "exhStDt": start,
+        "exhEdDt": end,
+    }
 
 
-def _item(title: str, venue: str, period: str, category: str = "현재전시") -> str:
-    return (
-        f"<item><title>{title}</title><venue>{venue}</venue>"
-        f"<eventPeriod>{period}</eventPeriod><subjectCategory>{category}</subjectCategory></item>"
-    )
-
-
-def test_keeps_only_exhibitions_running_today():
-    pages = [
-        _page(
-            _item("열린 전시", "서울", "2026-08-15~2026-10-25"),
-            _item("끝난 전시", "서울", "2026-07-24~2026-08-02"),
-            _item("아직 안 연 전시", "서울", "2026-10-01~2026-11-30"),
-        )
+def test_reads_room_numbers_listed_before_전시실():
+    assert space_codes("seoul", "지하1층 3,4,5 전시실 / 2층 MMCA 스튜디오") == [
+        "MMCA-SPACE-1003",
+        "MMCA-SPACE-1004",
+        "MMCA-SPACE-1005",
     ]
-
-    assert [e.title for e in current_exhibitions(pages, TODAY)["seoul"]] == ["열린 전시"]
-
-
-def test_ignores_subject_category():
-    # 같은 전시가 과거/현재/예정 세 값으로 중복 수록된다. 지금 열려 있는 전시가
-    # '예정전시'로만 달려 있는 경우도 있어, 날짜만 보고 판정해야 한다.
-    pages = [
-        _page(
-            _item("중복 전시", "서울", "2026-08-15~2026-10-25", "과거전시"),
-            _item("중복 전시", "서울", "2026-08-15~2026-10-25", "현재전시"),
-            _item("중복 전시", "서울", "2026-08-15~2026-10-25", "예정전시"),
-            _item("예정으로만 달린 전시", "서울", "2026-04-20~2026-12-20", "예정전시"),
-        )
+    assert space_codes("seoul", "1층, 1전시실 / 지하1층, 2전시실") == [
+        "MMCA-SPACE-1001",
+        "MMCA-SPACE-1002",
     ]
-
-    titles = {e.title for e in current_exhibitions(pages, TODAY)["seoul"]}
-    assert titles == {"중복 전시", "예정으로만 달린 전시"}
-
-
-def test_normalizes_titles_and_folds_near_duplicates():
-    pages = [
-        _page(
-            # 제목에 이스케이프된 <br/> 이 섞여 오고, 콜론 앞 공백이 있는 판과
-            # 없는 판이 함께 온다.
-            _item("MMCA 해외 명작 : 수련", "과천", "2025-10-02~2027-01-03"),
-            _item("MMCA 해외 명작: 수련", "과천", "2025-10-02~2027-01-03"),
-            _item("상설전 &lt;br/&gt; (임시 휴관)", "과천", "2025-06-26~2027-06-27"),
-            _item("상설전&lt;br/&gt;(임시 휴관)", "과천", "2025-06-26~2027-06-27"),
-            # 옛 제목이 정식 제목의 앞부분으로 남아 있다.
-            _item("이대원: 당신을 슬프게 하는 것은 하나도 없다", "덕수궁", "2026-08-06~2026-11-08"),
-            _item("이대원", "덕수궁", "2026-08-06~2026-11-08"),
-        )
-    ]
-
-    by_venue = current_exhibitions(pages, TODAY)
-    assert [e.title for e in by_venue["gwacheon"]] == [
-        "MMCA 해외 명작: 수련",
-        "상설전 (임시 휴관)",
-    ]
-    assert [e.title for e in by_venue["deoksugung"]] == [
-        "이대원: 당신을 슬프게 하는 것은 하나도 없다"
+    assert space_codes("gwacheon", "1층,  1, 2 전시실, 중앙홀 및 조각공원") == [
+        "MMCA-SPACE-2001",
+        "MMCA-SPACE-2002",
     ]
 
 
-def test_maps_venues_and_drops_the_ones_we_have_no_page_for():
-    pages = [
-        _page(
-            _item("서울 전시", "서울", "2026-01-01~2026-12-31"),
-            _item("과천 전시", "과천", "2026-01-01~2026-12-31"),
-            # 과천관 1층에 있다 — 과천 목록에 함께 실린다.
-            _item("어린이 전시", "어린이미술관", "2026-01-01~2026-12-31"),
-            _item("덕수궁 전시", "덕수궁", "2026-01-01~2026-12-31"),
-            _item("청주 전시", "청주", "2026-01-01~2026-12-31"),
-            _item("해외 전시", "해외", "2026-01-01~2026-12-31"),
-        )
+def test_does_not_mistake_a_floor_number_for_a_room_number():
+    # "지하1층"의 1, "3층"의 5 앞의 3 — 뒤에 "층"이 오는 숫자는 방이 아니다.
+    assert space_codes("gwacheon", "3층, 5, 6전시실") == [
+        "MMCA-SPACE-2005",
+        "MMCA-SPACE-2006",
+    ]
+    assert space_codes("seoul", "지하1층, 서울박스") == []
+    assert space_codes("seoul", "교육동 2층") == []
+
+
+def test_reads_the_circular_room_as_its_own_room():
+    assert space_codes("gwacheon", "1층, 1원형전시실") == ["MMCA-SPACE-2007"]
+    # 2원형전시실은 우리가 혼잡도를 수집하는 방이 아니다. "2전시실"로
+    # 오인해서는 안 되고, 그냥 빠져야 한다.
+    assert space_codes("gwacheon", "2원형전시실, 3층회랑 브릿지, 로비") == []
+
+
+def test_drops_rooms_the_venue_does_not_have():
+    # 덕수궁은 MMCA-SPACE-4001("1전시실") 하나만 수집한다.
+    assert space_codes("deoksugung", "1, 2, 3, 4전시실") == ["MMCA-SPACE-4001"]
+
+
+def test_groups_by_venue_and_drops_venues_we_have_no_page_for():
+    rows = [
+        _row("서울 전시", "서울", "지하1층 6, 7전시실"),
+        _row("과천 전시", "과천", "2층, 3, 4 전시실"),
+        # 과천관 1층에 있다 — 과천 목록에 함께 실린다. 전시실 표기는 비어 있다.
+        _row("어린이 전시", "어린이미술관", ""),
+        _row("덕수궁 전시", "덕수궁", "1, 2, 3, 4전시실"),
+        _row("청주 전시", "청주", "5층, 기획전시실"),
     ]
 
-    by_venue = current_exhibitions(pages, TODAY)
+    by_venue = current_exhibitions(rows)
+
     assert set(by_venue) == {"seoul", "gwacheon", "deoksugung"}
-    assert [e.title for e in by_venue["seoul"]] == ["서울 전시"]
-    assert {e.title for e in by_venue["gwacheon"]} == {"과천 전시", "어린이 전시"}
-    assert [e.title for e in by_venue["deoksugung"]] == ["덕수궁 전시"]
+    assert [e.title for e in by_venue["gwacheon"]] == ["과천 전시", "어린이 전시"]
+    assert by_venue["seoul"][0].space_codes == ["MMCA-SPACE-1006", "MMCA-SPACE-1007"]
+    assert by_venue["gwacheon"][1].space_codes == []
 
 
-def test_sorts_by_most_recently_opened():
-    pages = [
-        _page(
-            _item("먼저 연 전시", "서울", "2026-01-01~2026-12-31"),
-            _item("나중에 연 전시", "서울", "2026-08-27~2027-02-09"),
-        )
+def test_keeps_the_period_and_the_site_order():
+    rows = [
+        _row("나중에 연 전시", "서울", "", start="2026-08-27", end="2027-02-09"),
+        _row("먼저 연 전시", "서울", "", start="2026-04-01", end="2026-12-06"),
     ]
 
-    assert [e.title for e in current_exhibitions(pages, TODAY)["seoul"]] == [
-        "나중에 연 전시",
-        "먼저 연 전시",
-    ]
+    seoul = current_exhibitions(rows)["seoul"]
+    assert [e.title for e in seoul] == ["나중에 연 전시", "먼저 연 전시"]
+    assert (seoul[0].start_date, seoul[0].end_date) == ("2026-08-27", "2027-02-09")
 
 
-def test_skips_rows_with_an_unparseable_period():
-    pages = [
-        _page(
-            _item("기간 없음", "서울", ""),
-            _item("기간 이상함", "서울", "상시"),
-            _item("정상", "서울", "2026-01-01~2026-12-31"),
-        )
-    ]
-
-    assert [e.title for e in current_exhibitions(pages, TODAY)["seoul"]] == ["정상"]
+def test_skips_rows_without_a_title():
+    assert current_exhibitions([_row("", "서울", "1전시실")])["seoul"] == []

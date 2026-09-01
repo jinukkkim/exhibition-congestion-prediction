@@ -16,7 +16,7 @@ from app.cache import (
 )
 from app.config import MMCA_DISABLED_SPACE_CODES, MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
-from app.mmca_exhibitions import current_exhibitions, fetch_exhibition_pages
+from app.mmca_exhibitions import current_exhibitions, fetch_exhibitions
 from app.models import RawMmcaCongestion
 from app.prediction.mmca import (
     CONGESTION_RANKS,
@@ -341,8 +341,7 @@ def mmca_exhibitions(venue: str) -> list[MmcaExhibition]:
     # 다른 관 페이지가 같은 호출을 반복하지 않는다 — 전시가 없는 관도 빈
     # 목록으로 넣는다.
     with httpx.Client() as client:
-        pages = fetch_exhibition_pages(client, settings.mmca_exhibition_api_key)
-    by_venue = current_exhibitions(pages, datetime.now(_SEOUL_TZ).date())
+        by_venue = current_exhibitions(fetch_exhibitions(client))
 
     for venue_id, exhibitions in by_venue.items():
         set_mmca_exhibitions(venue_id, [vars(e) for e in exhibitions])
