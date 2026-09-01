@@ -8,6 +8,7 @@ import { businessHoursLine } from "../lib/businessHoursLine";
 import { shiftDate, todayString } from "../lib/date";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { PredictionChart } from "../components/PredictionChart";
+import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
@@ -16,8 +17,8 @@ import { VENUES } from "../venues";
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
 export function NationalMuseumPage() {
-  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
-  const name = VENUES.find((v) => v.id === "national-museum")!.name;
+  // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  const { name, info } = VENUES.find((v) => v.id === "national-museum")!;
   useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -75,6 +76,12 @@ export function NationalMuseumPage() {
           <p className="mt-3 text-sm text-ink-soft">
             {businessHoursLine(selectedDate, open, close)}
           </p>
+          {/* MmcaPage 와 달리 전시 목록이 없어 헤더가 1열이다 — 표를 좁게
+              가둘 이유가 없지만, 값이 페이지 폭 전체로 늘어나면 라벨과 값이
+              멀어진다. */}
+          <div className="max-w-md">
+            <VenueInfoList info={info} />
+          </div>
         </header>
 
         {(prediction.data?.days?.length ?? 0) > 0 && (

@@ -14,6 +14,7 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { businessHoursLine } from "../lib/businessHoursLine";
@@ -32,9 +33,9 @@ function formatPeriod({ start_date, end_date }: MmcaExhibition): string {
 }
 
 export function MmcaPage({ venue }: { venue: MmcaVenue }) {
-  // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
+  // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
   // MmcaVenue 는 셋 다 VENUES 에 있으므로 못 찾는 경우는 없다.
-  const name = VENUES.find((v) => v.mmcaVenue === venue)!.name;
+  const { name, info } = VENUES.find((v) => v.mmcaVenue === venue)!;
   useDocumentTitle(name);
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -186,6 +187,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
               <p className="mt-3 text-sm text-ink-soft">
                 {businessHoursLine(selectedDate, open, close, isOpenToday)}
               </p>
+              <VenueInfoList info={info} />
             </div>
             {/* 전시실이 없는 공간(서울박스, 교육동 등)의 전시는 방 카드에 붙을
                 자리가 없어 여기에만 실린다. */}
