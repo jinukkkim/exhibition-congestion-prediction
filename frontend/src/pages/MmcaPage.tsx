@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 
 import {
   fetchMmcaDaily,
+  fetchMmcaExhibitions,
   fetchMmcaPrediction,
   fetchMmcaRooms,
   type MmcaDailyLogPoint,
+  type MmcaExhibition,
   type MmcaRoomStatus,
   type MmcaVenue,
 } from "../api/mmca";
@@ -22,6 +24,12 @@ import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
 const COLLECTION_START_DELAY_MINUTES = 10;
+
+// 2026-08-27 → 2026.08.27. 전시 기간은 연도가 걸쳐 있는 경우가 흔해
+// (2026-08-27~2027-02-09) 연도를 지우면 안 된다.
+function formatPeriod({ start_date, end_date }: MmcaExhibition): string {
+  return `${start_date.replaceAll("-", ".")} – ${end_date.replaceAll("-", ".")}`;
+}
 
 export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 관 이름은 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
@@ -69,7 +77,17 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
     [venue, selectedDate]
   );
 
+  // 전시 목록은 백엔드가 6시간 캐시한다 — 하루에 몇 번 바뀔 값이 아니므로
+  // 받으면 멈춘다. 실패하면 다음 tick 에 다시 시도하고, 그때까지 이 줄은
+  // 그냥 없다 (혼잡도는 이것 없이도 온전히 읽힌다).
+  const exhibitionsPoll = usePolledFetch(
+    () => fetchMmcaExhibitions(venue),
+    { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
+    [venue]
+  );
+
   const rooms = roomsPoll.data;
+  const exhibitions = exhibitionsPoll.data ?? [];
   const error = roomsPoll.error;
   const daily = dailyPoll.data;
   // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이 기준인지
@@ -151,6 +169,28 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           <p className="mt-3 text-sm text-ink-soft">
             {businessHoursLine(selectedDate, open, close, isOpenToday)}
           </p>
+          {/* 전시명은 전시실이 아니라 관에 붙는다 — 출처 API 가 전시실까지
+              내려주지 않는다. 방 카드 대신 헤더에 관 단위로 한 번 나열한다. */}
+          {exhibitions.length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                현재 전시
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {exhibitions.map((exhibition) => (
+                  <li
+                    key={`${exhibition.title}-${exhibition.start_date}`}
+                    className="flex flex-wrap items-baseline gap-x-3 text-sm text-ink"
+                  >
+                    <span>{exhibition.title}</span>
+                    <span className="text-xs tabular-nums text-ink-soft">
+                      {formatPeriod(exhibition)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </header>
 
         {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}

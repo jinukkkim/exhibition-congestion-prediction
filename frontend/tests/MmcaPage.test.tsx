@@ -28,6 +28,7 @@ describe("MmcaPage", () => {
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -551,6 +552,7 @@ describe("MmcaPage date tabs", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // 화요일, 10:00-18:00 안
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -682,5 +684,42 @@ describe("MmcaPage date tabs", () => {
     fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
 
     await waitFor(() => expect(screen.queryByText("실시간")).not.toBeInTheDocument());
+  });
+
+  it("lists the venue's running exhibitions once in the header", async () => {
+    // 출처 API 가 전시실을 안 내려주므로 전시명은 방 카드가 아니라 헤더에
+    // 관 단위로 한 번만 나온다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      { title: "서도호", start_date: "2026-08-27", end_date: "2027-02-09" },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("서도호")).toBeInTheDocument());
+    expect(screen.getAllByText("서도호")).toHaveLength(1);
+    expect(screen.getByText("2026.08.27 – 2027.02.09")).toBeInTheDocument();
+  });
+
+  it("hides the exhibition section when the fetch fails", async () => {
+    // 혼잡도는 전시 목록 없이도 온전히 읽혀야 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockRejectedValue(new Error("network error"));
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
+    expect(screen.queryByText("현재 전시")).not.toBeInTheDocument();
   });
 });

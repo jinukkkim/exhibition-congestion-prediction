@@ -64,3 +64,19 @@ export async function fetchMmcaPrediction(
   }
   return res.json();
 }
+
+export interface MmcaExhibition {
+  title: string;
+  // YYYY-MM-DD
+  start_date: string;
+  end_date: string;
+}
+
+// 관 단위 목록이다 — 이 API 에는 전시실 정보가 없어 방 카드에 붙일 수 없다.
+export async function fetchMmcaExhibitions(venue: MmcaVenue): Promise<MmcaExhibition[]> {
+  const res = await fetch(`/mmca/exhibitions?venue=${venue}`);
+  if (!res.ok) {
+    throw new Error(`failed to fetch MMCA exhibitions: ${res.status}`);
+  }
+  return res.json();
+}
