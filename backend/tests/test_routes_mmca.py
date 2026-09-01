@@ -447,3 +447,37 @@ def test_mmca_exhibitions_serves_the_venue_and_caches_every_venue(client, monkey
         "MMCA-SPACE-2007"
     ]
     assert len(calls) == 1
+
+
+def test_mmca_exhibitions_refetches_when_the_cache_holds_an_older_payload_shape(
+    client, monkeypatch
+):
+    # 배포로 응답에 필드가 하나 늘면, 직전 버전이 써 둔 캐시는 새 스키마로
+    # 되살릴 수 없다. 그걸 캐시 미스로 보지 않으면 TTL(6시간)이 다 될 때까지
+    # 모든 요청이 500 이다.
+    test_client, _ = client
+    import app.routes.mmca as mmca_routes
+    from app.cache import set_mmca_exhibitions
+
+    set_mmca_exhibitions(
+        "seoul",
+        [{"title": "옛 형태", "start_date": "2026-01-01", "end_date": "2026-12-31"}],
+    )
+
+    monkeypatch.setattr(
+        mmca_routes,
+        "fetch_exhibitions",
+        lambda _client: [
+            {
+                "exhTitle": "새로 받은 전시",
+                "exhPlaNm": "서울",
+                "exhPlaDtl": "지하1층 6, 7전시실",
+                "exhStDt": "2026-06-19",
+                "exhEdDt": "2026-10-11",
+            }
+        ],
+    )
+
+    response = test_client.get("/mmca/exhibitions?venue=seoul")
+    assert response.status_code == 200
+    assert [e["title"] for e in response.json()] == ["새로 받은 전시"]

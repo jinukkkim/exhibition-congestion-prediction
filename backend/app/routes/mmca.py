@@ -11,6 +11,7 @@ from app.cache import (
     MMCA_PREDICTION_TTL_TODAY_SECONDS,
     get_mmca_exhibitions,
     get_mmca_prediction,
+    revive,
     set_mmca_exhibitions,
     set_mmca_prediction,
 )
@@ -210,9 +211,9 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
     if target < now.date():
         return []
 
-    cached = get_mmca_prediction(venue, target.isoformat())
+    cached = revive(get_mmca_prediction(venue, target.isoformat()), MmcaRoomPrediction)
     if cached is not None:
-        return [MmcaRoomPrediction(**room) for room in cached]
+        return cached
 
     is_today = target == now.date()
     window_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
@@ -333,9 +334,9 @@ def mmca_exhibitions(venue: str) -> list[MmcaExhibition]:
     if venue not in settings.mmca_venue_space_codes:
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
-    cached = get_mmca_exhibitions(venue)
+    cached = revive(get_mmca_exhibitions(venue), MmcaExhibition)
     if cached is not None:
-        return [MmcaExhibition(**row) for row in cached]
+        return cached
 
     # 한 번 부르면 세 관의 목록이 한꺼번에 나온다. 관마다 따로 캐시에 넣어야
     # 다른 관 페이지가 같은 호출을 반복하지 않는다 — 전시가 없는 관도 빈

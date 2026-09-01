@@ -1,6 +1,7 @@
 import json
 
 import redis
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 from app.seoul_api import CongestionReading
@@ -77,3 +78,21 @@ def set_mmca_exhibitions(venue: str, payload: list[dict]) -> None:
 def get_mmca_exhibitions(venue: str) -> list[dict] | None:
     raw = r.get(f"mmca:exhibitions:{venue}")
     return json.loads(raw) if raw else None
+
+
+def revive[T: BaseModel](cached: dict | list[dict] | None, model: type[T]) -> T | list[T] | None:
+    """캐시에 남은 payload 를 응답 모델로 되살린다.
+
+    배포로 모델에 필드가 하나 늘면 직전 버전이 써 둔 값은 되살릴 수 없다.
+    그때 None(=캐시 미스)을 돌려 새로 채우게 한다 — 그러지 않으면 TTL 이
+    다 될 때까지(전시 목록은 6시간) 모든 요청이 500 이다. 캐시는 언제든
+    버려도 되는 값이므로, 못 읽는 값은 없는 값으로 친다.
+    """
+    if cached is None:
+        return None
+    try:
+        if isinstance(cached, list):
+            return [model(**row) for row in cached]
+        return model(**cached)
+    except ValidationError:
+        return None
