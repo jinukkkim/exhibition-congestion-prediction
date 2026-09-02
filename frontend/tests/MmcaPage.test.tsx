@@ -67,12 +67,13 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
-    // 2026-07-28 은 화요일 → 18:00 폐관. 줄이 스스로 어느 날인지 말한다.
-    expect(screen.getAllByText("7/28(화) 영업시간 10:00–18:00")).toHaveLength(1);
+    // 요일마다 다른 폐관 시각은 한 줄 안의 괄호가 말한다.
+    expect(screen.getAllByText("10:00~18:00 (수·토 21:00까지)")).toHaveLength(1);
   });
 
-  it("moves the header's business hours to the selected date", async () => {
-    // 수·토는 21:00 폐관 — 탭을 옮기면 헤더의 날짜와 시간이 함께 따라가야 한다.
+  it("keeps the header's business hours put when the selected date changes", async () => {
+    // 한 주를 한 줄로 접은 값이라 탭과 함께 바뀌지 않는다 — 수·토 21:00 은
+    // 괄호 안에 늘 적혀 있으므로 탭을 옮겨 확인할 일이 없다.
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
     render(
@@ -81,12 +82,14 @@ describe("MmcaPage", () => {
       </MemoryRouter>
     );
 
+    const line = "10:00~18:00 (수·토 21:00까지)";
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
     fireEvent.click(screen.getByRole("tab", { name: "수 7/29" }));
 
     await waitFor(() =>
-      expect(screen.getByText("7/29(수) 영업시간 10:00–21:00")).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "수 7/29" })).toHaveAttribute("aria-selected", "true")
     );
+    expect(screen.getAllByText(line)).toHaveLength(1);
   });
 
   it("shows an error message when the fetch fails before anything loads", async () => {
@@ -247,9 +250,8 @@ describe("MmcaPage", () => {
     // previous Monday was closed too) → small card, never mind the stale
     // congestion_nm the rooms endpoint still returns. The label says why.
     await waitFor(() => expect(screen.getByText("휴관일")).toBeInTheDocument());
-    // 휴관 안내도 관 단위 정보다 — 헤더가 시간을 주장하지 않고 휴관을 알린다.
-    expect(screen.getByText("7/27(월) 휴관일입니다")).toBeInTheDocument();
-    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
+    // 요일 휴관도 관 단위 정보다 — 헤더의 영업시간 줄이 괄호로 알린다.
+    expect(screen.getByText("10:00~18:00 (수·토 21:00까지, 월요일 휴무)")).toBeInTheDocument();
     expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
     unmount();
@@ -261,7 +263,7 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
-    expect(screen.queryByText(/휴관일입니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/휴무/)).not.toBeInTheDocument();
   });
 
   it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
