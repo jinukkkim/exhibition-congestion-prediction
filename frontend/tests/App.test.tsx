@@ -28,8 +28,8 @@ describe("App routing", () => {
     });
     vi.spyOn(congestionApi, "fetchPrediction").mockResolvedValue({ status: "collecting", days_collected: 3 });
     vi.spyOn(congestionApi, "fetchDaily").mockResolvedValue([]);
-    // 관별로 실제로 올 수 있는 응답을 준다 — 빈 배열은 "전 객실 disabled"로
-    // 읽혀 서울·과천까지 서비스 예정이 되어버린다.
+    // 덕수궁관만 첫 판독 전 상태로 둔다 — 관마다 응답이 따로 온다는 것을
+    // 라우팅 테스트에서도 지킨다.
     vi.spyOn(mmcaApi, "fetchMmcaRooms").mockImplementation((venue) =>
       Promise.resolve(
         venue === "deoksugung"
@@ -61,19 +61,17 @@ describe("App routing", () => {
     window.history.pushState({}, "", "/");
   });
 
-  it("sends a direct visit to the Deoksugung page back to the picker", async () => {
-    // 카드에서 갈 수 없게 막아도 북마크·방문기록으로는 도달할 수 있다. 그 페이지는
-    // 채워질 일이 없는 빈 껍데기이므로 홈으로 돌려보내고, 홈 카드가 이유를 말한다.
+  it("routes the Deoksugung page to its own page like the other MMCA venues", async () => {
+    // 수집 대상이 되기 전에는 이 주소가 홈으로 돌아갔다 — 북마크·방문기록으로
+    // 들어온 사람이 이제 관 페이지에 닿는지가 이 관을 켠 것의 결과다.
     visit("/venues/mmca-deoksugung");
 
-    await waitFor(() => expect(screen.getByText("전시 혼잡도 예측")).toBeInTheDocument());
-    expect(window.location.pathname).toBe("/");
-    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
-    // 덕수궁관 카드가 홈에 이름 그대로 있으므로, 상세 페이지가 아니라는 것은
-    // heading 으로만 물을 수 있다.
-    expect(
-      screen.queryByRole("heading", { name: "국립현대미술관 덕수궁관" })
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "국립현대미술관 덕수궁관" })
+      ).toBeInTheDocument()
+    );
+    expect(window.location.pathname).toBe("/venues/mmca-deoksugung");
   });
 
   it("gives each route its own document title and updates it on navigation", async () => {

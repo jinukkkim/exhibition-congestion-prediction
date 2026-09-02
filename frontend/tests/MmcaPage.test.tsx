@@ -266,32 +266,6 @@ describe("MmcaPage", () => {
     expect(screen.queryByText(/휴무/)).not.toBeInTheDocument();
   });
 
-  it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
-    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
-      makeRoom({ space_code: "MMCA-SPACE-2001" }),
-      makeRoom({
-        space_code: "MMCA-SPACE-2008",
-        space_nm: "1층 어린이미술관",
-        congestion_nm: null,
-        observed_at: null,
-      }),
-    ]);
-
-    const { container } = render(
-      <MemoryRouter>
-        <MmcaPage venue="gwacheon" />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
-    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
-    expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
-
-    const sections = container.querySelectorAll("section");
-    const inactiveSection = Array.from(sections).find((s) => s.textContent?.includes("서비스 예정"));
-    expect(inactiveSection?.className).toMatch(/lg:grid-cols-6/);
-  });
-
   it("groups open rooms with no data collected today into small inactive cards", async () => {
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([

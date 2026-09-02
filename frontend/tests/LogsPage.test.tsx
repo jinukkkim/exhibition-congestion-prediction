@@ -66,12 +66,12 @@ describe("LogsPage", () => {
     await waitFor(() => expect(screen.getByText("여유")).toBeInTheDocument());
   });
 
-  it("has no tab for a venue we do not collect", async () => {
-    // 덕수궁관은 수집 대상이 아니라 표가 영원히 비어 있다 — App.tsx 가 그 관의
-    // 상세 라우트를 홈으로 돌려보내는 것과 같은 규칙.
+  it("has a tab for every venue", async () => {
+    // 덕수궁관은 수집 대상이 아닌 동안 탭에서 빠져 있었다 — 켠 뒤에도 빠져
+    // 있으면 그 관의 원본 데이터를 화면에서 볼 방법이 없다.
     visit("");
     await waitFor(() => expect(screen.getByText("여유")).toBeInTheDocument());
 
-    expect(screen.queryByRole("button", { name: /덕수궁/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /덕수궁/ })).toBeInTheDocument();
   });
 });
