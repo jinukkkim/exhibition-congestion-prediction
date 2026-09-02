@@ -28,7 +28,8 @@ export interface Venue {
   info: VenueInfo;
 }
 
-// 서울관·과천관은 수집기를 한 번에 켰으므로 시작일이 같다 (덕수궁관은 아래 참고).
+// MMCA 수집기는 세 관을 한 번에 켰으므로 시작일이 같다 — 덕수궁관은 7월 28일
+// 이후 수집에서 빠져 있었지만 그 사흘의 판독은 로그 표에 남아 있다.
 const MMCA_EARLIEST_DATE = "2026-07-26";
 
 export const VENUES: Venue[] = [
@@ -81,9 +82,7 @@ export const VENUES: Venue[] = [
     id: "mmca-deoksugung",
     name: "국립현대미술관 덕수궁관",
     path: "/venues/mmca-deoksugung",
-    // 덕수궁관만 늦게 켜졌다 — 나머지 두 관이 7월 26일에 시작한 동안 이 관은
-    // 쿼터 때문에 수집에서 빠져 있었고, 운영 계정으로 바뀐 뒤 이 날 켜졌다.
-    earliestDate: "2026-09-03",
+    earliestDate: MMCA_EARLIEST_DATE,
     mmcaVenue: "deoksugung",
     info: {
       address: "서울 중구 세종대로 99 (덕수궁 내)",
