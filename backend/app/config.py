@@ -24,10 +24,16 @@ MMCA_SPACE_NAMES: dict[str, str] = {
 }
 
 # Rooms whose page/card stays visible but shows "서비스 예정" instead of live
-# data — the collector skips these entirely (quota management: keeping them
-# in the 10-minute poll would push the daily MMCA API call count too close
-# to the 1,000/day cap). Deoksugung (only MMCA-SPACE-4001) and Gwacheon's
-# children's museum are disabled; everything else still polls normally.
+# data — the collector skips these entirely. Deoksugung (only
+# MMCA-SPACE-4001) and Gwacheon's children's museum are disabled; everything
+# else still polls normally.
+#
+# The reason was quota: at the old 1,000-call/day cap these two would not fit
+# in the 10-minute poll. The cap is now 100,000/day, so nothing here is paying
+# for itself any more. Turning them on is a frontend change as much as a
+# backend one (App.tsx redirects the Deoksugung page away, the cards say
+# 서비스 예정, venues.ts carries a placeholder earliestDate), so it is its own
+# piece of work rather than a line deleted here.
 MMCA_DISABLED_SPACE_CODES: set[str] = {"MMCA-SPACE-4001", "MMCA-SPACE-2008"}
 
 
