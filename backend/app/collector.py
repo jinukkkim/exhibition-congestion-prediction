@@ -78,11 +78,13 @@ def store_forecast_revisions(
 # either side succeeded, so a retry a couple of seconds later recovers the
 # reading instead of leaving a hole in the series.
 #
-# No equivalent retry for collect_mmca_once: losing one room of fifteen is a
-# far smaller hole than losing the only call of a round, and the schedule is
-# sized against a quota ceiling (see _COLLECTION_START) that retries would eat
-# into on exactly the days it was tightest. That ceiling is now 100x higher,
-# so this number is free to grow if flaky rounds ever justify it.
+# No equivalent retry for collect_mmca_once: losing one room of seventeen is a
+# far smaller hole than losing the only call of a round, and that room's retry
+# is simply the next round — one minute away on the MMCA_POLL_MINUTES grid,
+# against the ten it used to be. An in-round retry would buy back 58 of those
+# 60 seconds and nothing else, so the finer grid is what removed the case for
+# one. The quota argument that used to sit here is void either way: see
+# MMCA_POLL_MINUTES, where that arithmetic now lives.
 _FETCH_ATTEMPTS = 3
 _FETCH_RETRY_SECONDS = 2
 
@@ -215,6 +217,30 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # congestion being reliably 여유 was the stated reason, never the real one.
 _COLLECTION_START = time(10, 0)
 
+# MMCA 수집 그리드(분). 스케줄러의 cron 과 위 round_time 의 내림이 **반드시**
+# 같은 값을 써야 해서 상수 하나로 묶여 있다. 어긋나면(예: cron 1분 + 내림 10분)
+# 라운드 10개가 같은 observed_at 으로 찍히고, /mmca/daily 의 분 버킷이 방별
+# dict 라 마지막 것만 남는다 — 수집은 정상, API 응답만 90% 사라지는 유일한
+# 조용한 실패 경로다.
+#
+# 100,000/day 쿼터 대비 비용: 최대일(수/토 — 세 관 모두 개관, 서울·덕수궁이
+# 21:00 까지)에 10분이 995콜(1.0%), 1분이 9,797콜(9.8%). 방 17개지만 과천은
+# 18:00 에 닫아 하루 481라운드, 나머지 9개 방이 661라운드다.
+#
+# 쿼터는 약 6초까지 버티므로(하루 방·초 총량 586,800 / 100,000) 간격을 정하는
+# 값이 아니다. 진짜 상한은 둘 다 실측이 필요한 쪽이다:
+#
+# (a) 라운드 실행 시간. 방 17개를 순차 호출하며 방당 timeout 이 10초라 최악
+#     170초까지 늘어난다. 2026-09-02 실측은 총 0.58초(방당 평균 33ms)로 60초
+#     격자의 1.0% 였다 — 60초를 넘기려면 6개 방 이상이 동시에 timeout 을
+#     맞아야 한다. 넘겨도 예외가 아니라 그 라운드가 스킵된다(APScheduler
+#     max_instances 기본값 1, EVENT_JOB_MAX_INSTANCES 는 EVENT_JOB_ERROR 가
+#     아니라 scheduler.py 의 _log_job_error 도 반응하지 않는다).
+# (b) 상류 갱신 주기. /congestion 응답에 타임스탬프가 없어(mmca_api.py)
+#     페이로드만으로는 받은 값이 새것인지 10분 전 값인지 알 수 없다. 1분 수집
+#     하루치의 전이 시각이 그 답이고, 그것으로 최종 간격을 정한다.
+MMCA_POLL_MINUTES = 1
+
 # 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
 # 문을 여는 것은 서울관뿐이다.
 #
@@ -250,12 +276,14 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    # The scheduler fires this on a 10-minute cron grid, but scheduler
-    # jitter or a misfire-grace-time catch-up run can land a few minutes off
-    # that mark. Every reading in this round is stamped with the grid mark
-    # itself (not raw `now`), so collection rounds always land on a fixed,
-    # predictable 10-minute grid regardless of when the round actually ran.
-    round_time = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
+    # The scheduler fires this on the MMCA_POLL_MINUTES cron grid, but
+    # scheduler jitter or a misfire-grace-time catch-up run can land the
+    # actual invocation off that mark. Every reading in this round is stamped
+    # with the grid mark itself (not raw `now`), so collection rounds always
+    # land on a fixed, predictable grid regardless of when the round ran.
+    round_time = now.replace(
+        minute=(now.minute // MMCA_POLL_MINUTES) * MMCA_POLL_MINUTES, second=0, microsecond=0
+    )
 
     space_codes = [
         space_code
@@ -272,9 +300,12 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
             except _FETCH_FAILURES as exc:
-                # data.go.kr can return a non-JSON (e.g. XML error) body with a
-                # 200 status on key/quota errors — response.json() then raises
-                # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
+                # data.go.kr can return a non-JSON (e.g. XML error) body with
+                # a 200 status — response.json() then raises JSONDecodeError,
+                # not HTTPError. Isolate it per-room the same way. (Key errors
+                # are not that case on this endpoint: measured 2026-09-02 they
+                # are 4xx, so they arrive here as HTTPStatusError. Same handler
+                # either way — see mmca_api's _EXPECTED_RESULT_CODES.)
                 logger.warning("MMCA fetch failed for %s: %r", space_code, exc)
                 continue
             # fetch_mmca_congestion stamps its own wall-clock time per HTTP

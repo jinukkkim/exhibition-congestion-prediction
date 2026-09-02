@@ -68,10 +68,20 @@ def load(path: str) -> list[Reading]:
     for code, raw, level in rows:
         if level not in CONGESTION_RANKS:
             continue
+        # 초/마이크로초만 지운다. "정확히 h분 뒤" 조회(evaluate 의 `target not in
+        # ranks`)가 성립하려면 스탬프가 그리드에 놓여 있어야 하는데, 그 정렬은
+        # 이미 DB 안에서 끝나 있다 — collect_mmca_once 가 round_time 으로 찍고,
+        # 그 이전 시대의 자유 주행 이력은 normalize_mmca_observed_at.py 가 15분
+        # 마크로 옮겼다.
+        #
+        # 여기서 분까지 10분으로 내리던 줄을 지웠다. 수집 그리드가 10분일 때는
+        # 항등이라 무해했지만 (a) 15분 마크의 옛 행을 어긋난 마크로 밀고
+        # (b) MMCA_POLL_MINUTES 가 1 인 데이터에서는 같은 10분 마크에 몰린
+        # 판독 10개가 evaluate 의 `ranks` dict 에서 마지막 하나만 남아 조용히
+        # 버려진다 — 그 상태로도 `readings` 리스트는 10개를 그대로 돌기 때문에
+        # 정확도 수치가 틀린 채로 나온다.
         stamp = datetime.fromisoformat(raw).replace(second=0, microsecond=0)
-        # 수집은 10분 그리드에 정렬돼 있다(scheduler.py). 초/마이크로초 편차를
-        # 지워야 "정확히 h분 뒤" 조회가 성립한다.
-        out.append(Reading(code, stamp.replace(minute=stamp.minute // 10 * 10), level))
+        out.append(Reading(code, stamp, level))
     return out
 
 
