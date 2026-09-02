@@ -776,9 +776,9 @@ def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_fa
         {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2008"]},
     )
 
-    # 2026-07-27 is a Monday, but the disabled-codes filter applies every
-    # day regardless of business hours — MMCA-SPACE-2008 (children's
-    # museum) must never be fetched even though Gwacheon itself is open.
+    # 2026-07-28 is a Tuesday, so Gwacheon is open — the point being that the
+    # disabled-codes filter is separate from the business-hours gate, and
+    # MMCA-SPACE-2008 (children's museum) must never be fetched regardless.
     result = collector_module.collect_mmca_once(
         session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
