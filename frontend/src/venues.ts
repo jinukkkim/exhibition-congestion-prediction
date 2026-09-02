@@ -53,7 +53,7 @@ export const VENUES: Venue[] = [
     info: {
       address: "서울 종로구 삼청로 30",
       transit: "3호선 안국역 1번 출구",
-      admission: "통합관람권 10,000원 (만 24세 이하·65세 이상, 야간개장 18시 이후 무료)",
+      admission: "통합관람권 10,000원 (야간개장 18시 이후 무료)",
       closedDays: "1월 1일, 설날, 추석",
       homepage: "https://www.mmca.go.kr/visitingInfo/seoulInfo.do",
     },
@@ -67,7 +67,7 @@ export const VENUES: Venue[] = [
     info: {
       address: "경기 과천시 광명로 313",
       transit: "4호선 대공원역 4번 출구, 셔틀버스",
-      admission: "3,000원 (만 24세 이하·65세 이상 무료)",
+      admission: "3,000원",
       closedDays: "1월 1일",
       homepage: "https://www.mmca.go.kr/visitingInfo/gwacheonInfo.do",
     },
