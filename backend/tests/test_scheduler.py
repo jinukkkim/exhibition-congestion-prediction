@@ -126,13 +126,23 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         # restart, which is exactly what cron-alignment is meant to avoid.
         # Whatever moment the test runs, the computed next_run_time must
         # already land on each job's own grid.
+        #
+        # The sub-second pair is what actually carries that for MMCA: at
+        # MMCA_POLL_MINUTES=1 the modulus is vacuous (every minute is on the
+        # grid), and an override pinned to "now" is what it has to catch —
+        # such an instant keeps the wall clock's seconds and microseconds,
+        # while a cron-computed fire time is zero in both. The modulus stays
+        # so it regains teeth if the constant ever grows again.
         mmca_job = scheduler.get_job("collect_mmca_congestion")
         assert mmca_job.next_run_time.minute % MMCA_POLL_MINUTES == 0
-        assert mmca_job.next_run_time.second == 0
+        assert (mmca_job.next_run_time.second, mmca_job.next_run_time.microsecond) == (0, 0)
 
         congestion_job = scheduler.get_job("collect_congestion")
         assert congestion_job.next_run_time.minute % 5 == 0
-        assert congestion_job.next_run_time.second == 0
+        assert (congestion_job.next_run_time.second, congestion_job.next_run_time.microsecond) == (
+            0,
+            0,
+        )
     finally:
         scheduler.shutdown(wait=False)
 
