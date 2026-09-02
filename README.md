@@ -230,8 +230,10 @@ restoring from in a hurry.
 
 5. **Crontab.** `15:33 UTC = 00:33 KST` — written in UTC because this cron has
    no `CRON_TZ` and the box is `Etc/UTC`. Korea has no DST, so +9 never drifts.
-   `:33` keeps it clear of the 00:02 daily batch and of the `*/5` collector and
-   `*/10` MMCA grids, which would otherwise scan and INSERT at the same instant.
+   `:33` keeps it clear of the 00:02 daily batch and of the `*/5` Seoul
+   collector, which would otherwise scan and INSERT at the same instant. The
+   MMCA collector is on a 1-minute grid and can no longer be dodged, but it
+   writes nothing outside venue hours.
 
    ```
    33 15 * * * /home/ubuntu/exhibition-traffic/deploy/backup_db.sh >> /home/ubuntu/backups/backup.log 2>&1

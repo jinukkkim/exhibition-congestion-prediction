@@ -153,8 +153,10 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
     Asserted through the trigger's own resolution rather than the configured
     timezone, so it still holds if the jobs ever move to per-trigger zones.
 
-    00:02 rather than midnight: the collectors run on */5 and */10, so every
+    00:02 rather than midnight: the Seoul collector runs on */5, so every
     multiple-of-five minute fires a full-table-scan batch alongside an insert.
+    MMCA now fires every minute and cannot be avoided at all, but at midnight
+    it returns from _is_venue_open without a request or a row.
     """
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
