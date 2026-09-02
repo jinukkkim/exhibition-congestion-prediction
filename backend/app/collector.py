@@ -300,9 +300,12 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
             except _FETCH_FAILURES as exc:
-                # data.go.kr can return a non-JSON (e.g. XML error) body with a
-                # 200 status on key/quota errors — response.json() then raises
-                # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
+                # data.go.kr can return a non-JSON (e.g. XML error) body with
+                # a 200 status — response.json() then raises JSONDecodeError,
+                # not HTTPError. Isolate it per-room the same way. (Key errors
+                # are not that case on this endpoint: measured 2026-09-02 they
+                # are 4xx, so they arrive here as HTTPStatusError. Same handler
+                # either way — see mmca_api's _EXPECTED_RESULT_CODES.)
                 logger.warning("MMCA fetch failed for %s: %r", space_code, exc)
                 continue
             # fetch_mmca_congestion stamps its own wall-clock time per HTTP

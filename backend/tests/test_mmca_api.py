@@ -77,9 +77,11 @@ def test_fetch_congestion_handles_null_data():
 
 
 def test_fetch_congestion_logs_warning_for_non_normal_result_code(caplog):
-    """An unexpected resultCode (bad key, quota exceeded, etc.) looks identical
-    to the "fewer than 2 exhibitions" empty-data case unless we log it
-    separately."""
+    """An unexpected resultCode looks identical to the "fewer than 2
+    exhibitions" empty-data case unless we log it separately. Deliberately
+    defensive: no such code has been observed, and the key and quota failures
+    this docstring once cited as the example arrive as 4xx instead — see
+    _EXPECTED_RESULT_CODES. It stands for whatever the service adds next."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -105,8 +107,9 @@ def test_fetch_congestion_logs_warning_for_non_normal_result_code(caplog):
 def test_fetch_congestion_stays_quiet_for_the_no_exhibition_result_code(caplog):
     """0002 ("진행 중인 전시가 없거나 혼잡도 미제공") is a room's normal steady
     state, not a failure. Recorded as congestion_nm=None, not as a log line —
-    six of fifteen rooms sat in it on 2026-09-02, so warning per call would
-    bury the key/quota errors this log exists for."""
+    eight of seventeen rooms sat in it on 2026-09-02, so warning per call
+    would put ~3,800 lines a day on a 1-minute grid between a reader and the
+    one unexpected code this log exists for."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

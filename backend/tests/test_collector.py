@@ -338,7 +338,9 @@ def test_collect_mmca_once_continues_after_one_room_fails(monkeypatch, session_f
 
 def test_collect_mmca_once_continues_after_one_room_returns_invalid_json(monkeypatch, session_factory):
     """data.go.kr sometimes returns a non-JSON (e.g. XML error) body with a 200
-    status on key/quota errors. That must not crash the whole collection cycle."""
+    status. That must not crash the whole collection cycle. (A key error is a
+    4xx on this endpoint, measured 2026-09-02 — a different exception down the
+    same per-room handler.)"""
     import app.collector as collector_module
 
     def fake_fetch(client, space_code, api_key):
