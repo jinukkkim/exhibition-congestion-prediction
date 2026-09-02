@@ -79,10 +79,12 @@ def store_forecast_revisions(
 # reading instead of leaving a hole in the series.
 #
 # No equivalent retry for collect_mmca_once: losing one room of fifteen is a
-# far smaller hole than losing the only call of a round, and the schedule is
-# sized against a quota ceiling (see _COLLECTION_START) that retries would eat
-# into on exactly the days it was tightest. That ceiling is now 100x higher,
-# so this number is free to grow if flaky rounds ever justify it.
+# far smaller hole than losing the only call of a round, and that room's retry
+# is simply the next round — one minute away on the MMCA_POLL_MINUTES grid,
+# against the ten it used to be. An in-round retry would buy back 58 of those
+# 60 seconds and nothing else, so the finer grid is what removed the case for
+# one. The quota argument that used to sit here is void either way: see
+# MMCA_POLL_MINUTES, where that arithmetic now lives.
 _FETCH_ATTEMPTS = 3
 _FETCH_RETRY_SECONDS = 2
 
