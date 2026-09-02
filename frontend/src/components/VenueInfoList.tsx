@@ -19,6 +19,7 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
     ["가는 길", info.transit],
     ["관람료", info.admission],
     ["휴관일", info.closedDays],
+    ["전화", info.phone],
   ];
 
   // content-start: 이 표가 2열 그리드의 아이템이면 옆 열 높이에 맞춰 늘어나고,

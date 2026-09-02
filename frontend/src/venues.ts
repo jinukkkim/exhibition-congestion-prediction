@@ -7,6 +7,7 @@ export interface VenueInfo {
   address: string;
   transit: string;
   admission: string;
+  phone: string;
   // 달력 휴관일만 싣는다. 요일 휴관("월요일 휴무")은 영업시간 줄이 영업시간
   // 로직에서 직접 뽑아 말하므로 여기 적으면 같은 말을 두 곳에서 하게 된다.
   closedDays: string;
@@ -41,6 +42,7 @@ export const VENUES: Venue[] = [
       transit: "4호선·경의중앙선 이촌역 2번 출구",
       admission: "상설전시관 무료 (특별전은 별도)",
       closedDays: "1월 1일, 설날, 추석",
+      phone: "02-2077-9000",
       homepage: "https://www.museum.go.kr/MUSEUM/contents/M0101000000.do",
     },
   },
@@ -56,6 +58,7 @@ export const VENUES: Venue[] = [
       // 서울관만 전시별로 따로 판다 — 금액 하나로 접을 수 없어 두 줄이다.
       admission: "개별관람권: 전시별 별도\n통합관람권: 10,000원",
       closedDays: "1월 1일, 설날, 추석",
+      phone: "02-3701-9500",
       homepage: "https://www.mmca.go.kr/visitingInfo/seoulInfo.do",
     },
   },
@@ -70,6 +73,7 @@ export const VENUES: Venue[] = [
       transit: "4호선 대공원역 4번 출구, 셔틀버스",
       admission: "3,000원",
       closedDays: "1월 1일",
+      phone: "02-2188-6000",
       homepage: "https://www.mmca.go.kr/visitingInfo/gwacheonInfo.do",
     },
   },
@@ -88,8 +92,9 @@ export const VENUES: Venue[] = [
       transit: "1·2호선 시청역 1번 출구",
       // 궁 안에 있어 미술관 관람료만으로는 못 들어간다 — 다른 관에 없는
       // 조건이라 금액보다 이 사실이 먼저 읽혀야 한다.
-      admission: "2,000원 (덕수궁 입장료 1,000원 별도, 야간개장 18시 이후 무료)",
+      admission: "2,000원 (덕수궁 입장료 1,000원 별도)",
       closedDays: "1월 1일",
+      phone: "02-2022-0600",
       homepage: "https://www.mmca.go.kr/visitingInfo/deoksugungInfo.do",
     },
   },
