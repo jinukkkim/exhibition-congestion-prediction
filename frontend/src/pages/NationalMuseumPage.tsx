@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DateTabs } from "../components/DateTabs";
-import { PredictionChart } from "../components/PredictionChart";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -85,21 +84,24 @@ export function NationalMuseumPage() {
           </div>
         )}
 
-        <section className="grid gap-6 lg:grid-cols-2">
+        {/* 카드는 하나다 — 예측 점선이 실측 곡선과 같은 축에 올라가면서 별도
+            예측 카드가 없어졌다 (MmcaPage 의 전시실 카드와 같은 구성). */}
+        <section className="grid gap-6">
           <CongestionCard
             data={current}
             daily={daily.data}
             // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이
             // 기준인지 흐려진다.
             lastWeekDaily={selectedDate === today ? lastWeekDaily.data : null}
+            // 예측은 고른 날짜의 것을 그대로 — 실측(오늘 또는 D−7)과 축만
+            // 공유하고 날짜는 다를 수 있다. 응답의 days 에 그 날짜가 없으면
+            // (자정을 넘겨 폴링이 갱신된 직후) 점선만 없다.
+            prediction={
+              prediction.data?.days?.find((day) => day.date === selectedDate)?.curve ?? null
+            }
             viewDate={chartDate}
             error={initial.error}
             chartError={daily.error || (selectedDate === today && lastWeekDaily.error)}
-          />
-          <PredictionChart
-            prediction={prediction.data}
-            selectedDate={selectedDate}
-            error={prediction.error}
           />
         </section>
       </main>

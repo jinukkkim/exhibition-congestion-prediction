@@ -1,6 +1,6 @@
 import { useRef, useState, type MouseEvent } from "react";
 
-import type { CurrentCongestion, DailyLogPoint } from "../api/congestion";
+import type { CurrentCongestion, DailyLogPoint, PredictionCurvePoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
@@ -92,12 +92,31 @@ function xOf(minutes: number, open: number, close: number): number {
 type XY = { x: number; y: number };
 type Range = { min: number; max: number };
 
-function toXY(points: Point[], open: number, close: number, range: Range): XY[] {
+function yOf(value: number, range: Range): number {
   const span = range.max - range.min || 1; // ponytail: guards a flat/single-value range; a wider range never hits this
+  return SPARKLINE_HEIGHT - ((value - range.min) / span) * SPARKLINE_HEIGHT;
+}
+
+function toXY(points: Point[], open: number, close: number, range: Range): XY[] {
   return points.map(({ minutes, value }) => ({
     x: xOf(minutes, open, close),
-    y: SPARKLINE_HEIGHT - ((value - range.min) / span) * SPARKLINE_HEIGHT,
+    y: yOf(value, range),
   }));
+}
+
+// 예측은 정시로만 표본되지만 연속 곡선으로 그려진다 — 곡선 위 어디를 짚어도
+// 값이 나와야 한다. 그린 Catmull-Rom 과의 차이는 사람 수 기준 한 자릿수라
+// 선형 보간으로 족하다 (MmcaRoomChartCard 의 같은 함수와 같은 이유).
+// 구간 밖(첫 점 이전·마지막 점 이후)에는 예측값이 없다.
+function predictionAt(points: Point[], minutes: number): Point | undefined {
+  for (let i = 0; i < points.length - 1; i++) {
+    const [a, b] = [points[i], points[i + 1]];
+    if (minutes < a.minutes || minutes > b.minutes) continue;
+    const value =
+      a.value + ((b.value - a.value) * (minutes - a.minutes)) / (b.minutes - a.minutes || 1);
+    return { minutes, value };
+  }
+  return undefined;
 }
 
 // Centripetal Catmull-Rom -> cubic Bezier. Unlike the uniform variant (which
@@ -148,6 +167,7 @@ export function CongestionCard({
   data,
   daily = null,
   lastWeekDaily = null,
+  prediction = null,
   error = false,
   chartError = false,
   viewDate,
@@ -155,6 +175,9 @@ export function CongestionCard({
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
+  // 그리는 날짜의 예측 곡선(정시 24점). 배치가 아직 못 돌았거나 조회가 실패하면
+  // null 이고, 그때는 점선만 없다 — 실측 곡선은 예측 없이도 온전히 읽힌다.
+  prediction?: PredictionCurvePoint[] | null;
   // 차트가 그리는 날짜. 생략하면 오늘. 오늘이 아니면 이 카드는 지나간 날의
   // 기록만 그리므로 실시간 헤드라인·신선도 배지를 그리지 않는다 — 지나간
   // 곡선 옆의 "실시간"은 무엇을 보는지 알 수 없게 만든다.
@@ -165,7 +188,10 @@ export function CongestionCard({
   chartError?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<{ isLastWeek: boolean; index: number } | null>(null);
+  // 커서의 x 를 분으로 되돌린 값 하나. 계열의 점으로 스냅하는 게 아니다 —
+  // 그 시각에서 각 계열을 따로 조회해 있는 것만 말한다 (MmcaRoomChartCard 와
+  // 같은 규칙).
+  const [hoverMinutes, setHoverMinutes] = useState<number | null>(null);
 
   const chartDate = viewDate ?? todayString();
   const isTodayView = chartDate === todayString();
@@ -258,68 +284,82 @@ export function CongestionCard({
     .filter((p) => p.minutes >= open && p.minutes <= close);
   const lastWeekPoints = resample(lastWeekRawPoints, open, BUCKET_MINUTES);
 
+  // 예측은 실측과 같은 단위(population_avg)라 같은 축에 그대로 올라간다.
+  const predRawPoints: Point[] = (prediction ?? [])
+    .map((p) => ({ minutes: p.hour * 60, value: p.model }))
+    .filter((p) => p.minutes >= open && p.minutes <= close);
+  // 오늘 탭에서는 실선이 이미 그린 구간의 예측 점을 버리고 실선의 마지막 점을
+  // 그대로 첫 점으로 붙인다 — 이음매가 없어야 하나의 곡선으로 읽힌다
+  // (MmcaRoomChartCard 와 같은 규칙). 미래 탭의 `points` 는 오늘의 판독이 아니라
+  // D−7 대리 기록이라 지킬 이음매가 없다: 거기서 재이음하면 하루가 이미 다 찬
+  // 실선에 걸려 예측 곡선이 통째로 사라진다.
+  //
+  // 이음매는 붙이지만 MMCA 처럼 곡선을 오늘 수준으로 평행이동하지는 않는다 —
+  // 그쪽 계수는 백테스트로 확정한 값이고, 여기(연속값·GBR)에는 그 근거가 없다.
+  const lastActual = points[points.length - 1];
+  const predPoints: Point[] =
+    isTodayView && lastActual
+      ? [lastActual, ...predRawPoints.filter((p) => p.minutes > lastActual.minutes)]
+      : predRawPoints;
+
   const hasThisWeek = points.length > 0;
-  const allValues = [...points, ...lastWeekPoints].map((p) => p.value);
+  const allValues = [...points, ...lastWeekPoints, ...predPoints].map((p) => p.value);
   const range: Range = allValues.length > 0 ? { min: Math.min(...allValues), max: Math.max(...allValues) } : { min: 0, max: 1 };
 
   const xy = hasThisWeek ? toXY(points, open, close, range) : [];
   const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close, range) : [];
+  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close, range) : [];
   const linePath = xy.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekXy.length > 1 ? smoothPath(lastWeekXy) : "";
+  const predictionPath = predXy.length > 1 ? smoothPath(predXy) : "";
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekXy.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = xy[xy.length - 1];
+  // 예측만 있어도 차트는 보여야 한다. 점이 하나뿐이면 선은 없지만(위의 path 들이
+  // 빈 문자열) 라이브 끝점 마커는 그려야 하므로 개수로 판단한다.
+  const hasAnySeries = hasThisWeek || lastWeekXy.length > 0 || predictionPath !== "";
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * SPARKLINE_WIDTH;
-
-    let thisWeekIndex: number | null = null;
-    let thisWeekDist = Infinity;
-    xy.forEach((p, i) => {
-      if (points[i].isRaw) return; // 09:30/closing-time points don't show hover info
-      const dist = Math.abs(p.x - svgX);
-      if (dist < thisWeekDist) {
-        thisWeekDist = dist;
-        thisWeekIndex = i;
-      }
-    });
-
-    let lastWeekIndex: number | null = null;
-    let lastWeekDist = Infinity;
-    lastWeekXy.forEach((p, i) => {
-      const dist = Math.abs(p.x - svgX);
-      if (dist < lastWeekDist) {
-        lastWeekDist = dist;
-        lastWeekIndex = i;
-      }
-    });
-
-    // Whichever series has an actual point closer to the hovered x wins —
-    // not a fixed "does this week have any data at all" switch. Today's
-    // points cluster near the current time, so a hover further along the
-    // axis (a time slot today hasn't reached yet) is genuinely closer to
-    // last week's point there than to today's last real reading, and must
-    // show the standalone last-week tooltip instead of re-anchoring to
-    // today's most recent value.
-    if (thisWeekIndex !== null && (lastWeekIndex === null || thisWeekDist <= lastWeekDist)) {
-      setHover({ isLastWeek: false, index: thisWeekIndex });
-    } else if (lastWeekIndex !== null) {
-      setHover({ isLastWeek: true, index: lastWeekIndex });
-    } else {
-      setHover(null);
-    }
+    // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
+    const minutes = open + (svgX / SPARKLINE_WIDTH) * (close - open || 1);
+    // 예측은 곡선 위 어디서든 값이 나오므로 짚은 시각을 10분 격자로 맞춘다 —
+    // 툴팁의 시계가 픽셀마다 흔들리지 않는다. 버킷 중심은 30분 간격이라
+    // LAST_WEEK_MATCH_MINUTES(15분) 창 안에 그대로 들어온다. 스냅을 먼저,
+    // 영업시간 가두기를 나중에.
+    const snapped = Math.round(minutes / 10) * 10;
+    setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 
-  const hoverSeriesXY = hover ? (hover.isLastWeek ? lastWeekXy : xy) : undefined;
-  const hoverSeriesPoints = hover ? (hover.isLastWeek ? lastWeekPoints : points) : undefined;
-  const hoverPoint = hover && hoverSeriesPoints ? hoverSeriesPoints[hover.index] : undefined;
-  const hoverXY = hover && hoverSeriesXY ? hoverSeriesXY[hover.index] : undefined;
-  const hoverIsThisWeek = hover ? !hover.isLastWeek : false;
-  const hoverLastWeekMatch =
-    hoverIsThisWeek && hoverPoint ? nearestWithin(lastWeekPoints, hoverPoint.minutes, LAST_WEEK_MATCH_MINUTES) : undefined;
+  // 09:30·폐관 시각의 생판독은 버킷이 아니라 곡선의 끝을 실측값으로 닿게 하려고
+  // 넣은 점이다 — 호버 조회에서는 뺀다.
+  const hoverablePoints = points.filter((p) => !p.isRaw);
+  // 비교 계열은 탭에 따라 다른 prop 에 담긴다. 오늘 탭은 lastWeekPoints(회색
+  // 지난주선), 미래 탭은 points — 페이지가 미래 탭에서 lastWeekDaily 를 null 로
+  // 두고 D−7 실측을 daily 로 내려보내기 때문이다.
+  const comparePoints = isTodayView ? lastWeekPoints : hoverablePoints;
+
+  // 오늘의 실측은 오늘 탭에만 있다: 미래 탭의 `points` 는 D−7 대리 기록(= 비교
+  // 계열)이므로 오늘의 실측인 척하며 예측값을 온종일 가리면 안 된다.
+  const hoverActual =
+    hoverMinutes == null || !isTodayView
+      ? undefined
+      : nearestWithin(hoverablePoints, hoverMinutes, LAST_WEEK_MATCH_MINUTES);
+  const hoverCompare =
+    hoverMinutes == null ? undefined : nearestWithin(comparePoints, hoverMinutes, LAST_WEEK_MATCH_MINUTES);
+  // 실측이 있는 x 에서는 예측을 지운다 — 값이 확정된 자리에 나란히 놓인 추정치는
+  // 잡음이다.
+  const hoverPrediction =
+    hoverMinutes == null || hoverActual ? undefined : predictionAt(predPoints, hoverMinutes);
+
+  // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교 계열
+  // 자신일 때만 괄호를 생략한다.
+  const hoverPrimary = hoverPrediction ?? hoverActual ?? hoverCompare;
+  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : "지난주 ";
+  const hoverSuffix = hoverPrediction || hoverActual ? hoverCompare : undefined;
 
   return (
     <div className="relative overflow-hidden rounded-apple border border-hairline/60 bg-white/70 p-8 shadow-apple backdrop-blur-xl motion-safe:animate-rise-in sm:p-10">
@@ -385,21 +425,34 @@ export function CongestionCard({
           </p>
         )}
 
-        {(daily || lastWeekDaily) && (
+        {(daily || lastWeekDaily || predictionPath) && (
           <div className="relative mt-8">
-            {(xy.length > 0 || lastWeekXy.length > 0) && (
+            {hasAnySeries && (
               // 범례는 그리는 날짜를 따라간다 — todayString() 에 고정하면 지나간
               // 날의 곡선 옆에 오늘 날짜가 적힌다. 비교선은 데이터가 있을 때만.
               <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
-                  {monthDayWeekday(chartDate)}
-                  {isTodayView ? " 오늘" : ""}
-                </span>
+                {/* 그리는 날짜의 곡선이 실제로 있을 때만 — 예측 점선만 있는 개관
+                    전 시각에는 그을 실선이 없어 범례가 없는 선을 가리킨다. */}
+                {xy.length > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
+                    {monthDayWeekday(chartDate)}
+                    {isTodayView ? " 오늘" : ""}
+                  </span>
+                )}
                 {lastWeekXy.length > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
                     {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
+                  </span>
+                )}
+                {predictionPath && (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="h-0 w-3 border-t-2 border-dashed"
+                      style={{ borderColor: CHART_BLUE }}
+                    />
+                    예측
                   </span>
                 )}
               </div>
@@ -410,7 +463,7 @@ export function CongestionCard({
               viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
               className="w-full overflow-visible"
             >
-              {(xy.length > 0 || lastWeekXy.length > 0) && (
+              {hasAnySeries && (
                 <>
                   <defs>
                     <linearGradient id="sparkline-fill" x1="0" y1="0" x2="0" y2="1">
@@ -464,30 +517,52 @@ export function CongestionCard({
                       strokeLinecap="round"
                     />
                   )}
+                  {predictionPath && (
+                    <path
+                      data-testid="sparkline-prediction-line"
+                      d={predictionPath}
+                      fill="none"
+                      stroke={CHART_BLUE}
+                      strokeWidth={2.5}
+                      strokeDasharray="5 5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  )}
                   {isOpen && lastPoint && (
                     <>
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={14} fill="url(#sparkline-glow)" />
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2.5} />
                     </>
                   )}
-                  {hoverXY && (
+                  {hoverPrimary && hoverMinutes != null && (
                     <>
                       <line
-                        x1={hoverXY.x}
+                        x1={xOf(hoverMinutes, open, close)}
                         y1={0}
-                        x2={hoverXY.x}
+                        x2={xOf(hoverMinutes, open, close)}
                         y2={SPARKLINE_HEIGHT}
                         stroke="#D2D2D7"
                         strokeWidth={1}
                       />
-                      <circle
-                        cx={hoverXY.x}
-                        cy={hoverXY.y}
-                        r={4}
-                        fill="#FFFFFF"
-                        stroke={hoverIsThisWeek ? lineStroke : LAST_WEEK_STROKE}
-                        strokeWidth={2}
-                      />
+                      {/* 그 x 에서 값이 있는 계열마다 자기 y 에 점을 하나씩. */}
+                      {[
+                        [hoverActual, lineStroke] as const,
+                        [hoverCompare, LAST_WEEK_STROKE] as const,
+                        [hoverPrediction, CHART_BLUE] as const,
+                      ].map(([point, stroke], i) =>
+                        point ? (
+                          <circle
+                            key={i}
+                            cx={xOf(hoverMinutes, open, close)}
+                            cy={yOf(point.value, range)}
+                            r={4}
+                            fill="#FFFFFF"
+                            stroke={stroke}
+                            strokeWidth={2}
+                          />
+                        ) : null
+                      )}
                     </>
                   )}
                   <rect
@@ -497,46 +572,37 @@ export function CongestionCard({
                     height={SPARKLINE_HEIGHT}
                     fill="transparent"
                     onMouseMove={handleHoverMove}
-                    onMouseLeave={() => setHover(null)}
+                    onMouseLeave={() => setHoverMinutes(null)}
                   />
                 </>
               )}
             </svg>
-            {hoverPoint && hoverXY && (
+            {hoverPrimary && hoverMinutes != null && (
               <div
                 data-testid="sparkline-tooltip"
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
-                  // Follows the dot's actual (possibly edge-snapped) x position
-                  // rather than the bucket's true center, so it lines up with
-                  // the guide line/dot; clamped so the box never overflows the
-                  // card's clipped edges.
-                  left: `${Math.min(Math.max((hoverXY.x / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
+                  // Follows the guide line, clamped so the box never overflows
+                  // the card's clipped edges.
+                  left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
+                {/* 실측·비교값은 30분 버킷의 평균이라 그 버킷의 구간을 적고,
+                    예측은 짚은 그 시각의 값이라 시각 하나를 적는다. */}
                 <span className="font-mono tabular-nums text-ink-soft">
-                  {hoverPoint.isRaw ? formatMinutes(hoverPoint.minutes) : bucketRange(hoverPoint.minutes, BUCKET_MINUTES)}
+                  {hoverPrediction
+                    ? formatMinutes(hoverMinutes)
+                    : bucketRange(hoverPrimary.minutes, BUCKET_MINUTES)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
-                {hoverIsThisWeek ? (
-                  <>
-                    <span className="font-mono font-semibold tabular-nums text-ink">
-                      {Math.round(hoverPoint.value).toLocaleString()}
-                    </span>
-                    <span className="text-ink-soft">명</span>
-                    {hoverLastWeekMatch && (
-                      <span className="ml-1 text-ink-soft">
-                        (지난주 <span className="font-mono tabular-nums">{Math.round(hoverLastWeekMatch.value).toLocaleString()}</span>명)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-ink-soft">
-                    지난주{" "}
-                    <span className="font-mono font-semibold tabular-nums text-ink">
-                      {Math.round(hoverPoint.value).toLocaleString()}
-                    </span>
-                    명
+                {hoverPrefix && <span className="text-ink-soft">{hoverPrefix}</span>}
+                <span className="font-mono font-semibold tabular-nums text-ink">
+                  {Math.round(hoverPrimary.value).toLocaleString()}
+                </span>
+                <span className="text-ink-soft">명</span>
+                {hoverSuffix && (
+                  <span className="ml-1 text-ink-soft">
+                    (지난주 <span className="font-mono tabular-nums">{Math.round(hoverSuffix.value).toLocaleString()}</span>명)
                   </span>
                 )}
               </div>

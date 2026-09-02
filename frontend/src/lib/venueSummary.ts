@@ -7,7 +7,7 @@ import { STATUS_LEVELS } from "./status";
 export type VenueSummary =
   // label 은 카드 안에 짧게 얹히는 상태 배지다 — 진행 중인 일도 말줄임표 없이
   // 쓴다("불러오는 중", "집계 중"). 말줄임표는 카드를 통째로 채우는 독립 문구의
-  // 것이다(CongestionCard·PredictionChart·MmcaPage 의 "불러오는 중...").
+  // 것이다(CongestionCard·MmcaPage 의 "불러오는 중...").
   | { kind: "inactive"; label: string }
   | { kind: "level"; level: string; population: number; observedAt: string }
   | { kind: "counts"; counts: { level: string; count: number }[]; observedAt: string };

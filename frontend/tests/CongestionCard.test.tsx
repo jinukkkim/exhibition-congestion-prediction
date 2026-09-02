@@ -466,7 +466,9 @@ describe("CongestionCard", () => {
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
-    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+    // clientX 31 ≈ the 10:00–10:30 bucket's x on this fixture's axis (open
+    // 09:30, close 21:00 on a Wed). 짚은 시각에 판독이 실제로 있는 자리다.
+    fireEvent.mouseMove(hoverTarget, { clientX: 31, clientY: 0 });
 
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
@@ -487,7 +489,7 @@ describe("CongestionCard", () => {
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
-    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(hoverTarget, { clientX: 31, clientY: 0 });
 
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
@@ -521,5 +523,106 @@ describe("CongestionCard", () => {
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
     expect(tooltip.queryByText(/\(지난주/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CongestionCard prediction line", () => {
+  // 수요일 14:30 — 영업시간 09:30~21:00 안.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T14:30:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const CURRENT = { observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 };
+
+  function curve(model: (hour: number) => number) {
+    return Array.from({ length: 24 }, (_, hour) => ({ hour, baseline: null, model: model(hour) }));
+  }
+
+  function hoverAt(container: HTMLElement, clientX: number) {
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    fireEvent.mouseMove(container.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX,
+      clientY: 0,
+    });
+  }
+
+  it("draws the prediction as a dashed line in the same chart, with its own legend entry", () => {
+    render(
+      <CongestionCard
+        data={CURRENT}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800)]}
+        prediction={curve(() => 1200)}
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-prediction-line")).toHaveAttribute("stroke-dasharray", "5 5");
+    expect(screen.getByText("예측")).toBeInTheDocument();
+  });
+
+  it("draws the chart for a prediction alone, before today has any reading", () => {
+    render(<CongestionCard data={CURRENT} daily={[]} prediction={curve((hour) => 1000 + hour)} />);
+
+    expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-prediction-line")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparkline-line")).not.toBeInTheDocument();
+    // 그을 실선이 없으면 범례도 그것을 가리키지 않는다.
+    expect(screen.queryByText(/오늘/)).not.toBeInTheDocument();
+    expect(screen.getByText("예측")).toBeInTheDocument();
+  });
+
+  it("hands the elapsed part of the day to the reading and the rest to the prediction", () => {
+    // 실측이 있는 시각에서는 예측을 지운다 — 확정된 값 옆의 추정치는 잡음이다.
+    const { container } = render(
+      <CongestionCard
+        data={CURRENT}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 1000)]}
+        prediction={curve(() => 2000)}
+      />
+    );
+
+    // clientX 31 ≈ 10:00–10:30 버킷 — 실측이 있는 자리.
+    hoverAt(container, 31);
+    expect(within(screen.getByTestId("sparkline-tooltip")).queryByText(/예측/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("900");
+
+    // clientX 104 ≈ 12:00 — 오늘이 아직 닿지 않은 자리라 점선의 값이 나온다.
+    hoverAt(container, 104);
+    expect(within(screen.getByTestId("sparkline-tooltip")).getByText(/예측/)).toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("2,000");
+  });
+
+  it("keeps the whole prediction curve on a past-day view instead of re-joining a finished line", () => {
+    // 미래 탭의 실선은 오늘의 판독이 아니라 D−7 대리 기록이라 하루가 이미 다 차
+    // 있다. 거기서 이음매를 다시 잡으면 예측 점 전부가 걸려 곡선이 사라진다.
+    const { container } = render(
+      <CongestionCard
+        data={CURRENT}
+        daily={[dailyPoint("2026-07-08T10:00:00", 800), dailyPoint("2026-07-08T20:00:00", 900)]}
+        viewDate="2026-07-08"
+        prediction={curve(() => 2000)}
+      />
+    );
+
+    expect(screen.getByTestId("sparkline-prediction-line")).toBeInTheDocument();
+    // 대리 실선이 하루를 다 덮고 있어도 이른 시각에서 예측값이 나온다.
+    hoverAt(container, 104);
+    expect(within(screen.getByTestId("sparkline-tooltip")).getByText(/예측/)).toBeInTheDocument();
+  });
+
+  it("says nothing at a time where no series has a value", () => {
+    // 값이 없는 자리에서 가까운 점을 끌어오면 없는 시각을 있는 것처럼 말한다.
+    const { container } = render(
+      <CongestionCard data={CURRENT} daily={[dailyPoint("2026-07-15T10:00:00", 800)]} />
+    );
+
+    hoverAt(container, 300);
+    expect(screen.queryByTestId("sparkline-tooltip")).not.toBeInTheDocument();
   });
 });
