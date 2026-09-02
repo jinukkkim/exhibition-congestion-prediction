@@ -7,7 +7,12 @@ import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshnes
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { statusOf } from "../lib/status";
 
-const SPARKLINE_WIDTH = 480;
+// svg 는 w-full 이라 실제 높이는 카드 폭 × (HEIGHT/WIDTH) 다 — 이 관은 카드가
+// 하나뿐이어서 폭을 다 쓰는데, MmcaRoomChartCard 의 480×200(2열 카드) 비율을
+// 그대로 쓰면 전폭에서 높이가 500px 까지 늘어난다. 폭은 그대로 다 쓰고 비율만
+// 납작하게 둔다: 렌더 높이 ~250px, 선 굵기도 MMCA 카드와 비슷한 배율로 그려진다.
+// 호버·툴팁 좌표는 전부 WIDTH 에 대한 비율이라 이 값에 딸려 움직인다.
+const SPARKLINE_WIDTH = 960;
 const SPARKLINE_HEIGHT = 200;
 
 function minutesOfDay(isoString: string): number {
