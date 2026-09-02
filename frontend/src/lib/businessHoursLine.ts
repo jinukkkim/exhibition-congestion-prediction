@@ -1,9 +1,7 @@
 import type { Venue } from "../venues";
-import { formatMinutes } from "./date";
+import { formatMinutes, WEEKDAY_KO } from "./date";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
-
-const WEEKDAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 
 // 요일별 영업시간을 모으려면 요일마다 Date 가 하나씩 필요하다. 영업시간 함수는
 // getDay() 만 보므로 어느 주를 골라도 답이 같다 — 일요일로 시작하는 주 하나를
@@ -20,7 +18,7 @@ function dayHours(venue: Venue, weekday: number) {
 }
 
 function joinWeekdays(weekdays: number[]): string {
-  return weekdays.map((weekday) => WEEKDAY_NAMES[weekday]).join("·");
+  return weekdays.map((weekday) => WEEKDAY_KO[weekday]).join("·");
 }
 
 // 한 주 전체를 "10:00~18:00 (수·토 21:00까지, 월요일 휴무)" 한 줄로 접는다.
@@ -35,10 +33,17 @@ export function businessHoursLine(venue: Venue): string {
   }));
   const openDays = week.filter((day) => day.isOpenToday);
   const closedDays = week.filter((day) => !day.isOpenToday);
+  // 어느 관도 일주일을 통째로 쉬지 않지만, 그렇게 적히면 아래 계산이 빈 배열을
+  // 읽어 헤더가 통째로 터진다. 값 하나 잘못 적은 대가로는 크다.
+  if (openDays.length === 0) return "상시 휴관";
 
   // 기본 폐관 시각은 가장 이른 것으로 잡고, 그보다 늦게 닫는 요일만 괄호에
   // 따로 적는다 (야간개장).
   const baseClose = Math.min(...openDays.map((day) => day.close));
+  // ponytail: 개관 시각은 어느 관도 요일을 타지 않아 가장 이른 것 하나로 적는다.
+  // 폐관과 달리 예외 요일을 괄호에 적지 않으므로, 요일별 개관 시각이 생기면
+  // baseClose 와 같은 방식으로 쪼개야 한다.
+  const open = Math.min(...openDays.map((day) => day.open));
   const lateDays = openDays.filter((day) => day.close > baseClose);
 
   const notes: string[] = [];
@@ -54,6 +59,6 @@ export function businessHoursLine(venue: Venue): string {
     notes.push(`${joinWeekdays(closedDays.map((day) => day.weekday))}요일 휴무`);
   }
 
-  const hours = `${formatMinutes(openDays[0].open)}~${formatMinutes(baseClose)}`;
+  const hours = `${formatMinutes(open)}~${formatMinutes(baseClose)}`;
   return notes.length > 0 ? `${hours} (${notes.join(", ")})` : hours;
 }
