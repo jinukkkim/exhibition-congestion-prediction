@@ -199,17 +199,17 @@ _SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
 _LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
-# Collection starts 10 minutes after the real 10:00 opening time (still what
-# the frontend shows as "open") — congestion right at opening is reliably
-# 여유, so the first round buys nothing.
+# Collection starts at the opening time the frontend shows, so the day's first
+# sample is the opening minute itself.
 #
-# It used to be a quota measure too: 15 rooms * 66 rounds capped the day at
-# 990 calls, one under the MMCA API's old 1,000/day. That cap is now
-# 100,000/day, which the full 15-room schedule uses about 1% of, so this line
-# no longer earns its keep on cost. Left at 10:10 for now because moving it
-# changes the first sample of every day and the 지난주 comparison line reads
-# across days — worth doing at a day boundary, not as a side effect here.
-_COLLECTION_START = time(10, 10)
+# It was 10:10 for two years' worth of quota arithmetic: 15 rooms * 66 rounds
+# came to 990 calls, one under the MMCA API's old 1,000/day, and dropping the
+# 10:00 round is what bought that last slot. The cap is now 100,000/day. The
+# stated justification — congestion at opening is reliably 여유, so the round
+# buys nothing — was the excuse, not the reason: a reliably-여유 reading is
+# still the reading, and the charts drew their first point ten minutes into a
+# day whose axis started at 10:00.
+_COLLECTION_START = time(10, 0)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
 # is closed on Mondays.

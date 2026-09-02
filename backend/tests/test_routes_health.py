@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models import RawCongestion, RawMmcaCongestion
 
-# A Wednesday, comfortably inside opening hours (10:10-21:00 on 수/토).
+# A Wednesday, comfortably inside opening hours (10:00-21:00 on 수/토).
 OPEN_HOURS = datetime(2026, 8, 12, 15, 0)
 # Same Wednesday before the first round of the day is due.
 BEFORE_OPENING = datetime(2026, 8, 12, 9, 0)
