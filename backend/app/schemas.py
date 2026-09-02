@@ -44,9 +44,8 @@ class MmcaRoomStatus(BaseModel):
     space_code: str
     space_nm: str | None
     congestion_nm: str | None
-    # None when there's no reading yet today — either a permanently-disabled
-    # room with no collection history at all (see MMCA_DISABLED_SPACE_CODES),
-    # or a normal room that just hasn't had its first poll of the day yet.
+    # None when the room has no reading yet today — its first poll of the day
+    # hasn't landed.
     observed_at: str | None
 
 

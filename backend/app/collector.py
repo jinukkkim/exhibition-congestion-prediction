@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.cache import set_latest
-from app.config import MMCA_DISABLED_SPACE_CODES, settings
+from app.config import settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
@@ -262,7 +262,6 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         for venue, codes in settings.mmca_venue_space_codes.items()
         if _is_venue_open(venue, now)
         for space_code in codes
-        if space_code not in MMCA_DISABLED_SPACE_CODES
     ]
     if not space_codes:
         return []

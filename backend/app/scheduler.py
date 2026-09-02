@@ -45,11 +45,10 @@ def build_scheduler() -> BackgroundScheduler:
         collect_mmca_once,
         # Same reasoning as collect_congestion: cron-align to a fixed
         # 10-minute grid instead of free-running from server start.
-        # 15 rooms on this grid cost about 1,100 calls on an extended-hours
+        # 17 rooms on this grid cost about 1,100 calls on an extended-hours
         # day, against a 100,000/day MMCA API cap — the grid is free to get
         # finer, but that changes how dense every chart is and is worth doing
-        # at a day boundary. See MMCA_DISABLED_SPACE_CODES for the two rooms
-        # still excluded.
+        # at a day boundary.
         trigger=CronTrigger(minute="*/10", timezone=_SEOUL_TZ),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
