@@ -356,7 +356,9 @@ describe("MmcaPage", () => {
   });
 
   it("follows the before-opening rule until the collector's first poll lands", async () => {
-    vi.setSystemTime(new Date("2026-07-28T10:05:00")); // Tuesday, open (10:00) but before the 10:10 first poll
+    // Tuesday, the opening minute itself — the collector's first poll runs now
+    // and takes a few seconds, so nothing today has landed yet.
+    vi.setSystemTime(new Date("2026-07-28T10:00:00"));
     vi.spyOn(api, "fetchMmcaDaily").mockImplementation(async (_venue, date) =>
       date === "2026-07-21" // last Tuesday
         ? [
