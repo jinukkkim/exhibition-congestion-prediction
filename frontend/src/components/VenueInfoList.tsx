@@ -28,7 +28,7 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
       {rows.map(([label, value]) => (
         <Fragment key={label}>
           <dt className="text-ink-soft">{label}</dt>
-          <dd className="text-ink">{value}</dd>
+          <dd className="whitespace-pre-line text-ink">{value}</dd>
         </Fragment>
       ))}
       {/* 금액·시간은 우리가 베껴 둔 값이라 언젠가 어긋난다. 원본으로 가는 길을

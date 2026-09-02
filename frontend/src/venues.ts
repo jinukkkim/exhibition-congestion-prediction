@@ -53,7 +53,8 @@ export const VENUES: Venue[] = [
     info: {
       address: "서울 종로구 삼청로 30",
       transit: "3호선 안국역 1번 출구",
-      admission: "통합관람권 10,000원 (야간개장 18시 이후 무료)",
+      // 서울관만 전시별로 따로 판다 — 금액 하나로 접을 수 없어 두 줄이다.
+      admission: "개별관람권: 전시별 별도\n통합관람권: 10,000원",
       closedDays: "1월 1일, 설날, 추석",
       homepage: "https://www.mmca.go.kr/visitingInfo/seoulInfo.do",
     },
