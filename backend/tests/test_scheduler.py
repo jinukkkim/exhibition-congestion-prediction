@@ -68,23 +68,28 @@ def test_job_error_listener_does_not_leak_exception_message(caplog):
     assert "SECRET123" not in caplog.text
 
 
-def test_collect_mmca_job_is_cron_aligned_to_ten_minutes():
+def test_collect_mmca_job_is_cron_aligned_to_the_poll_grid():
     from datetime import datetime
 
+    from app.collector import MMCA_POLL_MINUTES
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
     job = scheduler.get_job("collect_mmca_congestion")
 
+    # The cron spacing must be exactly MMCA_POLL_MINUTES, because
+    # collect_mmca_once floors its stamps to that same number. A cron finer
+    # than the floor makes several rounds share one observed_at, which
+    # /mmca/daily then collapses to a single reading per room.
     fields = {f.name: str(f) for f in job.trigger.fields}
-    assert fields["minute"] == "*/10"
+    assert fields["minute"] == f"*/{MMCA_POLL_MINUTES}"
 
     # Regardless of when the scheduler starts, the next fire must land
-    # exactly on the 10-minute grid — no immediate off-grid poll.
+    # exactly on the grid — no immediate off-grid poll.
     next_fire = job.trigger.get_next_fire_time(
         None, datetime(2026, 7, 26, 15, 37, 0).astimezone()
     )
-    assert next_fire.minute % 10 == 0
+    assert next_fire.minute % MMCA_POLL_MINUTES == 0
     assert next_fire.second == 0
 
 
@@ -107,6 +112,7 @@ def test_collect_congestion_job_is_cron_aligned_to_five_minutes():
 
 
 def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
+    from app.collector import MMCA_POLL_MINUTES
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
@@ -121,7 +127,7 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         # Whatever moment the test runs, the computed next_run_time must
         # already land on each job's own grid.
         mmca_job = scheduler.get_job("collect_mmca_congestion")
-        assert mmca_job.next_run_time.minute % 10 == 0
+        assert mmca_job.next_run_time.minute % MMCA_POLL_MINUTES == 0
         assert mmca_job.next_run_time.second == 0
 
         congestion_job = scheduler.get_job("collect_congestion")

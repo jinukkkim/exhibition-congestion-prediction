@@ -215,6 +215,21 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # congestion being reliably 여유 was the stated reason, never the real one.
 _COLLECTION_START = time(10, 0)
 
+# MMCA 수집 그리드(분). 스케줄러의 cron 과 위 round_time 의 내림이 **반드시**
+# 같은 값을 써야 해서 상수 하나로 묶여 있다. 어긋나면(예: cron 1분 + 내림 10분)
+# 라운드 10개가 같은 observed_at 으로 찍히고, /mmca/daily 의 분 버킷이 방별
+# dict 라 마지막 것만 남는다 — 수집은 정상, API 응답만 90% 사라지는 유일한
+# 조용한 실패 경로다.
+#
+# 100,000/day 쿼터 대비 비용: 15개 방 * 최대일(수/토, 서울관 21시 연장) 라운드로
+# 10분이 879콜(0.9%), 1분이 8,655콜(8.7%). 쿼터는 6초까지도 버티므로 제약이
+# 아니다 — 진짜 상한은 (a) 방 15개 순차 호출 라운드가 방당 timeout 10초라
+# 최악 150초까지 늘어나 60초 격자를 넘을 수 있는 것(APScheduler max_instances=1
+# 이라 겹치면 그 라운드가 스킵된다), (b) 상류 갱신 주기가 미측정인 것이다.
+# /congestion 응답에는 타임스탬프가 없어(mmca_api.py) 페이로드만으로는 값이
+# 새것인지 알 수 없다. 1분 수집 하루치의 전이 시각이 그 답이다.
+MMCA_POLL_MINUTES = 1
+
 # 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
 # 문을 여는 것은 서울관뿐이다.
 #
@@ -250,12 +265,14 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    # The scheduler fires this on a 10-minute cron grid, but scheduler
-    # jitter or a misfire-grace-time catch-up run can land a few minutes off
-    # that mark. Every reading in this round is stamped with the grid mark
-    # itself (not raw `now`), so collection rounds always land on a fixed,
-    # predictable 10-minute grid regardless of when the round actually ran.
-    round_time = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
+    # The scheduler fires this on the MMCA_POLL_MINUTES cron grid, but
+    # scheduler jitter or a misfire-grace-time catch-up run can land the
+    # actual invocation off that mark. Every reading in this round is stamped
+    # with the grid mark itself (not raw `now`), so collection rounds always
+    # land on a fixed, predictable grid regardless of when the round ran.
+    round_time = now.replace(
+        minute=(now.minute // MMCA_POLL_MINUTES) * MMCA_POLL_MINUTES, second=0, microsecond=0
+    )
 
     space_codes = [
         space_code

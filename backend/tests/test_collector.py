@@ -407,13 +407,23 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
     assert stored_times == {round_time}
 
 
-def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, session_factory):
-    """The scheduler fires on a 10-minute cron grid, but jitter or a
-    misfire-grace-time catch-up run can land the actual invocation a few
-    minutes off that mark (e.g. 11:31 instead of 11:30). Every reading must
-    still be stamped with the grid mark, not the raw run time, so rounds are
-    always exactly 10 minutes apart regardless of when they actually ran."""
+def test_collect_mmca_once_snaps_observed_at_to_the_poll_grid(monkeypatch, session_factory):
+    """The scheduler fires on the MMCA_POLL_MINUTES cron grid, but jitter or a
+    misfire-grace-time catch-up run can land the actual invocation off that
+    mark. Every reading must still be stamped with the grid mark, not the raw
+    run time, so rounds are always exactly one grid step apart regardless of
+    when they actually ran.
+
+    Asserted as properties rather than against a literal mark: the expected
+    stamp depends on MMCA_POLL_MINUTES, and re-deriving it here would just
+    restate the implementation. The last assertion is the one that catches a
+    cron/floor mismatch — floor 10 under a 1-minute cron leaves `now` up to
+    9 minutes past the stamp, which is exactly the state where consecutive
+    rounds collide on one observed_at."""
+    from datetime import timedelta
+
     import app.collector as collector_module
+    from app.collector import MMCA_POLL_MINUTES
 
     def fake_fetch(client, space_code, api_key):
         return MmcaCongestionReading(
@@ -431,15 +441,20 @@ def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, 
         {"gwacheon": ["MMCA-SPACE-2001"]},
     )
 
-    result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 28, 11, 31, 4)
-    )
+    now = datetime(2026, 7, 28, 11, 31, 4)
+    result = collector_module.collect_mmca_once(session_factory=session_factory, now=now)
 
     assert len(result) == 1
-    assert result[0].observed_at == datetime(2026, 7, 28, 11, 30)
+    stamped = result[0].observed_at
     with session_factory() as session:
         stored = session.query(RawMmcaCongestion).one()
-    assert stored.observed_at == datetime(2026, 7, 28, 11, 30)
+    assert stored.observed_at == stamped
+
+    # Not the fetch's own wall-clock time (11:31:12, ahead of `now`), and not
+    # `now` either: a grid mark, seconds cleared, at or before the run.
+    assert (stamped.second, stamped.microsecond) == (0, 0)
+    assert stamped.minute % MMCA_POLL_MINUTES == 0
+    assert timedelta(0) <= now - stamped < timedelta(minutes=MMCA_POLL_MINUTES)
 
 
 def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_factory):

@@ -5,7 +5,7 @@ from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.collector import collect_mmca_once, collect_once
+from app.collector import MMCA_POLL_MINUTES, collect_mmca_once, collect_once
 from app.prediction.batch import run_daily_batch
 
 logger = logging.getLogger(__name__)
@@ -43,14 +43,13 @@ def build_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         collect_mmca_once,
-        # Same reasoning as collect_congestion: cron-align to a fixed
-        # 10-minute grid instead of free-running from server start.
-        # 15 rooms on this grid cost about 1,100 calls on an extended-hours
-        # day, against a 100,000/day MMCA API cap — the grid is free to get
-        # finer, but that changes how dense every chart is and is worth doing
-        # at a day boundary. See MMCA_DISABLED_SPACE_CODES for the two rooms
-        # still excluded.
-        trigger=CronTrigger(minute="*/10", timezone=_SEOUL_TZ),
+        # Same reasoning as collect_congestion: cron-align to a fixed grid
+        # instead of free-running from server start. The spacing lives in
+        # MMCA_POLL_MINUTES because collect_mmca_once floors its stamps to the
+        # same grid — see that constant for the quota arithmetic and for what
+        # actually bounds the interval. See MMCA_DISABLED_SPACE_CODES for the
+        # two rooms still excluded.
+        trigger=CronTrigger(minute=f"*/{MMCA_POLL_MINUTES}", timezone=_SEOUL_TZ),
         id="collect_mmca_congestion",
         misfire_grace_time=60,
     )

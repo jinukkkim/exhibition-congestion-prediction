@@ -56,8 +56,11 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # collected_at column.
 SEOUL_STALE_MINUTES = 75
 
-# collect_mmca_once polls every 10 minutes, but only while a venue is open, so
-# this threshold only applies inside opening hours.
+# collect_mmca_once polls on the MMCA_POLL_MINUTES grid, but only while a venue
+# is open, so this threshold only applies inside opening hours. It is sized as
+# "a few missed rounds" at the 10-minute grid this number was set under —
+# a finer grid only makes it more forgiving, never noisier, so it is left alone
+# until the interval settles.
 MMCA_STALE_MINUTES = 25
 
 
