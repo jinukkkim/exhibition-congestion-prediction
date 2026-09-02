@@ -188,10 +188,10 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                 자리가 없어 여기에만 실린다. */}
             {exhibitions.length > 0 && (
               <div className="mt-8 lg:mt-0">
-                {/* 라벨은 옆 열 첫 줄(영업시간)과 같은 높이에 선다. */}
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                  현재 전시
-                </p>
+                {/* 옆 열 첫 줄(영업시간)과 같은 높이에, 같은 모양으로 선다 —
+                    관 정보 표의 라벨과 나란한 한 쌍이라 서로 다르게 쓸 이유가
+                    없다. */}
+                <p className="text-sm text-ink-soft">현재 전시</p>
                 <ul className="mt-3 space-y-1.5">
                   {exhibitions.map((exhibition) => (
                     <li
