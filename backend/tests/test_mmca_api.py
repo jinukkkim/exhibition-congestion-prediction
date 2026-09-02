@@ -15,7 +15,7 @@ def test_fetch_congestion_parses_response():
         return httpx.Response(
             200,
             json={
-                "resultCode": "00",
+                "resultCode": "0000",
                 "resultMsg": "NORMAL SERVICE",
                 "totalCount": 1,
                 "data": {
@@ -48,7 +48,7 @@ def test_fetch_congestion_handles_empty_data():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
-            json={"resultCode": "00", "resultMsg": "NORMAL SERVICE", "totalCount": 0, "data": {}},
+            json={"resultCode": "0000", "resultMsg": "NORMAL SERVICE", "totalCount": 0, "data": {}},
         )
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -66,7 +66,7 @@ def test_fetch_congestion_handles_null_data():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
-            json={"resultCode": "00", "resultMsg": "NORMAL SERVICE", "totalCount": 0, "data": None},
+            json={"resultCode": "0000", "resultMsg": "NORMAL SERVICE", "totalCount": 0, "data": None},
         )
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -77,8 +77,9 @@ def test_fetch_congestion_handles_null_data():
 
 
 def test_fetch_congestion_logs_warning_for_non_normal_result_code(caplog):
-    """A non-'00' resultCode (bad key, quota exceeded, etc.) looks identical to
-    the "fewer than 2 exhibitions" empty-data case unless we log it separately."""
+    """An unexpected resultCode (bad key, quota exceeded, etc.) looks identical
+    to the "fewer than 2 exhibitions" empty-data case unless we log it
+    separately."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -99,3 +100,52 @@ def test_fetch_congestion_logs_warning_for_non_normal_result_code(caplog):
     assert reading.congestion_nm is None
     assert "MMCA-SPACE-1001" in caplog.text
     assert "99" in caplog.text
+
+
+def test_fetch_congestion_stays_quiet_for_the_no_exhibition_result_code(caplog):
+    """0002 ("진행 중인 전시가 없거나 혼잡도 미제공") is a room's normal steady
+    state, not a failure. Recorded as congestion_nm=None, not as a log line —
+    six of fifteen rooms sat in it on 2026-09-02, so warning per call would
+    bury the key/quota errors this log exists for."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "resultCode": "0002",
+                "resultMsg": "현재 진행 중인 전시가 없거나 혼잡도 정보를 제공하지 않는 전시실입니다.",
+                "totalCount": 0,
+                "data": {},
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level("WARNING"):
+        reading = fetch_congestion(client, "MMCA-SPACE-1002", "test-key")
+
+    assert reading.congestion_nm is None
+    assert caplog.text == ""
+
+
+def test_fetch_congestion_stays_quiet_for_the_real_success_code(caplog):
+    """The live API answers "0000", not the "00" these fixtures used to assume."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "resultCode": "0000",
+                "resultMsg": "성공",
+                "totalCount": 1,
+                "data": {"congestionNm": "여유", "agncNm": "국립현대미술관 서울관", "spaceNm": "1전시실"},
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level("WARNING"):
+        reading = fetch_congestion(client, "MMCA-SPACE-1001", "test-key")
+
+    assert reading.congestion_nm == "여유"
+    assert caplog.text == ""
