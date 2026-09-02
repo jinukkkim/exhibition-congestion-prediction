@@ -19,7 +19,6 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { shiftDate, todayString, upcomingDates } from "../lib/date";
 import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
-import { DISABLED_MMCA_SPACE_CODES } from "../lib/mmcaDisabledRooms";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -142,7 +141,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
     rows !== null && !rows.some((row) => row.rooms.find((r) => r.space_code === code)?.congestion_nm != null);
 
   const isRoomInactiveToday = (room: MmcaRoomStatus) => {
-    if (DISABLED_MMCA_SPACE_CODES.has(room.space_code)) return true;
     // 미래 탭에서는 그릴 곡선이 D-7 판독이므로 그것으로 카드 크기를 가른다 —
     // 오늘 판독을 기준으로 두면 그리지 않을 곡선을 위해 전체 카드를 내준다.
     if (!isTodayTab) return loadedWithNoReading(daily, room.space_code);
@@ -151,14 +149,8 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
       : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code);
   };
 
-  const inactiveReason = (room: MmcaRoomStatus) =>
-    DISABLED_MMCA_SPACE_CODES.has(room.space_code)
-      ? "서비스 예정"
-      : !isOpenToday
-        ? "휴관일"
-        : isTodayTab
-          ? "오늘 정보 없음"
-          : "정보 없음";
+  const inactiveReason = () =>
+    !isOpenToday ? "휴관일" : isTodayTab ? "오늘 정보 없음" : "정보 없음";
 
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
@@ -249,7 +241,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                 key={room.space_code}
                 room={room}
                 exhibitionTitle={exhibitionTitle(room.space_code)}
-                reason={inactiveReason(room)}
+                reason={inactiveReason()}
               />
             ))}
           </section>

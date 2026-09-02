@@ -16,10 +16,10 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 
 describe("MmcaRoomInactiveCard", () => {
   it("renders the room title and the given reason", () => {
-    render(<MmcaRoomInactiveCard room={makeRoom()} exhibitionTitle={null} reason="서비스 예정" />);
+    render(<MmcaRoomInactiveCard room={makeRoom()} exhibitionTitle={null} reason="오늘 정보 없음" />);
 
     expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
-    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
+    expect(screen.getByText("오늘 정보 없음")).toBeInTheDocument();
   });
 
   it("falls back to the space code as the title when the room has no name yet", () => {
