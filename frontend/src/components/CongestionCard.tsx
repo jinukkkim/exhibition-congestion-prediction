@@ -62,7 +62,13 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 
 type Point = { minutes: number; value: number; isRaw?: boolean };
 
-const BUCKET_MINUTES = 30; // 30 divides both business-hour spans (480min / 690min) evenly, so buckets never fall short
+// 서울시 판독은 5분 간격이다. 10분 버킷은 그 두 판독의 평균이고, MMCA 차트의
+// 격자 간격(수집이 */10 cron)과 같아 두 관의 호버가 같은 눈금을 쓴다. 480분·
+// 690분 두 영업시간을 모두 나누어 떨어뜨려 버킷이 잘리지 않는다.
+//
+// 30분이던 이유는 이 차트가 2열 카드(480 단위 폭)였기 때문이다 — 그때 10분
+// 간격은 22단위였다. 전폭이 된 뒤로는 같은 10분이 22px 라 점이 뭉치지 않는다.
+const BUCKET_MINUTES = 10;
 // Both series resample onto the same bucket grid (same `open` origin, same
 // BUCKET_MINUTES), so a genuine same-bucket match is always distance 0 and
 // the next bucket over is always exactly BUCKET_MINUTES away — a full
@@ -204,10 +210,6 @@ function areaPath(xy: XY[], linePath: string): string {
   const first = xy[0];
   const last = xy[xy.length - 1];
   return `M ${first.x} ${SPARKLINE_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${SPARKLINE_HEIGHT} Z`;
-}
-
-function bucketRange(centerMinutes: number, bucketMinutes: number): string {
-  return `${formatMinutes(centerMinutes - bucketMinutes / 2)}–${formatMinutes(centerMinutes + bucketMinutes / 2)}`;
 }
 
 export function CongestionCard({
@@ -382,7 +384,12 @@ export function CongestionCard({
     // 툴팁의 시계가 픽셀마다 흔들리지 않는다. 버킷 중심은 30분 간격이라
     // LAST_WEEK_MATCH_MINUTES(15분) 창 안에 그대로 들어온다. 스냅을 먼저,
     // 영업시간 가두기를 나중에.
-    const snapped = Math.round(minutes / 10) * 10;
+    // 버킷 중심 격자로 맞춘다 (개관 + n·10분 + 5분) — 계열에 값이 있으면 거리가
+    // 늘 0 이라 조회 창(LAST_WEEK_MATCH_MINUTES)이 애매해지지 않고, 툴팁의 시계도
+    // 10분 단위로만 튄다. 스냅을 먼저, 영업시간 가두기를 나중에.
+    const half = BUCKET_MINUTES / 2;
+    const snapped =
+      open + Math.round((minutes - open - half) / BUCKET_MINUTES) * BUCKET_MINUTES + half;
     setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 
@@ -647,12 +654,12 @@ export function CongestionCard({
                   left: `${Math.min(Math.max((xOf(hoverPrimary.minutes, open, close) / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
-                {/* 실측·비교값은 30분 버킷의 평균이라 그 버킷의 구간을 적고,
-                    예측은 짚은 그 시각의 값이라 시각 하나를 적는다. */}
+                {/* 세 계열 모두 시각 하나로 적는다 (MmcaRoomChartCard 와 같은
+                    모양). 10분 버킷은 5분 판독 두 개의 평균이고 그 시각이 곧
+                    버킷의 중심이라, 구간을 적어도 더 말해주는 것이 없다 —
+                    30분 버킷이던 동안에는 구간이 실제로 정보였다. */}
                 <span className="font-mono tabular-nums text-ink-soft">
-                  {hoverPrediction
-                    ? formatMinutes(hoverPrimary.minutes)
-                    : bucketRange(hoverPrimary.minutes, BUCKET_MINUTES)}
+                  {formatMinutes(hoverPrimary.minutes)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
                 {hoverPrefix && <span className="text-ink-soft">{hoverPrefix}</span>}

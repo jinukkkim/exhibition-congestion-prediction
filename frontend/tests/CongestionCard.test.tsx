@@ -394,8 +394,8 @@ describe("CongestionCard", () => {
           congest_level: "보통",
           population_avg: 1500,
         }}
-        // Both readings fall in the same 30-min bucket (10:00–10:30), so
-        // resampling collapses them into a single point.
+        // 10분 버킷 두 개(10:00, 10:15)라 점이 둘 — 라이브 끝점 마커는 점
+        // 개수와 무관하게 마지막 판독 위에 선다.
         daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 900)]}
       />
     );
@@ -487,8 +487,8 @@ describe("CongestionCard", () => {
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
-    // clientX 31 ≈ the 10:00–10:30 bucket's x on this fixture's axis (open
-    // 09:30, close 21:00 on a Wed). 짚은 시각에 판독이 실제로 있는 자리다.
+    // clientX 31 ≈ 10:15 버킷의 x (개관 09:30, 수요일 폐관 21:00 축). 짚은
+    // 시각에 판독이 실제로 있는 자리다.
     fireEvent.mouseMove(hoverTarget, { clientX: 31, clientY: 0 });
 
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
@@ -608,10 +608,10 @@ describe("CongestionCard prediction line", () => {
       />
     );
 
-    // clientX 31 ≈ 10:00–10:30 버킷 — 실측이 있는 자리.
+    // clientX 31 ≈ 10:10–10:20 버킷 — 10:15 판독이 있는 자리.
     hoverAt(container, 31);
     expect(within(screen.getByTestId("sparkline-tooltip")).queryByText(/예측/)).not.toBeInTheDocument();
-    expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("900");
+    expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("1,000");
 
     // clientX 104 ≈ 12:00 — 오늘이 아직 닿지 않은 자리라 점선의 값이 나온다.
     hoverAt(container, 104);
