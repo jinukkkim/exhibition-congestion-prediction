@@ -194,9 +194,16 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
     return reading
 
 
-_SEOUL_BRANCH_NORMAL_CLOSE = time(18, 0)
-_SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
-_LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
+_NORMAL_CLOSE = time(18, 0)
+_LONG_CLOSE = time(21, 0)
+
+# 야간개장 요일. datetime.weekday(): Mon=0 ... 수=2, 토=5. 과천관은 야간개장이
+# 없어 여기 없다 — 공식 관람정보가 "화~일요일 10:00~18:00"이고, 수집한 판독도
+# 과천관 수·토 18:20 이후 620여 건이 예외 없이 여유다(= 빈 건물).
+_LONG_DAYS: dict[str, set[int]] = {
+    "seoul": {2, 5},
+    "deoksugung": {2, 5},
+}
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 # Collection starts 10 minutes after the real 10:00 opening time (still what
@@ -209,9 +216,20 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # only disappears if most rooms are running exhibitions at once.
 _COLLECTION_START = time(10, 10)
 
-# Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
-# is closed on Mondays.
+# 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
+# 문을 여는 것은 서울관뿐이다.
+#
+# 폐관 중에도 API 는 에러가 아니라 정상 응답으로 "여유"를 돌려준다. 그래서 이
+# 게이트는 쿼터 장치가 아니라 데이터 품질 장치다: 없으면 "닫혀서 빈 것"이
+# "열려 있는데 한산함"으로 히스토리에 쌓이고, build_profile 이 (방, 요일, 시각)
+# 평균을 내므로 예측 프로파일을 그대로 끌어내린다. 과천 월요일 895 건이 전부
+# 여유인 것이 그 증거다.
+#
+# ponytail: 요일만 본다. 대체공휴일 월요일에는 실제로 문을 열지만(2026-08-17
+# 과천관에 정상 혼잡 기록이 있다) 그날은 수집하지 않는다. 프론트의
+# mmcaBusinessHours 도 같은 한계를 안고 있어, 공휴일 달력이 들어오면 함께 고친다.
 _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
+    "gwacheon": {0},  # 월요일 휴무
     "deoksugung": {0},  # 월요일 휴무
 }
 
@@ -275,7 +293,7 @@ def _mmca_room_due_for_recheck(round_time: datetime) -> bool:
 def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
         return False
-    close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
+    close = _LONG_CLOSE if now.weekday() in _LONG_DAYS.get(venue, set()) else _NORMAL_CLOSE
     # Truncate to the minute before comparing. The scheduler only ever fires
     # exactly on the grid but real execution lands a little after that
     # instant, and closing time's inclusive upper bound is exact-second — a

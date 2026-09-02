@@ -212,15 +212,30 @@ def test_is_venue_open_tolerates_sub_minute_jitter_at_closing():
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 1, 0)) is False
 
 
-def test_is_venue_open_gwacheon_tolerates_sub_minute_jitter_at_long_day_closing():
+def test_is_venue_open_gwacheon_tolerates_sub_minute_jitter_at_closing():
     from app.collector import _is_venue_open
 
-    # The bug was originally found on Gwacheon specifically. The check is
-    # shared across venues, but this pins the venue where it actually
-    # mattered, on its long day (Wed/Sat, 21:00 close).
+    # The jitter bug was originally found on Gwacheon. The check is shared
+    # across venues, but this pins the venue where it actually mattered — on a
+    # Wednesday, which is a 21:00 day everywhere except here.
     # 2026-07-29 is a Wednesday.
-    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 0, 47)) is True
-    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 1, 0)) is False
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 0, 47)) is True
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 1, 0)) is False
+
+
+def test_is_venue_open_gwacheon_has_no_night_opening_and_shuts_on_monday():
+    """과천관은 화~일 10:00~18:00 이다. 서울관 시간표를 그대로 쓰던 동안 휴관일
+    월요일 종일과 수·토 18~21시를 폴링했고, 폐관 중에도 API 가 정상 응답으로
+    "여유" 를 주므로 그 가짜 여유가 예측 프로파일에 그대로 쌓였다."""
+    from app.collector import _is_venue_open
+
+    # 2026-07-29 is a Wednesday — 21:00 for Seoul, 18:00 here.
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 0)) is True
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 19, 0)) is False
+    assert _is_venue_open("seoul", datetime(2026, 7, 29, 19, 0)) is True
+    # 2026-07-27 is a Monday, 2026-07-28 a Tuesday.
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 27, 14, 0)) is False
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 28, 14, 0)) is True
 
 
 def test_is_venue_open_long_day():
@@ -365,8 +380,8 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
 
     def fake_fetch(client, space_code, api_key):
         drifted_time = {
-            "MMCA-SPACE-2001": datetime(2026, 7, 27, 14, 39, 59),
-            "MMCA-SPACE-2002": datetime(2026, 7, 27, 14, 40, 3),
+            "MMCA-SPACE-2001": datetime(2026, 7, 28, 14, 39, 59),
+            "MMCA-SPACE-2002": datetime(2026, 7, 28, 14, 40, 3),
         }[space_code]
         return MmcaCongestionReading(
             observed_at=drifted_time,
@@ -383,7 +398,7 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
         {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2002"]},
     )
 
-    round_time = datetime(2026, 7, 27, 14, 40, 0)
+    round_time = datetime(2026, 7, 28, 14, 40, 0)
     result = collector_module.collect_mmca_once(session_factory=session_factory, now=round_time)
 
     assert len(result) == 2
@@ -403,7 +418,7 @@ def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, 
 
     def fake_fetch(client, space_code, api_key):
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 11, 31, 12),
+            observed_at=datetime(2026, 7, 28, 11, 31, 12),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="국립현대미술관 과천관",
@@ -418,14 +433,14 @@ def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, 
     )
 
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 31, 4)
+        session_factory=session_factory, now=datetime(2026, 7, 28, 11, 31, 4)
     )
 
     assert len(result) == 1
-    assert result[0].observed_at == datetime(2026, 7, 27, 11, 30)
+    assert result[0].observed_at == datetime(2026, 7, 28, 11, 30)
     with session_factory() as session:
         stored = session.query(RawMmcaCongestion).one()
-    assert stored.observed_at == datetime(2026, 7, 27, 11, 30)
+    assert stored.observed_at == datetime(2026, 7, 28, 11, 30)
 
 
 def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_factory):
@@ -436,7 +451,7 @@ def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_f
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 14, 0),
+            observed_at=datetime(2026, 7, 28, 14, 0),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -454,7 +469,7 @@ def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_f
     )
 
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+        session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
 
     assert len(result) == 2
@@ -747,7 +762,7 @@ def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_fa
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 14, 0),
+            observed_at=datetime(2026, 7, 28, 14, 0),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -765,7 +780,7 @@ def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_fa
     # day regardless of business hours — MMCA-SPACE-2008 (children's
     # museum) must never be fetched even though Gwacheon itself is open.
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+        session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
 
     assert len(result) == 1
