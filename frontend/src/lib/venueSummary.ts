@@ -65,9 +65,18 @@ export function mmcaSummary(
     (room): room is MmcaRoomStatus & { congestion_nm: string; observed_at: string } =>
       room.congestion_nm !== null && room.observed_at !== null
   );
-  // /mmca/rooms는 당일 판독만 돌려주고 수집기의 첫 폴은 개관 10분 뒤에 돈다
-  // (backend/app/collector.py의 _COLLECTION_START) — 그 창은 오류가 아니다.
-  if (read.length === 0) return { kind: "inactive", label: "집계 중" };
+  if (read.length === 0) {
+    // 당일 폴이 한 번이라도 돌았는지로 "아직"과 "없음"을 가른다. /mmca/rooms는
+    // 당일 판독만 돌려주므로 개관 직후에는 방이 비어 있는 것이 정상이고
+    // (backend/app/collector.py의 _COLLECTION_START), 그 창은 오류가 아니다.
+    // 반면 폴이 돈 뒤에도 값이 없는 것은 집계가 늦은 것이 아니라 줄 값이 없는
+    // 것이다 — MMCA API 는 진행 중인 전시가 없거나 혼잡도를 제공하지 않는
+    // 전시실에 resultCode 0002 로 빈 응답을 준다. 덕수궁관은 전시실이
+    // MMCA-SPACE-4001 하나뿐이고 그 방이 계속 이 상태라, 가르지 않으면 영업
+    // 시간 내내 곧 값이 올 것처럼 "집계 중"이 떠 있는다.
+    const polled = rooms.some((room) => room.observed_at !== null);
+    return { kind: "inactive", label: polled ? "정보 없음" : "집계 중" };
+  }
 
   const tally = new Map<string, number>();
   for (const room of read) {

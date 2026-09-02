@@ -204,4 +204,23 @@ describe("mmcaSummary", () => {
       label: "집계 중",
     });
   });
+
+  it("says no data, not tallying, once the day's poll came back empty", () => {
+    // MMCA API 는 진행 중인 전시가 없거나 혼잡도를 제공하지 않는 전시실에 값
+    // 대신 빈 응답을 준다 — observed_at 은 찍히고 congestion_nm 만 없다.
+    // 덕수궁관은 전시실이 MMCA-SPACE-4001 하나뿐이고 그 방이 계속 이 상태라,
+    // "집계 중"으로 적으면 영업시간 내내 곧 값이 올 것처럼 읽힌다.
+    const rooms = [
+      makeRoom({
+        space_code: "MMCA-SPACE-4001",
+        congestion_nm: null,
+        observed_at: "2026-08-20T14:20:00",
+      }),
+    ];
+
+    expect(mmcaSummary("deoksugung", rooms, MMCA_MIDDAY)).toEqual({
+      kind: "inactive",
+      label: "정보 없음",
+    });
+  });
 });
