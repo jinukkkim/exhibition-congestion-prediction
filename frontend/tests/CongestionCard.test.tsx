@@ -679,6 +679,17 @@ describe("CongestionCard chart geometry", () => {
     );
   }
 
+  // 축 크기는 viewBox 에서 읽는다 — 상수를 테스트에 또 적으면 비율을 손볼 때
+  // 두 곳이 갈라진다.
+  function viewBox() {
+    const [, , width, height] = screen
+      .getByTestId("history-sparkline")
+      .getAttribute("viewBox")!
+      .split(" ")
+      .map(Number);
+    return { width, height };
+  }
+
   it("starts every series at the opening tick and stops at the closing tick", () => {
     // 30분 버킷의 중심은 반 버킷만큼 안쪽이라 그것만 이으면 09:30 쪽이 비고,
     // 폐관에 걸친 마지막 버킷의 중심(17:45)은 축을 넘어가 곡선이 축 밖으로
@@ -688,7 +699,7 @@ describe("CongestionCard chart geometry", () => {
     for (const id of ["sparkline-line", "sparkline-last-week-line", "sparkline-prediction-line"]) {
       const { xs } = coords(screen.getByTestId(id).getAttribute("d")!);
       expect(Math.min(...xs), id).toBe(0);
-      expect(Math.max(...xs), id).toBeCloseTo(960, 5);
+      expect(Math.max(...xs), id).toBeCloseTo(viewBox().width, 5);
     }
   });
 
@@ -700,7 +711,7 @@ describe("CongestionCard chart geometry", () => {
     for (const id of ["sparkline-line", "sparkline-last-week-line", "sparkline-prediction-line"]) {
       const { ys } = coords(screen.getByTestId(id).getAttribute("d")!);
       expect(Math.min(...ys), id).toBeGreaterThanOrEqual(0);
-      expect(Math.max(...ys), id).toBeLessThanOrEqual(200);
+      expect(Math.max(...ys), id).toBeLessThanOrEqual(viewBox().height);
     }
   });
 

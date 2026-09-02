@@ -53,7 +53,10 @@ export function NationalMuseumPage() {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <main className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10 lg:px-16">
+      {/* 카드가 하나뿐인 관이라 1400 을 다 쓰면 차트가 지나치게 가로로 늘어난다
+          — 좌우 패딩(lg:px-16)을 뺀 내용 폭이 1152 가 되는 값. MmcaPage 는 카드가
+          여러 장이라 여전히 1400 이다. */}
+      <main className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:px-16">
         <header className="mb-12 border-b border-hairline/70 pb-8">
           <Link
             to="/"
