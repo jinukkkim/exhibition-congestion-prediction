@@ -68,23 +68,28 @@ def test_job_error_listener_does_not_leak_exception_message(caplog):
     assert "SECRET123" not in caplog.text
 
 
-def test_collect_mmca_job_is_cron_aligned_to_ten_minutes():
+def test_collect_mmca_job_is_cron_aligned_to_the_poll_grid():
     from datetime import datetime
 
+    from app.collector import MMCA_POLL_MINUTES
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
     job = scheduler.get_job("collect_mmca_congestion")
 
+    # The cron spacing must be exactly MMCA_POLL_MINUTES, because
+    # collect_mmca_once floors its stamps to that same number. A cron finer
+    # than the floor makes several rounds share one observed_at, which
+    # /mmca/daily then collapses to a single reading per room.
     fields = {f.name: str(f) for f in job.trigger.fields}
-    assert fields["minute"] == "*/10"
+    assert fields["minute"] == f"*/{MMCA_POLL_MINUTES}"
 
     # Regardless of when the scheduler starts, the next fire must land
-    # exactly on the 10-minute grid — no immediate off-grid poll.
+    # exactly on the grid — no immediate off-grid poll.
     next_fire = job.trigger.get_next_fire_time(
         None, datetime(2026, 7, 26, 15, 37, 0).astimezone()
     )
-    assert next_fire.minute % 10 == 0
+    assert next_fire.minute % MMCA_POLL_MINUTES == 0
     assert next_fire.second == 0
 
 
@@ -107,6 +112,7 @@ def test_collect_congestion_job_is_cron_aligned_to_five_minutes():
 
 
 def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
+    from app.collector import MMCA_POLL_MINUTES
     from app.scheduler import build_scheduler
 
     scheduler = build_scheduler()
@@ -120,13 +126,23 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         # restart, which is exactly what cron-alignment is meant to avoid.
         # Whatever moment the test runs, the computed next_run_time must
         # already land on each job's own grid.
+        #
+        # The sub-second pair is what actually carries that for MMCA: at
+        # MMCA_POLL_MINUTES=1 the modulus is vacuous (every minute is on the
+        # grid), and an override pinned to "now" is what it has to catch —
+        # such an instant keeps the wall clock's seconds and microseconds,
+        # while a cron-computed fire time is zero in both. The modulus stays
+        # so it regains teeth if the constant ever grows again.
         mmca_job = scheduler.get_job("collect_mmca_congestion")
-        assert mmca_job.next_run_time.minute % 10 == 0
-        assert mmca_job.next_run_time.second == 0
+        assert mmca_job.next_run_time.minute % MMCA_POLL_MINUTES == 0
+        assert (mmca_job.next_run_time.second, mmca_job.next_run_time.microsecond) == (0, 0)
 
         congestion_job = scheduler.get_job("collect_congestion")
         assert congestion_job.next_run_time.minute % 5 == 0
-        assert congestion_job.next_run_time.second == 0
+        assert (congestion_job.next_run_time.second, congestion_job.next_run_time.microsecond) == (
+            0,
+            0,
+        )
     finally:
         scheduler.shutdown(wait=False)
 
@@ -137,8 +153,10 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
     Asserted through the trigger's own resolution rather than the configured
     timezone, so it still holds if the jobs ever move to per-trigger zones.
 
-    00:02 rather than midnight: the collectors run on */5 and */10, so every
+    00:02 rather than midnight: the Seoul collector runs on */5, so every
     multiple-of-five minute fires a full-table-scan batch alongside an insert.
+    MMCA now fires every minute and cannot be avoided at all, but at midnight
+    it returns from _is_venue_open without a request or a row.
     """
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -160,7 +178,8 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
 
 
 def test_daily_batch_does_not_collide_with_the_collector_grid():
-    """수집기가 */5, MMCA 가 */10 이라 5의 배수 분은 동시 발사된다."""
+    """서울시 수집기가 */5 라 5의 배수 분은 동시 발사된다. MMCA 는 매분 발사되어
+    피할 수 없지만 자정에는 영업시간 게이트에 걸려 아무것도 하지 않는다."""
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 

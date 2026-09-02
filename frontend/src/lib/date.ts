@@ -26,7 +26,10 @@ export function shiftDate(date: string, days: number): string {
   return formatDate(d);
 }
 
-const WEEKDAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+// Date.getDay() 순서(일=0). 날짜 문자열이 아니라 요일 번호로 이름을 찾는
+// 곳(businessHoursLine)도 있어 배열째 내보낸다 — formatMinutes 와 같은 이유로
+// 사본을 두지 않는다.
+export const WEEKDAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
 export function monthDay(date: string): string {
   const d = new Date(`${date}T00:00:00`);

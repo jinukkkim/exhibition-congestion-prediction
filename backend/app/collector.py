@@ -8,11 +8,10 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.cache import set_latest
-from app.config import MMCA_DISABLED_SPACE_CODES, settings
+from app.config import settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
@@ -79,10 +78,13 @@ def store_forecast_revisions(
 # either side succeeded, so a retry a couple of seconds later recovers the
 # reading instead of leaving a hole in the series.
 #
-# No equivalent retry for collect_mmca_once: losing one room of fifteen is a
-# far smaller hole than losing the only call of a round, and the schedule is
-# sized against a quota ceiling (see _COLLECTION_START) that retries would eat
-# into on exactly the days it's tightest.
+# No equivalent retry for collect_mmca_once: losing one room of seventeen is a
+# far smaller hole than losing the only call of a round, and that room's retry
+# is simply the next round — one minute away on the MMCA_POLL_MINUTES grid,
+# against the ten it used to be. An in-round retry would buy back 58 of those
+# 60 seconds and nothing else, so the finer grid is what removed the case for
+# one. The quota argument that used to sit here is void either way: see
+# MMCA_POLL_MINUTES, where that arithmetic now lives.
 _FETCH_ATTEMPTS = 3
 _FETCH_RETRY_SECONDS = 2
 
@@ -194,88 +196,73 @@ def collect_once(session_factory=SessionLocal) -> CongestionReading:
     return reading
 
 
-_SEOUL_BRANCH_NORMAL_CLOSE = time(18, 0)
-_SEOUL_BRANCH_LONG_CLOSE = time(21, 0)
-_LONG_DAYS = {2, 5}  # datetime.weekday(): Mon=0 ... 수=2, 토=5
+_NORMAL_CLOSE = time(18, 0)
+_LONG_CLOSE = time(21, 0)
+
+# 야간개장 요일. datetime.weekday(): Mon=0 ... 수=2, 토=5. 과천관은 야간개장이
+# 없어 여기 없다 — 공식 관람정보가 "화~일요일 10:00~18:00"이고, 수집한 판독도
+# 과천관 수·토 18:20 이후 620여 건이 예외 없이 여유다(= 빈 건물).
+_LONG_DAYS: dict[str, set[int]] = {
+    "seoul": {2, 5},
+    "deoksugung": {2, 5},
+}
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
-# Collection starts 10 minutes after the real 10:00 opening time (still what
-# the frontend shows as "open") — congestion right at opening is reliably
-# 여유, so skipping that one poll buys back a 10-minute slot/day. That's
-# what keeps the 15-room, 10-minute schedule under the MMCA API's
-# 1,000-call/day cap on extended-hours (수/토) days: 15 * 66 = 990. That's
-# the ceiling, not the norm — the empty-room skip below takes real usage to
-# roughly 400-550 calls/day (measured over 2026-08-09..13), so the headroom
-# only disappears if most rooms are running exhibitions at once.
-_COLLECTION_START = time(10, 10)
+# Collection starts at the opening time the frontend shows, so the day's first
+# sample is the opening minute itself.
+#
+# It was 10:10 to fit the MMCA API's old 1,000-call/day cap: 15 rooms * 66
+# rounds came to 990, and dropping the 10:00 round bought that last slot. The
+# cap is now 100,000/day. Recorded so the saving is not re-derived — opening
+# congestion being reliably 여유 was the stated reason, never the real one.
+_COLLECTION_START = time(10, 0)
 
-# Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
-# is closed on Mondays.
+# MMCA 수집 그리드(분). 스케줄러의 cron 과 위 round_time 의 내림이 **반드시**
+# 같은 값을 써야 해서 상수 하나로 묶여 있다. 어긋나면(예: cron 1분 + 내림 10분)
+# 라운드 10개가 같은 observed_at 으로 찍히고, /mmca/daily 의 분 버킷이 방별
+# dict 라 마지막 것만 남는다 — 수집은 정상, API 응답만 90% 사라지는 유일한
+# 조용한 실패 경로다.
+#
+# 100,000/day 쿼터 대비 비용: 최대일(수/토 — 세 관 모두 개관, 서울·덕수궁이
+# 21:00 까지)에 10분이 995콜(1.0%), 1분이 9,797콜(9.8%). 방 17개지만 과천은
+# 18:00 에 닫아 하루 481라운드, 나머지 9개 방이 661라운드다.
+#
+# 쿼터는 약 6초까지 버티므로(하루 방·초 총량 586,800 / 100,000) 간격을 정하는
+# 값이 아니다. 진짜 상한은 둘 다 실측이 필요한 쪽이다:
+#
+# (a) 라운드 실행 시간. 방 17개를 순차 호출하며 방당 timeout 이 10초라 최악
+#     170초까지 늘어난다. 2026-09-02 실측은 총 0.58초(방당 평균 33ms)로 60초
+#     격자의 1.0% 였다 — 60초를 넘기려면 6개 방 이상이 동시에 timeout 을
+#     맞아야 한다. 넘겨도 예외가 아니라 그 라운드가 스킵된다(APScheduler
+#     max_instances 기본값 1, EVENT_JOB_MAX_INSTANCES 는 EVENT_JOB_ERROR 가
+#     아니라 scheduler.py 의 _log_job_error 도 반응하지 않는다).
+# (b) 상류 갱신 주기. /congestion 응답에 타임스탬프가 없어(mmca_api.py)
+#     페이로드만으로는 받은 값이 새것인지 10분 전 값인지 알 수 없다. 1분 수집
+#     하루치의 전이 시각이 그 답이고, 그것으로 최종 간격을 정한다.
+MMCA_POLL_MINUTES = 1
+
+# 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
+# 문을 여는 것은 서울관뿐이다.
+#
+# 폐관 중에도 API 는 에러가 아니라 정상 응답으로 "여유"를 돌려준다. 그래서 이
+# 게이트는 쿼터 장치가 아니라 데이터 품질 장치다: 없으면 "닫혀서 빈 것"이
+# "열려 있는데 한산함"으로 히스토리에 쌓이고, build_profile 이 (방, 요일, 시각)
+# 평균을 내므로 예측 프로파일을 그대로 끌어내린다. 과천 월요일 895 건이 전부
+# 여유인 것이 그 증거다.
+#
+# ponytail: 요일만 본다. 대체공휴일 월요일에는 실제로 문을 열지만(2026-08-17
+# 과천관에 정상 혼잡 기록이 있다) 그날은 수집하지 않는다. 프론트의
+# mmcaBusinessHours 도 같은 한계를 안고 있어, 공휴일 달력이 들어오면 함께 고친다.
 _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
+    "gwacheon": {0},  # 월요일 휴무
     "deoksugung": {0},  # 월요일 휴무
 }
-
-# A room with no ongoing exhibition rarely opens one mid-day, so once a room
-# reads empty for its whole first hour, fall back to a 2-hour recheck
-# interval instead of the normal 10-minute one for the rest of the day — cheap
-# insurance against the rare same-day opening, at a fraction of the API cost.
-# ponytail: this only exists because 15 rooms * 66 rounds/day sits right up
-# against the MMCA API's 1,000-call/day cap (see MMCA_DISABLED_SPACE_CODES).
-# If that cap goes away, remove this and just poll every room every round.
-_MMCA_EMPTY_CONFIRM_CUTOFF = time(11, 0)
-_MMCA_EMPTY_RECHECK_INTERVAL_HOURS = 2
-
-
-def _mmca_room_confirmed_empty_today(session, space_code: str, round_time: datetime) -> bool:
-    day_start = round_time.replace(hour=0, minute=0, second=0, microsecond=0)
-    cutoff = round_time.replace(
-        hour=_MMCA_EMPTY_CONFIRM_CUTOFF.hour, minute=_MMCA_EMPTY_CONFIRM_CUTOFF.minute
-    )
-    # congestion_nm is only ever null when resultCode is 0002 (no ongoing
-    # exhibition) — see MmcaCongestionReading.congestion_nm / mmca_api.py. A
-    # real reading at any point today — even one caught by an earlier 2-hour
-    # recheck — means the room has reopened, so resume normal 10-minute
-    # polling for the rest of the day instead of staying stuck on the
-    # empty-room cadence.
-    reopened_today = session.scalars(
-        select(RawMmcaCongestion.id).where(
-            RawMmcaCongestion.space_code == space_code,
-            RawMmcaCongestion.observed_at >= day_start,
-            RawMmcaCongestion.observed_at < round_time,
-            RawMmcaCongestion.congestion_nm.isnot(None),
-        )
-    ).first()
-    if reopened_today is not None:
-        return False
-
-    # No real reading yet today (checked above over the whole day so far,
-    # which covers this range too) — confirmed empty once the first hour has
-    # actually been polled at least once.
-    first_hour_reading = session.scalars(
-        select(RawMmcaCongestion.id).where(
-            RawMmcaCongestion.space_code == space_code,
-            RawMmcaCongestion.observed_at >= day_start,
-            RawMmcaCongestion.observed_at < cutoff,
-        )
-    ).first()
-    return first_hour_reading is not None
-
-
-def _mmca_room_due_for_recheck(round_time: datetime) -> bool:
-    # Only compares hours, so this assumes _MMCA_EMPTY_CONFIRM_CUTOFF falls on
-    # an exact hour (currently 11:00) — if the cutoff ever moves off :00, this
-    # needs a minute-aware interval, not just an hour difference.
-    hours_since_cutoff = round_time.hour - _MMCA_EMPTY_CONFIRM_CUTOFF.hour
-    return (
-        round_time.minute == _MMCA_EMPTY_CONFIRM_CUTOFF.minute
-        and hours_since_cutoff % _MMCA_EMPTY_RECHECK_INTERVAL_HOURS == 0
-    )
 
 
 def _is_venue_open(venue: str, now: datetime) -> bool:
     if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
         return False
-    close = _SEOUL_BRANCH_LONG_CLOSE if now.weekday() in _LONG_DAYS else _SEOUL_BRANCH_NORMAL_CLOSE
+    close = _LONG_CLOSE if now.weekday() in _LONG_DAYS.get(venue, set()) else _NORMAL_CLOSE
     # Truncate to the minute before comparing. The scheduler only ever fires
     # exactly on the grid but real execution lands a little after that
     # instant, and closing time's inclusive upper bound is exact-second — a
@@ -289,32 +276,23 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
     now = now or datetime.now(_SEOUL_TZ).replace(tzinfo=None)
-    # The scheduler fires this on a 10-minute cron grid, but scheduler
-    # jitter or a misfire-grace-time catch-up run can land a few minutes off
-    # that mark. Every reading in this round is stamped with the grid mark
-    # itself (not raw `now`), so collection rounds always land on a fixed,
-    # predictable 10-minute grid regardless of when the round actually ran.
-    round_time = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
+    # The scheduler fires this on the MMCA_POLL_MINUTES cron grid, but
+    # scheduler jitter or a misfire-grace-time catch-up run can land the
+    # actual invocation off that mark. Every reading in this round is stamped
+    # with the grid mark itself (not raw `now`), so collection rounds always
+    # land on a fixed, predictable grid regardless of when the round ran.
+    round_time = now.replace(
+        minute=(now.minute // MMCA_POLL_MINUTES) * MMCA_POLL_MINUTES, second=0, microsecond=0
+    )
 
     space_codes = [
         space_code
         for venue, codes in settings.mmca_venue_space_codes.items()
         if _is_venue_open(venue, now)
         for space_code in codes
-        if space_code not in MMCA_DISABLED_SPACE_CODES
     ]
     if not space_codes:
         return []
-
-    if round_time.time() >= _MMCA_EMPTY_CONFIRM_CUTOFF and not _mmca_room_due_for_recheck(round_time):
-        with session_factory() as session:
-            space_codes = [
-                code
-                for code in space_codes
-                if not _mmca_room_confirmed_empty_today(session, code, round_time)
-            ]
-        if not space_codes:
-            return []
 
     readings: list[MmcaCongestionReading] = []
     with httpx.Client() as client:
@@ -322,9 +300,12 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
             try:
                 reading = fetch_mmca_congestion(client, space_code, settings.mmca_api_key)
             except _FETCH_FAILURES as exc:
-                # data.go.kr can return a non-JSON (e.g. XML error) body with a
-                # 200 status on key/quota errors — response.json() then raises
-                # JSONDecodeError, not HTTPError. Isolate it per-room the same way.
+                # data.go.kr can return a non-JSON (e.g. XML error) body with
+                # a 200 status — response.json() then raises JSONDecodeError,
+                # not HTTPError. Isolate it per-room the same way. (Key errors
+                # are not that case on this endpoint: measured 2026-09-02 they
+                # are 4xx, so they arrive here as HTTPStatusError. Same handler
+                # either way — see mmca_api's _EXPECTED_RESULT_CODES.)
                 logger.warning("MMCA fetch failed for %s: %r", space_code, exc)
                 continue
             # fetch_mmca_congestion stamps its own wall-clock time per HTTP

@@ -28,6 +28,7 @@ describe("MmcaPage", () => {
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -66,12 +67,13 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
-    // 2026-07-28 은 화요일 → 18:00 폐관. 줄이 스스로 어느 날인지 말한다.
-    expect(screen.getAllByText("7/28(화) 영업시간 10:00–18:00")).toHaveLength(1);
+    // 요일마다 다른 폐관 시각은 한 줄 안의 괄호가 말한다.
+    expect(screen.getAllByText("10:00~18:00 (수·토 21:00까지)")).toHaveLength(1);
   });
 
-  it("moves the header's business hours to the selected date", async () => {
-    // 수·토는 21:00 폐관 — 탭을 옮기면 헤더의 날짜와 시간이 함께 따라가야 한다.
+  it("keeps the header's business hours put when the selected date changes", async () => {
+    // 한 주를 한 줄로 접은 값이라 탭과 함께 바뀌지 않는다 — 수·토 21:00 은
+    // 괄호 안에 늘 적혀 있으므로 탭을 옮겨 확인할 일이 없다.
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
     render(
@@ -80,12 +82,14 @@ describe("MmcaPage", () => {
       </MemoryRouter>
     );
 
+    const line = "10:00~18:00 (수·토 21:00까지)";
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
     fireEvent.click(screen.getByRole("tab", { name: "수 7/29" }));
 
     await waitFor(() =>
-      expect(screen.getByText("7/29(수) 영업시간 10:00–21:00")).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "수 7/29" })).toHaveAttribute("aria-selected", "true")
     );
+    expect(screen.getAllByText(line)).toHaveLength(1);
   });
 
   it("shows an error message when the fetch fails before anything loads", async () => {
@@ -246,9 +250,8 @@ describe("MmcaPage", () => {
     // previous Monday was closed too) → small card, never mind the stale
     // congestion_nm the rooms endpoint still returns. The label says why.
     await waitFor(() => expect(screen.getByText("휴관일")).toBeInTheDocument());
-    // 휴관 안내도 관 단위 정보다 — 헤더가 시간을 주장하지 않고 휴관을 알린다.
-    expect(screen.getByText("7/27(월) 휴관일입니다")).toBeInTheDocument();
-    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
+    // 요일 휴관도 관 단위 정보다 — 헤더의 영업시간 줄이 괄호로 알린다.
+    expect(screen.getByText("10:00~18:00 (수·토 21:00까지, 월요일 휴무)")).toBeInTheDocument();
     expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
     unmount();
@@ -260,33 +263,7 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
-    expect(screen.queryByText(/휴관일입니다/)).not.toBeInTheDocument();
-  });
-
-  it("groups permanently-disabled rooms into small inactive cards below the active grid", async () => {
-    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
-      makeRoom({ space_code: "MMCA-SPACE-2001" }),
-      makeRoom({
-        space_code: "MMCA-SPACE-2008",
-        space_nm: "1층 어린이미술관",
-        congestion_nm: null,
-        observed_at: null,
-      }),
-    ]);
-
-    const { container } = render(
-      <MemoryRouter>
-        <MmcaPage venue="gwacheon" />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(1));
-    expect(screen.getByText("서비스 예정")).toBeInTheDocument();
-    expect(screen.getByText("1층 어린이미술관")).toBeInTheDocument();
-
-    const sections = container.querySelectorAll("section");
-    const inactiveSection = Array.from(sections).find((s) => s.textContent?.includes("서비스 예정"));
-    expect(inactiveSection?.className).toMatch(/lg:grid-cols-6/);
+    expect(screen.queryByText(/휴무/)).not.toBeInTheDocument();
   });
 
   it("groups open rooms with no data collected today into small inactive cards", async () => {
@@ -353,7 +330,9 @@ describe("MmcaPage", () => {
   });
 
   it("follows the before-opening rule until the collector's first poll lands", async () => {
-    vi.setSystemTime(new Date("2026-07-28T10:05:00")); // Tuesday, open (10:00) but before the 10:10 first poll
+    // Tuesday, the opening minute itself — the collector's first poll runs now
+    // and takes a few seconds, so nothing today has landed yet.
+    vi.setSystemTime(new Date("2026-07-28T10:00:00"));
     vi.spyOn(api, "fetchMmcaDaily").mockImplementation(async (_venue, date) =>
       date === "2026-07-21" // last Tuesday
         ? [
@@ -551,6 +530,7 @@ describe("MmcaPage date tabs", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // 화요일, 10:00-18:00 안
     vi.spyOn(api, "fetchMmcaPrediction").mockResolvedValue([]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -682,5 +662,133 @@ describe("MmcaPage date tabs", () => {
     fireEvent.click(screen.getByRole("tab", { name: "토 8/1" }));
 
     await waitFor(() => expect(screen.queryByText("실시간")).not.toBeInTheDocument());
+  });
+
+  it("lists the venue's running exhibitions once in the header", async () => {
+    // 출처 API 가 전시실을 안 내려주므로 전시명은 방 카드가 아니라 헤더에
+    // 관 단위로 한 번만 나온다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      { title: "서도호", start_date: "2026-08-27", end_date: "2027-02-09", space_codes: [] },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("서도호")).toBeInTheDocument());
+    expect(screen.getAllByText("서도호")).toHaveLength(1);
+    expect(screen.getByText("2026.08.27 – 2027.02.09")).toBeInTheDocument();
+  });
+
+  it("hides the exhibition section when the fetch fails", async () => {
+    // 혼잡도는 전시 목록 없이도 온전히 읽혀야 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockRejectedValue(new Error("network error"));
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
+    expect(screen.queryByText("현재 전시")).not.toBeInTheDocument();
+  });
+
+  it("labels each room card with the exhibition running in it", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom(),
+      makeRoom({ space_code: "MMCA-SPACE-1006", space_nm: "6전시실", congestion_nm: "보통" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "올해의 작가상 2026",
+        start_date: "2026-07-24",
+        end_date: "2026-12-06",
+        space_codes: ["MMCA-SPACE-1001"],
+      },
+      {
+        title: "이것은 개념미술이 (아니)다",
+        start_date: "2026-06-19",
+        end_date: "2026-10-11",
+        space_codes: ["MMCA-SPACE-1006", "MMCA-SPACE-1007"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    // 헤더 목록에 한 번, 그 방 카드에 한 번.
+    await waitFor(() => expect(screen.getAllByText("올해의 작가상 2026")).toHaveLength(2));
+    expect(screen.getAllByText("이것은 개념미술이 (아니)다")).toHaveLength(2);
+    // 1007 은 이 관에 카드가 없으므로 헤더에만 남는다.
+    expect(screen.queryByText("7전시실")).not.toBeInTheDocument();
+  });
+
+  it("leaves a room card unlabelled when no exhibition maps to it", async () => {
+    // 서울박스·교육동처럼 전시실이 아닌 공간의 전시는 space_codes 가 비어
+    // 있어 헤더 목록에만 실린다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "MMCA×LG OLED 시리즈 2026",
+        start_date: "2026-07-31",
+        end_date: "2026-11-29",
+        space_codes: [],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByText("MMCA×LG OLED 시리즈 2026")).toHaveLength(1)
+    );
+  });
+
+  it("joins both exhibitions when two share a room", async () => {
+    // 드물지만 있다 — 1년짜리 프로그램이 기획전과 같은 방을 쓰거나, 전시
+    // 교체기에 며칠 겹친다. 하나만 남기면 그동안 카드가 거짓말을 한다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-1005", space_nm: "5전시실" }),
+    ]);
+    vi.spyOn(api, "fetchMmcaExhibitions").mockResolvedValue([
+      {
+        title: "현대차 시리즈 2021",
+        start_date: "2021-09-03",
+        end_date: "2022-02-20",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+      {
+        title: "다원예술 2021: 멀티버스",
+        start_date: "2021-02-12",
+        end_date: "2021-12-05",
+        space_codes: ["MMCA-SPACE-1005"],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("현대차 시리즈 2021 · 다원예술 2021: 멀티버스")
+      ).toBeInTheDocument()
+    );
   });
 });

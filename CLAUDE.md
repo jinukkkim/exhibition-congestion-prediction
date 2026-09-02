@@ -21,6 +21,14 @@ Never commit directly on `main` or `develop`. Always create a new branch off
 or small changes. `develop` is protected against force-push, so a mistaken
 direct commit can only be undone with a revert PR, not erased.
 
+The release PR is the one exception: it promotes `develop` itself into `main`,
+so its head *is* `develop` — no new branch, and no commit is written for it.
+`main` receives changes no other way, and merging it deploys (`deploy.yml`
+triggers on push to `main`), so it is opened only when asked. Its title takes
+the `release:` prefix, which is a PR-title prefix and not a commit type — that
+is why it is absent from the type list below; no commit here ever carries it.
+Note that while it is open, anything merged into `develop` joins its diff.
+
 Never force-push or amend a commit already pushed to an open PR either — push
 a new commit instead. Reviewers lose their place and inline comments detach
 from the code they cite.

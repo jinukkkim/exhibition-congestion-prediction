@@ -94,28 +94,16 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await page.route("**/congestion/history*", (route) => route.fulfill({ json: [] }));
   await page.route("**/congestion/daily*", (route) => route.fulfill({ json: [] }));
   await page.route("**/congestion/stream", (route) => route.abort());
-  // 덕수궁관은 전시실 하나가 수집 대상이 아니므로 그 관만 응답이 다르다. 모든
-  // 관에 활성 방을 주면 실제로는 올 수 없는 상태(서비스 예정인 관이 혼잡도를
-  // 보고하는 상태)를 만들게 된다.
   await page.route("**/mmca/rooms*", (route) =>
     route.fulfill({
-      json: route.request().url().includes("deoksugung")
-        ? [
-            {
-              space_code: "MMCA-SPACE-4001",
-              space_nm: "덕수궁관",
-              congestion_nm: null,
-              observed_at: null,
-            },
-          ]
-        : [
-            {
-              space_code: "MMCA-SPACE-1001",
-              space_nm: "1전시실",
-              congestion_nm: "여유",
-              observed_at: "2026-07-24T10:00:00",
-            },
-          ],
+      json: [
+        {
+          space_code: "MMCA-SPACE-1001",
+          space_nm: "1전시실",
+          congestion_nm: "여유",
+          observed_at: "2026-07-24T10:00:00",
+        },
+      ],
     })
   );
   await page.route("**/mmca/daily*", (route) => route.fulfill({ json: [] }));
@@ -124,9 +112,7 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await expect(page.getByRole("link", { name: "국립중앙박물관" })).toBeVisible();
   await expect(page.getByRole("link", { name: "국립현대미술관 서울관" })).toBeVisible();
   await expect(page.getByRole("link", { name: "국립현대미술관 과천관" })).toBeVisible();
-  // 덕수궁관은 갈 곳이 없어 링크가 아니다 — 카드는 이름과 이유만 보여준다.
-  await expect(page.getByRole("link", { name: "국립현대미술관 덕수궁관" })).toHaveCount(0);
-  await expect(page.getByText("국립현대미술관 덕수궁관")).toBeVisible();
+  await expect(page.getByRole("link", { name: "국립현대미술관 덕수궁관" })).toBeVisible();
 
   await page.getByRole("link", { name: "국립현대미술관 서울관" }).click();
   await expect(page).toHaveURL(/\/venues\/mmca-seoul$/);
@@ -145,10 +131,12 @@ test("navigates from the home picker to each venue page", async ({ page }) => {
   await page.getByRole("link", { name: "← 전체 보기" }).click();
   await expect(page).toHaveURL(/\/$/);
 
-  // 북마크로 남아 있을 수 있는 덕수궁관 주소는 홈으로 돌려보낸다.
-  await page.goto("/venues/mmca-deoksugung");
+  await page.getByRole("link", { name: "국립현대미술관 덕수궁관" }).click();
+  await expect(page).toHaveURL(/\/venues\/mmca-deoksugung$/);
+  await expect(page.getByText("1전시실")).toBeVisible();
+
+  await page.getByRole("link", { name: "← 전체 보기" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText("서비스 예정")).toBeVisible();
 
   await page.getByRole("link", { name: "국립중앙박물관" }).click();
   await expect(page).toHaveURL(/\/venues\/national-museum$/);

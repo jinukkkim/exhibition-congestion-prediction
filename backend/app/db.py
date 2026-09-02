@@ -10,11 +10,15 @@ class Base(DeclarativeBase):
 
 # SQLite's default busy timeout is 5s, and deploy/backup_db.sh holds a read lock
 # on the file for the length of its snapshot — measured at 7.24s against 218MB
-# on production. The backup runs at 00:33 KST while the collectors sit on */5
-# and */10 grids, so the nearest tick is 113s away and the two do not meet
-# today; but that margin shrinks as the DB grows, and the cost of losing the
-# race is a collection cycle that can never be re-collected. 30s turns a
-# collision into a wait instead of "database is locked".
+# on production. The backup runs at 00:33 KST and the collector that writes at
+# that hour is Seoul's, on */5: the lock clears ~113s before its 00:35 tick, so
+# the two do not meet today. MMCA is on a 1-minute grid now and so shares every
+# minute the backup could run in, but it writes nothing at midnight — closed
+# venues return from _is_venue_open before any request or session.
+#
+# That 113s margin shrinks as the DB grows, and the cost of losing the race is
+# a collection cycle that can never be re-collected. 30s turns a collision into
+# a wait instead of "database is locked".
 #
 # Guarded on the driver: `timeout` is a sqlite3 connect argument, and
 # database_url is documented as accepting Postgres even though it has never

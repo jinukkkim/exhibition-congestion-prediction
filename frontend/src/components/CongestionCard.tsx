@@ -189,7 +189,7 @@ export function CongestionCard({
     return (
       <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
         {outsideHours ? (
-          <span className="text-lg font-semibold text-ink-soft">영업 시간이 아닙니다</span>
+          <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
         ) : error ? (
           <>
             <span>불러오지 못했습니다.</span>

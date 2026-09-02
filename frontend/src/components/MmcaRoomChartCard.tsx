@@ -154,6 +154,7 @@ function predictionPoints(prediction: MmcaRoomPrediction | null, open: number, c
 
 export function MmcaRoomChartCard({
   room,
+  exhibitionTitle = null,
   daily,
   lastWeekDaily = null,
   prediction = null,
@@ -165,6 +166,9 @@ export function MmcaRoomChartCard({
   isOpenToday,
 }: {
   room: MmcaRoomStatus;
+  // 이 방에서 진행중인 전시. 전시실 표기가 없는 전시만 있는 관이거나 목록을
+  // 못 받았으면 null 이고, 그때는 줄 자체가 빠진다.
+  exhibitionTitle?: string | null;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
   // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다.
@@ -312,8 +316,17 @@ export function MmcaRoomChartCard({
       />
 
       <div className="relative">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">{title}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
+              {title}
+            </p>
+            {exhibitionTitle && (
+              <p className="mt-1 truncate text-sm text-ink" title={exhibitionTitle}>
+                {exhibitionTitle}
+              </p>
+            )}
+          </div>
           {isTodayView && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-ink-soft">
               <span

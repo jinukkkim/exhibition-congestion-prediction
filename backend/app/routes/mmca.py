@@ -2,17 +2,22 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
 
 from app.cache import (
     MMCA_PREDICTION_TTL_FUTURE_SECONDS,
     MMCA_PREDICTION_TTL_TODAY_SECONDS,
+    get_mmca_exhibitions,
     get_mmca_prediction,
+    revive,
+    set_mmca_exhibitions,
     set_mmca_prediction,
 )
-from app.config import MMCA_DISABLED_SPACE_CODES, MMCA_SPACE_NAMES, settings
+from app.config import MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
+from app.mmca_exhibitions import current_exhibitions, fetch_exhibitions
 from app.models import RawMmcaCongestion
 from app.prediction.mmca import (
     CONGESTION_RANKS,
@@ -27,6 +32,7 @@ from app.prediction.mmca import (
 from app.schemas import (
     MmcaDailyLogPoint,
     MmcaDailyRoom,
+    MmcaExhibition,
     MmcaPredictionPoint,
     MmcaRoomPrediction,
     MmcaRoomStatus,
@@ -56,28 +62,7 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
             .all()
         }
 
-        # Disabled rooms must always render their "서비스 예정" placeholder,
-        # regardless of whether they happen to have historical rows from
-        # before they were disabled — don't let that appear/disappear based
-        # on data retention.
-        codes_to_return = codes_with_history | (set(codes) & MMCA_DISABLED_SPACE_CODES)
-
         if not codes_with_history:
-            if all(code in MMCA_DISABLED_SPACE_CODES for code in codes):
-                # Every room this venue has is permanently disabled (e.g.
-                # Deoksugung's only code, MMCA-SPACE-4001) — collection will
-                # never backfill history for it, so a fresh/empty DB must not
-                # 503 forever. Placeholder rows let the frontend's "서비스 예정"
-                # UI render instead of falling through to a generic error page.
-                return [
-                    MmcaRoomStatus(
-                        space_code=code,
-                        space_nm=MMCA_SPACE_NAMES.get(code),
-                        congestion_nm=None,
-                        observed_at=None,
-                    )
-                    for code in codes
-                ]
             raise HTTPException(status_code=503, detail="no MMCA congestion data yet")
 
         # A room can have history from earlier days but nothing yet today
@@ -108,7 +93,7 @@ def mmca_rooms(venue: str) -> list[MmcaRoomStatus]:
             congestion_nm=rows_by_code[code].congestion_nm if code in rows_by_code else None,
             observed_at=rows_by_code[code].observed_at.isoformat() if code in rows_by_code else None,
         )
-        for code in sorted(codes_to_return)
+        for code in sorted(codes_with_history)
     ]
 
 
@@ -205,9 +190,9 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
     if target < now.date():
         return []
 
-    cached = get_mmca_prediction(venue, target.isoformat())
+    cached = revive(get_mmca_prediction(venue, target.isoformat()), MmcaRoomPrediction)
     if cached is not None:
-        return [MmcaRoomPrediction(**room) for room in cached]
+        return cached
 
     is_today = target == now.date()
     window_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
@@ -320,3 +305,23 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
         MMCA_PREDICTION_TTL_TODAY_SECONDS if is_today else MMCA_PREDICTION_TTL_FUTURE_SECONDS,
     )
     return result
+
+
+@router.get("/mmca/exhibitions", response_model=list[MmcaExhibition])
+def mmca_exhibitions(venue: str) -> list[MmcaExhibition]:
+    if venue not in settings.mmca_venue_space_codes:
+        raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
+
+    cached = revive(get_mmca_exhibitions(venue), MmcaExhibition)
+    if cached is not None:
+        return cached
+
+    # 한 번 부르면 세 관의 목록이 한꺼번에 나온다. 관마다 따로 캐시에 넣어야
+    # 다른 관 페이지가 같은 호출을 반복하지 않는다 — 전시가 없는 관도 빈
+    # 목록으로 넣는다.
+    with httpx.Client() as client:
+        by_venue = current_exhibitions(fetch_exhibitions(client))
+
+    for venue_id, exhibitions in by_venue.items():
+        set_mmca_exhibitions(venue_id, [vars(e) for e in exhibitions])
+    return [MmcaExhibition(**vars(e)) for e in by_venue.get(venue, [])]

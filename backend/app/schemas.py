@@ -44,9 +44,8 @@ class MmcaRoomStatus(BaseModel):
     space_code: str
     space_nm: str | None
     congestion_nm: str | None
-    # None when there's no reading yet today — either a permanently-disabled
-    # room with no collection history at all (see MMCA_DISABLED_SPACE_CODES),
-    # or a normal room that just hasn't had its first poll of the day yet.
+    # None when the room has no reading yet today — its first poll of the day
+    # hasn't landed.
     observed_at: str | None
 
 
@@ -78,3 +77,13 @@ class MmcaRoomPrediction(BaseModel):
     # 14일 창 안에서 판독이 있는 날의 수. 방 단위이며 셀 단위가 아니다.
     sample_days: int
     points: list[MmcaPredictionPoint]
+
+
+class MmcaExhibition(BaseModel):
+    title: str
+    # YYYY-MM-DD. 프론트는 점 표기로만 바꿔 그리므로 date 로 올릴 이유가 없다.
+    start_date: str
+    end_date: str
+    # 이 전시가 쓰는 전시실. 전시실이 없는 공간(서울박스, 교육동 등)에서만
+    # 열리는 전시는 비어 있고, 헤더 목록에만 실린다.
+    space_codes: list[str]

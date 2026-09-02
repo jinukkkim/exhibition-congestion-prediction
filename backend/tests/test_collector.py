@@ -189,14 +189,13 @@ def test_is_venue_open_normal_day_within_hours():
     from app.collector import _is_venue_open
 
     # 2026-07-27 is a Monday
-    # Collection starts 10 minutes after the real 10:00 opening time —
-    # the 10:00 poll itself is deliberately skipped (see _COLLECTION_START).
-    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 0)) is False
-    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 9)) is False
+    # Collection starts on the opening minute — the 10:00 round used to be
+    # skipped for quota (see _COLLECTION_START).
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 9, 59)) is False
+    assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 0)) is True
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 10, 10)) is True
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 0)) is True
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 1)) is False
-    assert _is_venue_open("seoul", datetime(2026, 7, 27, 9, 59)) is False
 
 
 def test_is_venue_open_tolerates_sub_minute_jitter_at_closing():
@@ -212,15 +211,30 @@ def test_is_venue_open_tolerates_sub_minute_jitter_at_closing():
     assert _is_venue_open("seoul", datetime(2026, 7, 27, 18, 1, 0)) is False
 
 
-def test_is_venue_open_gwacheon_tolerates_sub_minute_jitter_at_long_day_closing():
+def test_is_venue_open_gwacheon_tolerates_sub_minute_jitter_at_closing():
     from app.collector import _is_venue_open
 
-    # The bug was originally found on Gwacheon specifically. The check is
-    # shared across venues, but this pins the venue where it actually
-    # mattered, on its long day (Wed/Sat, 21:00 close).
+    # The jitter bug was originally found on Gwacheon. The check is shared
+    # across venues, but this pins the venue where it actually mattered — on a
+    # Wednesday, which is a 21:00 day everywhere except here.
     # 2026-07-29 is a Wednesday.
-    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 0, 47)) is True
-    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 21, 1, 0)) is False
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 0, 47)) is True
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 1, 0)) is False
+
+
+def test_is_venue_open_gwacheon_has_no_night_opening_and_shuts_on_monday():
+    """과천관은 화~일 10:00~18:00 이다. 서울관 시간표를 그대로 쓰던 동안 휴관일
+    월요일 종일과 수·토 18~21시를 폴링했고, 폐관 중에도 API 가 정상 응답으로
+    "여유" 를 주므로 그 가짜 여유가 예측 프로파일에 그대로 쌓였다."""
+    from app.collector import _is_venue_open
+
+    # 2026-07-29 is a Wednesday — 21:00 for Seoul, 18:00 here.
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 18, 0)) is True
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 29, 19, 0)) is False
+    assert _is_venue_open("seoul", datetime(2026, 7, 29, 19, 0)) is True
+    # 2026-07-27 is a Monday, 2026-07-28 a Tuesday.
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 27, 14, 0)) is False
+    assert _is_venue_open("gwacheon", datetime(2026, 7, 28, 14, 0)) is True
 
 
 def test_is_venue_open_long_day():
@@ -324,7 +338,9 @@ def test_collect_mmca_once_continues_after_one_room_fails(monkeypatch, session_f
 
 def test_collect_mmca_once_continues_after_one_room_returns_invalid_json(monkeypatch, session_factory):
     """data.go.kr sometimes returns a non-JSON (e.g. XML error) body with a 200
-    status on key/quota errors. That must not crash the whole collection cycle."""
+    status. That must not crash the whole collection cycle. (A key error is a
+    4xx on this endpoint, measured 2026-09-02 — a different exception down the
+    same per-room handler.)"""
     import app.collector as collector_module
 
     def fake_fetch(client, space_code, api_key):
@@ -365,8 +381,8 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
 
     def fake_fetch(client, space_code, api_key):
         drifted_time = {
-            "MMCA-SPACE-2001": datetime(2026, 7, 27, 14, 39, 59),
-            "MMCA-SPACE-2002": datetime(2026, 7, 27, 14, 40, 3),
+            "MMCA-SPACE-2001": datetime(2026, 7, 28, 14, 39, 59),
+            "MMCA-SPACE-2002": datetime(2026, 7, 28, 14, 40, 3),
         }[space_code]
         return MmcaCongestionReading(
             observed_at=drifted_time,
@@ -383,7 +399,7 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
         {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2002"]},
     )
 
-    round_time = datetime(2026, 7, 27, 14, 40, 0)
+    round_time = datetime(2026, 7, 28, 14, 40, 0)
     result = collector_module.collect_mmca_once(session_factory=session_factory, now=round_time)
 
     assert len(result) == 2
@@ -393,17 +409,27 @@ def test_collect_mmca_once_normalizes_observed_at_across_the_round(monkeypatch, 
     assert stored_times == {round_time}
 
 
-def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, session_factory):
-    """The scheduler fires on a 10-minute cron grid, but jitter or a
-    misfire-grace-time catch-up run can land the actual invocation a few
-    minutes off that mark (e.g. 11:31 instead of 11:30). Every reading must
-    still be stamped with the grid mark, not the raw run time, so rounds are
-    always exactly 10 minutes apart regardless of when they actually ran."""
+def test_collect_mmca_once_snaps_observed_at_to_the_poll_grid(monkeypatch, session_factory):
+    """The scheduler fires on the MMCA_POLL_MINUTES cron grid, but jitter or a
+    misfire-grace-time catch-up run can land the actual invocation off that
+    mark. Every reading must still be stamped with the grid mark, not the raw
+    run time, so rounds are always exactly one grid step apart regardless of
+    when they actually ran.
+
+    Asserted as properties rather than against a literal mark: the expected
+    stamp depends on MMCA_POLL_MINUTES, and re-deriving it here would just
+    restate the implementation. The last assertion is the one that catches a
+    cron/floor mismatch — floor 10 under a 1-minute cron leaves `now` up to
+    9 minutes past the stamp, which is exactly the state where consecutive
+    rounds collide on one observed_at."""
+    from datetime import timedelta
+
     import app.collector as collector_module
+    from app.collector import MMCA_POLL_MINUTES
 
     def fake_fetch(client, space_code, api_key):
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 11, 31, 12),
+            observed_at=datetime(2026, 7, 28, 11, 31, 12),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="국립현대미술관 과천관",
@@ -417,15 +443,20 @@ def test_collect_mmca_once_snaps_observed_at_to_the_10_minute_grid(monkeypatch, 
         {"gwacheon": ["MMCA-SPACE-2001"]},
     )
 
-    result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 31, 4)
-    )
+    now = datetime(2026, 7, 28, 11, 31, 4)
+    result = collector_module.collect_mmca_once(session_factory=session_factory, now=now)
 
     assert len(result) == 1
-    assert result[0].observed_at == datetime(2026, 7, 27, 11, 30)
+    stamped = result[0].observed_at
     with session_factory() as session:
         stored = session.query(RawMmcaCongestion).one()
-    assert stored.observed_at == datetime(2026, 7, 27, 11, 30)
+    assert stored.observed_at == stamped
+
+    # Not the fetch's own wall-clock time (11:31:12, ahead of `now`), and not
+    # `now` either: a grid mark, seconds cleared, at or before the run.
+    assert (stamped.second, stamped.microsecond) == (0, 0)
+    assert stamped.minute % MMCA_POLL_MINUTES == 0
+    assert timedelta(0) <= now - stamped < timedelta(minutes=MMCA_POLL_MINUTES)
 
 
 def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_factory):
@@ -436,7 +467,7 @@ def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_f
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 14, 0),
+            observed_at=datetime(2026, 7, 28, 14, 0),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -454,7 +485,7 @@ def test_collect_mmca_once_fetches_rooms_from_every_venue(monkeypatch, session_f
     )
 
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
+        session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
 
     assert len(result) == 2
@@ -477,9 +508,8 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    # MMCA-SPACE-9001 stands in for a Monday-closed venue that isn't in
-    # MMCA_DISABLED_SPACE_CODES — keeps this test isolated to the
-    # business-hours gate, not the separate disabled-codes gate.
+    # MMCA-SPACE-9001 stands in for a Monday-closed venue — keeps this test
+    # isolated to the business-hours gate.
     monkeypatch.setattr(
         collector_module,
         "_VENUE_CLOSED_DAYS",
@@ -503,11 +533,10 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
     assert seen_codes == ["MMCA-SPACE-1001"]
 
 
-def test_collect_mmca_once_skips_room_confirmed_empty_all_first_hour(monkeypatch, session_factory):
-    """A room with no ongoing exhibition rarely opens one mid-day, so once
-    every reading in its first hour (10:xx-11:00) comes back with no
-    congestion data, drop to the 2-hour recheck cadence instead of every
-    10 minutes for the rest of the day."""
+def test_collect_mmca_once_polls_a_room_that_read_empty_all_first_hour(monkeypatch, session_factory):
+    """전시가 없어 첫 시간 내내 빈 판독만 온 방도 다른 방과 똑같이 매 라운드
+    돈다. 예전에는 11시부터 2시간 주기로 떨어뜨렸는데(옛 1,000콜/일 상한),
+    그러면 낮에 새로 여는 전시를 최대 2시간 뒤에야 잡았다."""
     import app.collector as collector_module
 
     with session_factory() as session:
@@ -540,149 +569,25 @@ def test_collect_mmca_once_skips_room_confirmed_empty_all_first_hour(monkeypatch
         {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
     )
 
-    # 12:00 is an off-cadence round (2-hour recheck grid is 11/13/15/17/19/21).
+    # 12:00 은 옛 2시간 재확인 그리드(11/13/15/17/19/21)에서 벗어난 라운드라,
+    # 스킵이 살아 있었다면 1002 가 빠졌을 시각이다.
     result = collector_module.collect_mmca_once(
         session_factory=session_factory, now=datetime(2026, 7, 27, 12, 0)
     )
 
-    assert seen_codes == ["MMCA-SPACE-1001"]
-    assert len(result) == 1
-    assert result[0].space_code == "MMCA-SPACE-1001"
-
-
-def test_collect_mmca_once_rechecks_confirmed_empty_room_every_two_hours(monkeypatch, session_factory):
-    """The confirmed-empty room isn't silenced forever — every 2 hours from
-    the confirmation cutoff (11, 13, 15, ...) it still gets polled, so a
-    same-day reopening is caught within 2 hours instead of not at all."""
-    import app.collector as collector_module
-
-    with session_factory() as session:
-        for minute in (10, 20, 30, 40, 50):
-            session.add(
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 27, 10, minute),
-                    space_code="MMCA-SPACE-1002",
-                    congestion_nm=None,
-                )
-            )
-        session.commit()
-
-    seen_codes = []
-
-    def fake_fetch(client, space_code, api_key):
-        seen_codes.append(space_code)
-        return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 13, 0),
-            space_code=space_code,
-            space_nm="테스트 전시실",
-            agnc_nm="테스트관",
-            congestion_nm="보통",
-        )
-
-    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
-    )
-
-    result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 13, 0)
-    )
-
-    assert set(seen_codes) == {"MMCA-SPACE-1001", "MMCA-SPACE-1002"}
+    assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
     assert len(result) == 2
 
 
-def test_collect_mmca_once_resumes_normal_polling_after_reopening_detected_by_recheck(
-    monkeypatch, session_factory
-):
-    """Once a 2-hour recheck detects a real reading (the room reopened), the
-    room must go straight back to normal 10-minute polling for the rest of
-    the day — it must not stay stuck on the empty-room cadence just because
-    the first hour was empty."""
+def test_collect_mmca_once_polls_every_configured_room(monkeypatch, session_factory):
     import app.collector as collector_module
-
-    with session_factory() as session:
-        for minute in (10, 20, 30, 40, 50):
-            session.add(
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 27, 10, minute),
-                    space_code="MMCA-SPACE-1002",
-                    congestion_nm=None,
-                )
-            )
-        session.commit()
-
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"seoul": ["MMCA-SPACE-1002"]},
-    )
-
-    # 13:00 is a recheck round — the room gets polled and comes back real.
-    monkeypatch.setattr(
-        collector_module,
-        "fetch_mmca_congestion",
-        lambda client, space_code, api_key: MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 13, 0),
-            space_code=space_code,
-            space_nm="테스트 전시실",
-            agnc_nm="테스트관",
-            congestion_nm="보통",
-        ),
-    )
-    collector_module.collect_mmca_once(session_factory=session_factory, now=datetime(2026, 7, 27, 13, 0))
-
-    # 13:10 is an ordinary off-grid round. If the room were still treated as
-    # confirmed-empty, it would be skipped here.
-    seen_codes = []
-
-    def fake_fetch(client, space_code, api_key):
-        seen_codes.append(space_code)
-        return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 13, 10),
-            space_code=space_code,
-            space_nm="테스트 전시실",
-            agnc_nm="테스트관",
-            congestion_nm="약간 붐빔",
-        )
-
-    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    result = collector_module.collect_mmca_once(session_factory=session_factory, now=datetime(2026, 7, 27, 13, 10))
-
-    assert seen_codes == ["MMCA-SPACE-1002"]
-    assert len(result) == 1
-
-
-def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch, session_factory):
-    import app.collector as collector_module
-
-    with session_factory() as session:
-        # Mixed first-hour readings: one real, one empty. Any real reading
-        # this early rules out "confirmed empty" outright.
-        session.add(
-            RawMmcaCongestion(
-                observed_at=datetime(2026, 7, 27, 10, 20),
-                space_code="MMCA-SPACE-1001",
-                congestion_nm=None,
-            )
-        )
-        session.add(
-            RawMmcaCongestion(
-                observed_at=datetime(2026, 7, 27, 10, 30),
-                space_code="MMCA-SPACE-1001",
-                congestion_nm="여유",
-            )
-        )
-        session.commit()
 
     seen_codes = []
 
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 11, 10),
+            observed_at=datetime(2026, 7, 28, 14, 0),
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
@@ -690,83 +595,15 @@ def test_collect_mmca_once_still_polls_room_with_data_in_first_hour(monkeypatch,
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"seoul": ["MMCA-SPACE-1001"]},
-    )
 
-    # 11:10 is off the 2-hour recheck grid (11/13/15/...), so the
-    # confirmed-empty filter actually runs this round instead of being
-    # bypassed by the recheck gate.
+    # settings 를 갈아끼우지 않는다 — 실제 설정의 17개 방(서울 8 + 과천 8 +
+    # 덕수궁 1)이 전부 폴링되는지가 요점이다. 덕수궁 1전시실과 과천
+    # 어린이미술관은 쿼터 때문에 수집에서 빠져 있었고, 운영 계정으로 바뀐 뒤
+    # 다시 대상이 되었다.
+    # 2026-07-28 은 화요일 — 세 관 모두 개관일이다.
     result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 10)
+        session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
 
-    assert seen_codes == ["MMCA-SPACE-1001"]
-    assert len(result) == 1
-
-
-def test_collect_mmca_once_polls_normally_within_first_hour_before_any_history(
-    monkeypatch, session_factory
-):
-    import app.collector as collector_module
-
-    seen_codes = []
-
-    def fake_fetch(client, space_code, api_key):
-        seen_codes.append(space_code)
-        return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 10, 20),
-            space_code=space_code,
-            space_nm="테스트 전시실",
-            agnc_nm="테스트관",
-            congestion_nm=None,
-        )
-
-    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"seoul": ["MMCA-SPACE-1002"]},
-    )
-
-    result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 10, 20)
-    )
-
-    assert seen_codes == ["MMCA-SPACE-1002"]
-    assert len(result) == 1
-
-
-def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_factory):
-    import app.collector as collector_module
-
-    seen_codes = []
-
-    def fake_fetch(client, space_code, api_key):
-        seen_codes.append(space_code)
-        return MmcaCongestionReading(
-            observed_at=datetime(2026, 7, 27, 14, 0),
-            space_code=space_code,
-            space_nm="테스트 전시실",
-            agnc_nm="테스트관",
-            congestion_nm="보통",
-        )
-
-    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2008"]},
-    )
-
-    # 2026-07-27 is a Monday, but the disabled-codes filter applies every
-    # day regardless of business hours — MMCA-SPACE-2008 (children's
-    # museum) must never be fetched even though Gwacheon itself is open.
-    result = collector_module.collect_mmca_once(
-        session_factory=session_factory, now=datetime(2026, 7, 27, 14, 0)
-    )
-
-    assert len(result) == 1
-    assert seen_codes == ["MMCA-SPACE-2001"]
+    assert len(result) == 17
+    assert {"MMCA-SPACE-4001", "MMCA-SPACE-2008"} <= set(seen_codes)
