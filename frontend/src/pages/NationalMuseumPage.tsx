@@ -4,12 +4,12 @@ import { Link } from "react-router-dom";
 import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DateTabs } from "../components/DateTabs";
-import { shiftDate, todayString } from "../lib/date";
 import { PredictionChart } from "../components/PredictionChart";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { shiftDate, todayString } from "../lib/date";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
