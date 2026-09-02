@@ -62,45 +62,49 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 
 type Point = { minutes: number; value: number; isRaw?: boolean };
 
-// 서울시 판독은 5분 간격이다. 10분 버킷은 그 두 판독의 평균이고, MMCA 차트의
-// 격자 간격(수집이 */10 cron)과 같아 두 관의 호버가 같은 눈금을 쓴다. 480분·
-// 690분 두 영업시간을 모두 나누어 떨어뜨려 버킷이 잘리지 않는다.
+// 서울시 판독은 5분 간격이고, 그것을 10분 마크(10:00, 10:10, …)에 붙여 평균낸다
+// — MMCA 차트의 격자와 같은 간격(그쪽은 수집이 */10 이라 판독 자체가 마크에
+// 있다)이라 두 관의 호버가 같은 눈금을 쓴다.
+//
+// 마크는 자정 기준의 10분 배수다. 개관(09:30)·폐관(17:30, 수·토 21:00)이 모두
+// 10분 배수라 축의 양 끝도 마크이고, 그래서 호버·툴팁에 09:35 같은 시각이 아니라
+// 10분·20분·30분만 나온다. 개관 기준으로 끊으면 마크가 5분씩 밀린다.
 //
 // 30분이던 이유는 이 차트가 2열 카드(480 단위 폭)였기 때문이다 — 그때 10분
 // 간격은 22단위였다. 전폭이 된 뒤로는 같은 10분이 22px 라 점이 뭉치지 않는다.
 const BUCKET_MINUTES = 10;
-// Both series resample onto the same bucket grid (same `open` origin, same
-// BUCKET_MINUTES), so a genuine same-bucket match is always distance 0 and
-// the next bucket over is always exactly BUCKET_MINUTES away — a full
-// BUCKET_MINUTES window would let that adjacent (different-time) bucket
-// match instead of correctly finding nothing. Half a bucket only admits 0.
+// 두 계열이 같은 마크 격자에 앉으므로 같은 마크는 항상 거리 0 이고 옆 마크는 정확히
+// BUCKET_MINUTES 만큼 떨어져 있다 — 창을 한 마크 전체로 잡으면 그 옆의 (다른 시각)
+// 마크가 걸려, 값이 없는 자리에서 없다고 말하지 못한다. 반 마크는 0 만 받는다.
 const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES / 2;
 
-function resample(points: Point[], open: number, close: number, bucketMinutes: number): Point[] {
-  const buckets = new Map<number, Point[]>();
+function resample(points: Point[], close: number, bucketMinutes: number): Point[] {
+  const marks = new Map<number, Point[]>();
   for (const point of points) {
-    const idx = Math.floor((point.minutes - open) / bucketMinutes);
-    const bucket = buckets.get(idx);
+    // 가장 가까운 마크로 — 개관 기준 버킷의 시작·중심이 아니라 마크 자체가 그
+    // 점의 시각이 된다. 09:55·10:00 이 10:00 에, 10:05·10:10 이 10:10 에 모인다.
+    const mark = Math.round(point.minutes / bucketMinutes) * bucketMinutes;
+    const bucket = marks.get(mark);
     if (bucket) bucket.push(point);
-    else buckets.set(idx, [point]);
+    else marks.set(mark, [point]);
   }
-  return [...buckets.entries()]
+  return [...marks.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([idx, bucketPoints]) => ({
-      minutes: open + idx * bucketMinutes + bucketMinutes / 2,
+    .map(([mark, bucketPoints]) => ({
+      minutes: mark,
       value: bucketPoints.reduce((sum, p) => sum + p.value, 0) / bucketPoints.length,
     }))
-    // 폐관 시각에 걸친 마지막 버킷은 중심이 축 오른쪽 끝을 넘는다 (17:30 판독
-    // 하나만 든 버킷의 중심은 17:45). 그대로 두면 svg 가 overflow-visible 이라
-    // 곡선이 축 밖 빈 자리로 이어져 그려진다 — 그 버킷의 판독은 아래
-    // withEndpoints 의 폐관 시각 끝점이 대신 붙든다.
+    // 폐관이 10분 배수인 동안에는 걸릴 일이 없다 (판독이 폐관 이하이므로 마크도
+    // 그렇다). 영업시간이 09:45 처럼 바뀌면 마지막 마크가 축을 넘고, svg 가
+    // overflow-visible 이라 곡선이 축 밖 빈 자리로 이어져 그려진다.
     .filter((p) => p.minutes <= close);
 }
 
-// 곡선의 양 끝을 실제 판독으로 개관·폐관 시각에 닿게 한다 — 버킷 중심은 반
-// 버킷만큼 안쪽이라 그것만 이으면 축 양 끝이 비어 곡선이 잘린 것처럼 보인다.
-// 버킷 평균이 아닌 생판독이므로 isRaw 로 표시해 호버 조회에서 뺀다 (툴팁이
-// 구간을 말하는데 값은 한 판독인 자리가 된다).
+// 곡선의 양 끝을 실제 판독으로 개관·폐관 시각에 닿게 한다. 개관·폐관이 10분
+// 배수인 동안에는 첫·마지막 마크가 이미 축의 끝이라 아무것도 붙지 않고, 그날 첫
+// 판독이 늦거나(개관 직후 수집 실패) 영업시간이 10분 배수가 아니게 되면 그때
+// 실제로 붙는다. 마크 평균이 아닌 생판독이므로 isRaw 로 표시해 호버 조회에서
+// 뺀다 — 마크 격자 위에 없는 시각이라 십자선이 어긋난다.
 //
 // `includeTrail` 이 false 인 경우는 오늘 영업 중일 때뿐이다 — 폐관 시각이 아직
 // 오지 않았으므로 끝점을 붙일 판독이 없다.
@@ -308,7 +312,7 @@ export function CongestionCard({
   // 닿게 하고, 영업이 끝난 뒤에는 폐관 시각으로도 같게 한다.
   const points: Point[] = withEndpoints(
     rawPoints,
-    resample(rawPoints, open, close, BUCKET_MINUTES),
+    resample(rawPoints, close, BUCKET_MINUTES),
     !isOpen
   );
 
@@ -321,7 +325,7 @@ export function CongestionCard({
   // 지난주는 늘 다 지나간 하루다 — 양 끝점이 항상 있다.
   const lastWeekPoints = withEndpoints(
     lastWeekRawPoints,
-    resample(lastWeekRawPoints, open, close, BUCKET_MINUTES),
+    resample(lastWeekRawPoints, close, BUCKET_MINUTES),
     true
   );
 
@@ -384,12 +388,10 @@ export function CongestionCard({
     // 툴팁의 시계가 픽셀마다 흔들리지 않는다. 버킷 중심은 30분 간격이라
     // LAST_WEEK_MATCH_MINUTES(15분) 창 안에 그대로 들어온다. 스냅을 먼저,
     // 영업시간 가두기를 나중에.
-    // 버킷 중심 격자로 맞춘다 (개관 + n·10분 + 5분) — 계열에 값이 있으면 거리가
-    // 늘 0 이라 조회 창(LAST_WEEK_MATCH_MINUTES)이 애매해지지 않고, 툴팁의 시계도
-    // 10분 단위로만 튄다. 스냅을 먼저, 영업시간 가두기를 나중에.
-    const half = BUCKET_MINUTES / 2;
-    const snapped =
-      open + Math.round((minutes - open - half) / BUCKET_MINUTES) * BUCKET_MINUTES + half;
+    // 계열과 같은 마크 격자로 맞춘다 — 값이 있으면 조회 거리가 늘 0 이고, 툴팁의
+    // 시계도 10분 단위로만 튄다. 스냅을 먼저, 영업시간 가두기를 나중에 (순서를
+    // 바꾸면 개관·폐관이 10분 배수가 아닐 때 영업시간 밖으로 튀어나간다).
+    const snapped = Math.round(minutes / BUCKET_MINUTES) * BUCKET_MINUTES;
     setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 

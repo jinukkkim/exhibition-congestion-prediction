@@ -386,7 +386,7 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("sparkline-line")).toBeInTheDocument();
   });
 
-  it("shows the live endpoint marker even when only one 30-min bucket of data exists", () => {
+  it("shows the live endpoint marker even when the day has only two readings", () => {
     const { container } = render(
       <CongestionCard
         data={{
@@ -394,9 +394,9 @@ describe("CongestionCard", () => {
           congest_level: "보통",
           population_avg: 1500,
         }}
-        // 10분 버킷 두 개(10:00, 10:15)라 점이 둘 — 라이브 끝점 마커는 점
-        // 개수와 무관하게 마지막 판독 위에 선다.
-        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 900)]}
+        // 10분 마크 두 개(10:00, 10:10) — 라이브 끝점 마커는 점 개수와
+        // 무관하게 마지막 판독 위에 선다.
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:10:00", 900)]}
       />
     );
 
@@ -477,8 +477,8 @@ describe("CongestionCard", () => {
     const { container } = render(
       <CongestionCard
         data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
-        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 1000)]}
-        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:15:00", 700)]}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:10:00", 1000)]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:10:00", 700)]}
       />
     );
 
@@ -487,9 +487,9 @@ describe("CongestionCard", () => {
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
-    // clientX 31 ≈ 10:15 버킷의 x (개관 09:30, 수요일 폐관 21:00 축). 짚은
+    // clientX 28 ≈ 10:10 마크의 x (개관 09:30, 수요일 폐관 21:00 축). 짚은
     // 시각에 판독이 실제로 있는 자리다.
-    fireEvent.mouseMove(hoverTarget, { clientX: 31, clientY: 0 });
+    fireEvent.mouseMove(hoverTarget, { clientX: 28, clientY: 0 });
 
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
@@ -501,7 +501,7 @@ describe("CongestionCard", () => {
       <CongestionCard
         data={{ observed_at: "2026-07-15T14:30:00", congest_level: "보통", population_avg: 1500 }}
         daily={[]}
-        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:15:00", 700)]}
+        lastWeekDaily={[dailyPoint("2026-07-08T10:00:00", 600), dailyPoint("2026-07-08T10:10:00", 700)]}
       />
     );
 
@@ -510,7 +510,7 @@ describe("CongestionCard", () => {
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
     const hoverTarget = container.querySelector('rect[fill="transparent"]') as SVGRectElement;
 
-    fireEvent.mouseMove(hoverTarget, { clientX: 31, clientY: 0 });
+    fireEvent.mouseMove(hoverTarget, { clientX: 28, clientY: 0 });
 
     const tooltip = within(screen.getByTestId("sparkline-tooltip"));
     expect(tooltip.getByText(/지난주/)).toBeInTheDocument();
@@ -603,13 +603,13 @@ describe("CongestionCard prediction line", () => {
     const { container } = render(
       <CongestionCard
         data={CURRENT}
-        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:15:00", 1000)]}
+        daily={[dailyPoint("2026-07-15T10:00:00", 800), dailyPoint("2026-07-15T10:10:00", 1000)]}
         prediction={curve(() => 2000)}
       />
     );
 
-    // clientX 31 ≈ 10:10–10:20 버킷 — 10:15 판독이 있는 자리.
-    hoverAt(container, 31);
+    // clientX 28 ≈ 10:10 마크 — 판독이 있는 자리.
+    hoverAt(container, 28);
     expect(within(screen.getByTestId("sparkline-tooltip")).queryByText(/예측/)).not.toBeInTheDocument();
     expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("1,000");
 
