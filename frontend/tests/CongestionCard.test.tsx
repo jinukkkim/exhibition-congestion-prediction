@@ -298,6 +298,27 @@ describe("CongestionCard", () => {
     expect(screen.queryByText("17:30")).not.toBeInTheDocument();
   });
 
+  it("labels the hour next to opening and closing time too", () => {
+    // 480 단위 폭이던 시절 30분 간격은 30단위라 "09:30" 옆에 "10" 이 겹쳤다.
+    // 카드가 전폭이 된 뒤로는 같은 30분이 67단위(수·토의 690분 축에서도 46단위)
+    // 라 둘 다 들어간다.
+    const { rerender } = render(
+      <CongestionCard data={null} daily={[dailyPoint("2026-07-13T10:00:00", 900)]} viewDate="2026-07-13" />
+    );
+
+    // 월요일 = 17:30 폐관.
+    expect(screen.getByText("10")).toBeInTheDocument();
+    expect(screen.getByText("17")).toBeInTheDocument();
+
+    // 토요일 = 21:00 폐관. 폐관 자체가 정시라 눈금은 "21", 그 앞 "20" 도 남는다.
+    rerender(
+      <CongestionCard data={null} daily={[dailyPoint("2026-07-11T10:00:00", 900)]} viewDate="2026-07-11" />
+    );
+
+    expect(screen.getByText("10")).toBeInTheDocument();
+    expect(screen.getByText("20")).toBeInTheDocument();
+  });
+
   it("names the Seoul open-data area, not the museum alone, in the card subtitle", () => {
     // 차트가 그리는 값은 국립중앙박물관·용산가족공원 한 구역의 인구다
     // (backend/app/config.py 의 seoul_area_name). 관 이름만 적으면 관 안의

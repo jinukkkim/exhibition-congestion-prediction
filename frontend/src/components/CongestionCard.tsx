@@ -33,18 +33,23 @@ function tickLabel(minutes: number): string {
 // Open/close are kept as exact bookend ticks even though they're not always
 // on the hour, since that's where the line actually starts/ends. Everything
 // in between is a clean round hour, shown as a bare hour number ("10", "11")
-// rather than "10:00" — short enough to sit next to most neighbors, but open
-// is always exactly 30min from the next hour, too little gap for any label
-// (measured: labels a fraction of a pixel apart, reads as touching) — so a
-// round hour within MIN_GAP_MINUTES of a bookend is dropped instead of
-// rendered on top of it.
-const MIN_GAP_MINUTES = 35;
+// rather than "10:00".
+//
+// 개관·폐관 라벨 옆에 붙는 눈금만 겹칠 수 있어 최소 간격을 둔다. 분이 아니라
+// 좌표계 단위로 재는 이유는 두 가지다: 영업시간 길이가 요일마다 다르고(30분이
+// 480분 축에서는 67단위, 690분 축에서는 46단위), 겹침은 시간이 아니라 폭의
+// 문제다. 좌표계 단위는 렌더 픽셀과 거의 1:1 이다 (SPARKLINE_WIDTH 주석 참고).
+// "09:30" 라벨이 약 33px, 가운데 정렬이라 옆 눈금과 필요한 간격은 그 절반 남짓 —
+// 44 는 두 축 다 통과해 10시·17시가 남고, 480 단위 폭이던 시절 겹쳐 보였던
+// 조합(그때 30분은 30단위였다)은 그대로 걸러진다.
+const MIN_GAP_UNITS = 44;
 
 function hourlyTicks(open: number, close: number): { minutes: number; label: string }[] {
   const ticks: number[] = [];
   const firstRoundHour = Math.ceil(open / 60) * 60;
   for (let m = firstRoundHour; m < close; m += 60) {
-    if (m - open < MIN_GAP_MINUTES || close - m < MIN_GAP_MINUTES) continue;
+    const x = xOf(m, open, close);
+    if (x < MIN_GAP_UNITS || SPARKLINE_WIDTH - x < MIN_GAP_UNITS) continue;
     ticks.push(m);
   }
 
