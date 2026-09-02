@@ -166,7 +166,8 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
 
 
 def test_daily_batch_does_not_collide_with_the_collector_grid():
-    """수집기가 */5, MMCA 가 */10 이라 5의 배수 분은 동시 발사된다."""
+    """서울시 수집기가 */5 라 5의 배수 분은 동시 발사된다. MMCA 는 매분 발사되어
+    피할 수 없지만 자정에는 영업시간 게이트에 걸려 아무것도 하지 않는다."""
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 

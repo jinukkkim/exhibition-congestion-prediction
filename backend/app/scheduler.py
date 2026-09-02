@@ -57,8 +57,13 @@ def build_scheduler() -> BackgroundScheduler:
         run_daily_batch,
         # 자정 직후 — 배치가 만드는 것이 "오늘부터 7일의 커브"이므로 하루가
         # 시작될 때 도는 것이 맞다. 03:00 이던 동안에는 자정~03:00 에 들어온
-        # 사람에게 목록의 첫 항목이 어제였다. 정각이 아닌 이유는 수집기가
-        # */5, MMCA 가 */10 이라 5의 배수 분에 동시 발사되기 때문이다.
+        # 사람에게 목록의 첫 항목이 어제였다.
+        #
+        # 정각이 아닌 이유는 서울시 수집기가 */5 라 5의 배수 분에 동시 발사되기
+        # 때문이다. 그쪽은 영업시간 게이트가 없어 자정에도 실제로 API 를 치고
+        # DB 에 쓴다. MMCA 는 이제 매분 발사되므로(MMCA_POLL_MINUTES) 어떤 분을
+        # 골라도 겹치지만, 겹칠 상대가 없다 — 자정의 collect_mmca_once 는
+        # _is_venue_open 에서 걸려 HTTP 도 DB 도 없이 빈 리스트로 즉시 반환한다.
         trigger=CronTrigger(hour=0, minute=2, timezone=_SEOUL_TZ),
         id="daily_batch",
         misfire_grace_time=3600,
