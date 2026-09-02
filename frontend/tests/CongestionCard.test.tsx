@@ -626,3 +626,104 @@ describe("CongestionCard prediction line", () => {
     expect(screen.queryByTestId("sparkline-tooltip")).not.toBeInTheDocument();
   });
 });
+
+
+describe("CongestionCard chart geometry", () => {
+  // 목요일 20:00 — 폐관(17:30) 뒤라 하루가 다 찼다.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-16T20:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const CURRENT = { observed_at: "2026-07-16T17:30:00", congest_level: "보통", population_avg: 1500 };
+
+  // 09:30~17:30 을 5분 간격으로 — 실제 수집 간격이고, 마지막 버킷(17:30 하나)의
+  // 중심이 폐관을 넘는 조건이다.
+  function fullDay(date: string, value: (minutes: number) => number) {
+    const rows = [];
+    for (let m = 9 * 60 + 30; m <= 17 * 60 + 30; m += 5) {
+      const hh = String(Math.floor(m / 60)).padStart(2, "0");
+      const mm = String(m % 60).padStart(2, "0");
+      rows.push(dailyPoint(`${date}T${hh}:${mm}:00`, value(m)));
+    }
+    return rows;
+  }
+
+  // "M x y C x1 y1, x2 y2, x y ..." 의 좌표를 전부 꺼낸다.
+  function coords(d: string) {
+    const nums = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    const xs = nums.filter((_, i) => i % 2 === 0);
+    const ys = nums.filter((_, i) => i % 2 === 1);
+    return { xs, ys };
+  }
+
+  // 지나간 날을 그린다 — 세 계열이 한 화면에 다 있는 유일한 조합이다. 오늘
+  // 탭에서 하루가 다 차면 예측 점선은 정상적으로 사라진다(남은 시간이 없다).
+  function render_() {
+    return render(
+      <CongestionCard
+        data={CURRENT}
+        viewDate="2026-07-09"
+        daily={fullDay("2026-07-09", (m) => 1000 + (m - 570))}
+        lastWeekDaily={fullDay("2026-07-02", (m) => 900 + (m - 570) / 2)}
+        prediction={Array.from({ length: 24 }, (_, hour) => ({
+          hour,
+          baseline: null,
+          model: 1200 + hour * 20,
+        }))}
+      />
+    );
+  }
+
+  it("starts every series at the opening tick and stops at the closing tick", () => {
+    // 30분 버킷의 중심은 반 버킷만큼 안쪽이라 그것만 이으면 09:30 쪽이 비고,
+    // 폐관에 걸친 마지막 버킷의 중심(17:45)은 축을 넘어가 곡선이 축 밖으로
+    // 이어져 그려졌다. 예측도 정시 표본이라 09:30·17:30 에 점이 없다.
+    render_();
+
+    for (const id of ["sparkline-line", "sparkline-last-week-line", "sparkline-prediction-line"]) {
+      const { xs } = coords(screen.getByTestId(id).getAttribute("d")!);
+      expect(Math.min(...xs), id).toBe(0);
+      expect(Math.max(...xs), id).toBeCloseTo(960, 5);
+    }
+  });
+
+  it("keeps every curve inside the chart box", () => {
+    // 여백 없이 최소·최대값을 축 끝에 앉히면 Catmull-Rom 이 그 바깥으로
+    // 오버슈트해 눈금 라벨 위로 삐져나온다.
+    render_();
+
+    for (const id of ["sparkline-line", "sparkline-last-week-line", "sparkline-prediction-line"]) {
+      const { ys } = coords(screen.getByTestId(id).getAttribute("d")!);
+      expect(Math.min(...ys), id).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...ys), id).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("puts the guide line and every hover dot on one x", () => {
+    // 짚은 x 에 점을 찍고 y 만 계열에서 가져오면 점이 곡선에서 떠 보인다.
+    const { container } = render_();
+
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    fireEvent.mouseMove(container.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX: 200,
+      clientY: 0,
+    });
+
+    const guide = [...container.querySelectorAll("line")].find(
+      (l) => l.getAttribute("stroke") === "#D2D2D7" && l.getAttribute("stroke-width") === "1"
+    )!;
+    const dots = [...container.querySelectorAll("circle")].filter((c) => c.getAttribute("r") === "4");
+
+    expect(dots.length).toBeGreaterThan(1);
+    for (const dot of dots) {
+      expect(Number(dot.getAttribute("cx"))).toBeCloseTo(Number(guide.getAttribute("x1")), 5);
+    }
+  });
+});

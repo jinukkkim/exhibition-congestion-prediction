@@ -61,7 +61,7 @@ const BUCKET_MINUTES = 30; // 30 divides both business-hour spans (480min / 690m
 // match instead of correctly finding nothing. Half a bucket only admits 0.
 const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES / 2;
 
-function resample(points: Point[], open: number, bucketMinutes: number): Point[] {
+function resample(points: Point[], open: number, close: number, bucketMinutes: number): Point[] {
   const buckets = new Map<number, Point[]>();
   for (const point of points) {
     const idx = Math.floor((point.minutes - open) / bucketMinutes);
@@ -74,7 +74,33 @@ function resample(points: Point[], open: number, bucketMinutes: number): Point[]
     .map(([idx, bucketPoints]) => ({
       minutes: open + idx * bucketMinutes + bucketMinutes / 2,
       value: bucketPoints.reduce((sum, p) => sum + p.value, 0) / bucketPoints.length,
-    }));
+    }))
+    // 폐관 시각에 걸친 마지막 버킷은 중심이 축 오른쪽 끝을 넘는다 (17:30 판독
+    // 하나만 든 버킷의 중심은 17:45). 그대로 두면 svg 가 overflow-visible 이라
+    // 곡선이 축 밖 빈 자리로 이어져 그려진다 — 그 버킷의 판독은 아래
+    // withEndpoints 의 폐관 시각 끝점이 대신 붙든다.
+    .filter((p) => p.minutes <= close);
+}
+
+// 곡선의 양 끝을 실제 판독으로 개관·폐관 시각에 닿게 한다 — 버킷 중심은 반
+// 버킷만큼 안쪽이라 그것만 이으면 축 양 끝이 비어 곡선이 잘린 것처럼 보인다.
+// 버킷 평균이 아닌 생판독이므로 isRaw 로 표시해 호버 조회에서 뺀다 (툴팁이
+// 구간을 말하는데 값은 한 판독인 자리가 된다).
+//
+// `includeTrail` 이 false 인 경우는 오늘 영업 중일 때뿐이다 — 폐관 시각이 아직
+// 오지 않았으므로 끝점을 붙일 판독이 없다.
+function withEndpoints(raw: Point[], buckets: Point[], includeTrail: boolean): Point[] {
+  const first = raw[0];
+  const last = raw[raw.length - 1];
+  const lead =
+    first && (buckets.length === 0 || first.minutes < buckets[0].minutes)
+      ? [{ ...first, isRaw: true }]
+      : [];
+  const trail =
+    includeTrail && last && buckets.length > 0 && last.minutes > buckets[buckets.length - 1].minutes
+      ? [{ ...last, isRaw: true }]
+      : [];
+  return [...lead, ...buckets, ...trail];
 }
 
 function nearestWithin(points: Point[], minutes: number, maxDistance: number): Point | undefined {
@@ -97,9 +123,16 @@ function xOf(minutes: number, open: number, close: number): number {
 type XY = { x: number; y: number };
 type Range = { min: number; max: number };
 
+// 위·아래 여백. 0 이면 최소·최대값이 축의 맨 끝 선에 앉고, Catmull-Rom 이
+// 그 바깥으로 오버슈트해(실측 −9 단위까지 나갔다) 눈금 라벨 위로 삐져나온다.
+// MmcaRoomChartCard 의 yOf 와 같은 값이다.
+const CHART_PAD = 24;
+
 function yOf(value: number, range: Range): number {
   const span = range.max - range.min || 1; // ponytail: guards a flat/single-value range; a wider range never hits this
-  return SPARKLINE_HEIGHT - ((value - range.min) / span) * SPARKLINE_HEIGHT;
+  return (
+    SPARKLINE_HEIGHT - CHART_PAD - ((value - range.min) / span) * (SPARKLINE_HEIGHT - 2 * CHART_PAD)
+  );
 }
 
 function toXY(points: Point[], open: number, close: number, range: Range): XY[] {
@@ -259,40 +292,45 @@ export function CongestionCard({
       value: (row.population_min + row.population_max) / 2,
     }))
     .filter((p) => p.minutes >= open && p.minutes <= close);
-  const resampled = resample(rawPoints, open, BUCKET_MINUTES);
   const ticks = hourlyTicks(open, close);
+  // 개관 시각의 실제 판독(버킷 평균이 아닌 그 한 판독)으로 곡선을 개관 눈금에
+  // 닿게 하고, 영업이 끝난 뒤에는 폐관 시각으로도 같게 한다.
+  const points: Point[] = withEndpoints(
+    rawPoints,
+    resample(rawPoints, open, close, BUCKET_MINUTES),
+    !isOpen
+  );
 
-  // Add one real point at the literal 09:30 reading (not a bucket average)
-  // so the line reaches the opening mark using an actually-observed value.
-  // Symmetric for closing time once business hours are over — while still
-  // open, closing time hasn't happened yet, so no trailing point is added.
-  // These are raw single readings, not bucket averages, so they're flagged
-  // (`isRaw`) to show a single time in the tooltip instead of a range.
-  const leadRaw: Point | null =
-    rawPoints[0] && (resampled.length === 0 || rawPoints[0].minutes < resampled[0].minutes)
-      ? { ...rawPoints[0], isRaw: true }
-      : null;
-  const trailRaw: Point | null =
-    !isOpen && rawPoints.length > 0 && resampled.length > 0 && rawPoints[rawPoints.length - 1].minutes > resampled[resampled.length - 1].minutes
-      ? { ...rawPoints[rawPoints.length - 1], isRaw: true }
-      : null;
-  const points: Point[] = [...(leadRaw ? [leadRaw] : []), ...resampled, ...(trailRaw ? [trailRaw] : [])];
-
-  // Last week is always a fully-elapsed day, so it only ever needs the plain
-  // bucketed series — none of the "reaches the live/closing moment" raw
-  // endpoints above apply to a day that's already over.
   const lastWeekRawPoints: Point[] = (lastWeekDaily ?? [])
     .map((row) => ({
       minutes: minutesOfDay(row.observed_at),
       value: (row.population_min + row.population_max) / 2,
     }))
     .filter((p) => p.minutes >= open && p.minutes <= close);
-  const lastWeekPoints = resample(lastWeekRawPoints, open, BUCKET_MINUTES);
+  // 지난주는 늘 다 지나간 하루다 — 양 끝점이 항상 있다.
+  const lastWeekPoints = withEndpoints(
+    lastWeekRawPoints,
+    resample(lastWeekRawPoints, open, close, BUCKET_MINUTES),
+    true
+  );
 
   // 예측은 실측과 같은 단위(population_avg)라 같은 축에 그대로 올라간다.
-  const predRawPoints: Point[] = (prediction ?? [])
-    .map((p) => ({ minutes: p.hour * 60, value: p.model }))
-    .filter((p) => p.minutes >= open && p.minutes <= close);
+  // 표본이 정시뿐이라 영업시간 밖 점을 그냥 버리면 곡선이 개관·폐관 눈금에
+  // 닿지 못한다(09:30~10:00, 17:00~17:30 이 빈다). 버리는 대신 축 양 끝에서
+  // 값을 보간해 곡선을 축에 맞춰 자른다 — 응답에는 09시·18시 값이 다 있다.
+  const predHourly: Point[] = (prediction ?? []).map((p) => ({
+    minutes: p.hour * 60,
+    value: p.model,
+  }));
+  const predOpen = predictionAt(predHourly, open);
+  const predClose = predictionAt(predHourly, close);
+  const predRawPoints: Point[] = predHourly.length === 0
+    ? []
+    : [
+        ...(predOpen ? [predOpen] : []),
+        ...predHourly.filter((p) => p.minutes > open && p.minutes < close),
+        ...(predClose ? [predClose] : []),
+      ];
   // 오늘 탭에서는 실선이 이미 그린 구간의 예측 점을 버리고 실선의 마지막 점을
   // 그대로 첫 점으로 붙인다 — 이음매가 없어야 하나의 곡선으로 읽힌다
   // (MmcaRoomChartCard 와 같은 규칙). 미래 탭의 `points` 는 오늘의 판독이 아니라
@@ -345,7 +383,7 @@ export function CongestionCard({
   // 비교 계열은 탭에 따라 다른 prop 에 담긴다. 오늘 탭은 lastWeekPoints(회색
   // 지난주선), 미래 탭은 points — 페이지가 미래 탭에서 lastWeekDaily 를 null 로
   // 두고 D−7 실측을 daily 로 내려보내기 때문이다.
-  const comparePoints = isTodayView ? lastWeekPoints : hoverablePoints;
+  const comparePoints = isTodayView ? lastWeekPoints.filter((p) => !p.isRaw) : hoverablePoints;
 
   // 오늘의 실측은 오늘 탭에만 있다: 미래 탭의 `points` 는 D−7 대리 기록(= 비교
   // 계열)이므로 오늘의 실측인 척하며 예측값을 온종일 가리면 안 된다.
@@ -355,10 +393,14 @@ export function CongestionCard({
       : nearestWithin(hoverablePoints, hoverMinutes, LAST_WEEK_MATCH_MINUTES);
   const hoverCompare =
     hoverMinutes == null ? undefined : nearestWithin(comparePoints, hoverMinutes, LAST_WEEK_MATCH_MINUTES);
+  // 표시할 x 는 하나다: 걸린 그리드 점의 시각(두 그리드 계열은 같은 버킷 격자를
+  // 쓴다), 없으면 짚은 시각. 예측값도 그 시각에서 다시 잡는다 — 짚은 시각 그대로
+  // 두면 예측 점만 십자선에서 최대 15분 옆에 떨어진다.
+  const anchorMinutes = (hoverActual ?? hoverCompare)?.minutes ?? hoverMinutes;
   // 실측이 있는 x 에서는 예측을 지운다 — 값이 확정된 자리에 나란히 놓인 추정치는
   // 잡음이다.
   const hoverPrediction =
-    hoverMinutes == null || hoverActual ? undefined : predictionAt(predPoints, hoverMinutes);
+    anchorMinutes == null || hoverActual ? undefined : predictionAt(predPoints, anchorMinutes);
 
   // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교 계열
   // 자신일 때만 괄호를 생략한다.
@@ -540,17 +582,21 @@ export function CongestionCard({
                       <circle cx={lastPoint.x} cy={lastPoint.y} r={4.5} fill="#FFFFFF" stroke={CHART_BLUE} strokeWidth={2.5} />
                     </>
                   )}
-                  {hoverPrimary && hoverMinutes != null && (
+                  {hoverPrimary && (
                     <>
+                      {/* 십자선은 주값의 시각에 선다 — 짚은 x 그대로 두면 버킷
+                          중심에서 최대 15분 벗어나 점이 곡선에서 떠 보인다.
+                          두 그리드 계열은 같은 버킷 격자라 함께 맞는다. */}
                       <line
-                        x1={xOf(hoverMinutes, open, close)}
+                        x1={xOf(hoverPrimary.minutes, open, close)}
                         y1={0}
-                        x2={xOf(hoverMinutes, open, close)}
+                        x2={xOf(hoverPrimary.minutes, open, close)}
                         y2={SPARKLINE_HEIGHT}
                         stroke="#D2D2D7"
                         strokeWidth={1}
                       />
-                      {/* 그 x 에서 값이 있는 계열마다 자기 y 에 점을 하나씩. */}
+                      {/* 값이 있는 계열마다 자기 점 위에 하나씩 — 예측 점의
+                          minutes 는 짚은 시각 그대로다. */}
                       {[
                         [hoverActual, lineStroke] as const,
                         [hoverCompare, LAST_WEEK_STROKE] as const,
@@ -559,7 +605,7 @@ export function CongestionCard({
                         point ? (
                           <circle
                             key={i}
-                            cx={xOf(hoverMinutes, open, close)}
+                            cx={xOf(point.minutes, open, close)}
                             cy={yOf(point.value, range)}
                             r={4}
                             fill="#FFFFFF"
@@ -582,21 +628,21 @@ export function CongestionCard({
                 </>
               )}
             </svg>
-            {hoverPrimary && hoverMinutes != null && (
+            {hoverPrimary && (
               <div
                 data-testid="sparkline-tooltip"
                 className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
                 style={{
                   // Follows the guide line, clamped so the box never overflows
                   // the card's clipped edges.
-                  left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
+                  left: `${Math.min(Math.max((xOf(hoverPrimary.minutes, open, close) / SPARKLINE_WIDTH) * 100, 14), 86)}%`,
                 }}
               >
                 {/* 실측·비교값은 30분 버킷의 평균이라 그 버킷의 구간을 적고,
                     예측은 짚은 그 시각의 값이라 시각 하나를 적는다. */}
                 <span className="font-mono tabular-nums text-ink-soft">
                   {hoverPrediction
-                    ? formatMinutes(hoverMinutes)
+                    ? formatMinutes(hoverPrimary.minutes)
                     : bucketRange(hoverPrimary.minutes, BUCKET_MINUTES)}
                 </span>
                 <span className="mx-1 text-ink-soft">·</span>
