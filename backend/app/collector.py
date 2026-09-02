@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.cache import set_latest
-from app.config import MMCA_DISABLED_SPACE_CODES, settings
+from app.config import settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
@@ -78,7 +78,7 @@ def store_forecast_revisions(
 # either side succeeded, so a retry a couple of seconds later recovers the
 # reading instead of leaving a hole in the series.
 #
-# No equivalent retry for collect_mmca_once: losing one room of fifteen is a
+# No equivalent retry for collect_mmca_once: losing one room of seventeen is a
 # far smaller hole than losing the only call of a round, and that room's retry
 # is simply the next round — one minute away on the MMCA_POLL_MINUTES grid,
 # against the ten it used to be. An in-round retry would buy back 58 of those
@@ -223,13 +223,22 @@ _COLLECTION_START = time(10, 0)
 # dict 라 마지막 것만 남는다 — 수집은 정상, API 응답만 90% 사라지는 유일한
 # 조용한 실패 경로다.
 #
-# 100,000/day 쿼터 대비 비용: 15개 방 * 최대일(수/토, 서울관 21시 연장) 라운드로
-# 10분이 879콜(0.9%), 1분이 8,655콜(8.7%). 쿼터는 6초까지도 버티므로 제약이
-# 아니다 — 진짜 상한은 (a) 방 15개 순차 호출 라운드가 방당 timeout 10초라
-# 최악 150초까지 늘어나 60초 격자를 넘을 수 있는 것(APScheduler max_instances=1
-# 이라 겹치면 그 라운드가 스킵된다), (b) 상류 갱신 주기가 미측정인 것이다.
-# /congestion 응답에는 타임스탬프가 없어(mmca_api.py) 페이로드만으로는 값이
-# 새것인지 알 수 없다. 1분 수집 하루치의 전이 시각이 그 답이다.
+# 100,000/day 쿼터 대비 비용: 최대일(수/토 — 세 관 모두 개관, 서울·덕수궁이
+# 21:00 까지)에 10분이 995콜(1.0%), 1분이 9,797콜(9.8%). 방 17개지만 과천은
+# 18:00 에 닫아 하루 481라운드, 나머지 9개 방이 661라운드다.
+#
+# 쿼터는 약 6초까지 버티므로(하루 방·초 총량 586,800 / 100,000) 간격을 정하는
+# 값이 아니다. 진짜 상한은 둘 다 실측이 필요한 쪽이다:
+#
+# (a) 라운드 실행 시간. 방 17개를 순차 호출하며 방당 timeout 이 10초라 최악
+#     170초까지 늘어난다. 2026-09-02 실측은 총 0.58초(방당 평균 33ms)로 60초
+#     격자의 1.0% 였다 — 60초를 넘기려면 6개 방 이상이 동시에 timeout 을
+#     맞아야 한다. 넘겨도 예외가 아니라 그 라운드가 스킵된다(APScheduler
+#     max_instances 기본값 1, EVENT_JOB_MAX_INSTANCES 는 EVENT_JOB_ERROR 가
+#     아니라 scheduler.py 의 _log_job_error 도 반응하지 않는다).
+# (b) 상류 갱신 주기. /congestion 응답에 타임스탬프가 없어(mmca_api.py)
+#     페이로드만으로는 받은 값이 새것인지 10분 전 값인지 알 수 없다. 1분 수집
+#     하루치의 전이 시각이 그 답이고, 그것으로 최종 간격을 정한다.
 MMCA_POLL_MINUTES = 1
 
 # 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
@@ -281,7 +290,6 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         for venue, codes in settings.mmca_venue_space_codes.items()
         if _is_venue_open(venue, now)
         for space_code in codes
-        if space_code not in MMCA_DISABLED_SPACE_CODES
     ]
     if not space_codes:
         return []

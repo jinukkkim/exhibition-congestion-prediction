@@ -3,14 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { DailyLogTable } from "../components/DailyLogTable";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { DISABLED_MMCA_VENUES } from "../lib/mmcaDisabledRooms";
 import { VENUES } from "../venues";
-
-// 수집하지 않는 관은 표가 영원히 비어 있으므로 탭에서 뺀다 — App.tsx 가 그 관의
-// 상세 라우트를 홈으로 돌려보내는 것과 같은 규칙이다.
-const LOGGED_VENUES = VENUES.filter(
-  (venue) => venue.mmcaVenue === undefined || !DISABLED_MMCA_VENUES.has(venue.mmcaVenue)
-);
 
 export function LogsPage() {
   useDocumentTitle("수집 원본 데이터");
@@ -18,7 +11,7 @@ export function LogsPage() {
   // 관을 URL 에 둔다 — 새로고침해도, 링크를 공유해도 같은 관이 열린다.
   // 모르는 값이면 404 대신 첫 관: 오래된 링크에도 보여줄 것이 있다.
   const selected =
-    LOGGED_VENUES.find((venue) => venue.id === params.get("venue")) ?? LOGGED_VENUES[0];
+    VENUES.find((venue) => venue.id === params.get("venue")) ?? VENUES[0];
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -39,7 +32,7 @@ export function LogsPage() {
         </header>
 
         <div className="mb-6 flex flex-wrap gap-2">
-          {LOGGED_VENUES.map((venue) => {
+          {VENUES.map((venue) => {
             const isSelected = venue.id === selected.id;
             return (
               <button

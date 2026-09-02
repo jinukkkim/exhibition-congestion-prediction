@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as congestionApi from "../src/api/congestion";
 import type { CurrentCongestion } from "../src/api/congestion";
 import * as mmcaApi from "../src/api/mmca";
-import type { MmcaRoomStatus, MmcaVenue } from "../src/api/mmca";
+import type { MmcaRoomStatus } from "../src/api/mmca";
 import { HomePage } from "../src/pages/HomePage";
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
@@ -29,17 +29,11 @@ describe("HomePage", () => {
       congest_level: "보통",
       population_avg: 1240.4,
     });
-    vi.spyOn(mmcaApi, "fetchMmcaRooms").mockImplementation((venue: MmcaVenue) =>
-      Promise.resolve(
-        venue === "deoksugung"
-          ? [makeRoom({ space_code: "MMCA-SPACE-4001", congestion_nm: null, observed_at: null })]
-          : [
-              makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "여유" }),
-              makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "여유" }),
-              makeRoom({ space_code: "MMCA-SPACE-1003", congestion_nm: "보통" }),
-            ]
-      )
-    );
+    vi.spyOn(mmcaApi, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1003", congestion_nm: "보통" }),
+    ]);
   });
 
   afterEach(() => {
@@ -66,8 +60,10 @@ describe("HomePage", () => {
       "href",
       "/venues/mmca-gwacheon"
     );
-    // 덕수궁관은 갈 곳이 없어 링크가 아니다 — 아래 별도 케이스 참고
-    expect(screen.queryByRole("link", { name: /국립현대미술관 덕수궁관/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /국립현대미술관 덕수궁관/ })).toHaveAttribute(
+      "href",
+      "/venues/mmca-deoksugung"
+    );
   });
 
   it("links to the raw collection log", async () => {
@@ -82,27 +78,6 @@ describe("HomePage", () => {
     expect(screen.getByRole("link", { name: /수집 원본 데이터/ })).toHaveAttribute(
       "href",
       "/logs"
-    );
-  });
-
-  it("renders Deoksugung as an unclickable card, name and reason still visible", async () => {
-    // 서비스가 재개될 기약이 없으므로 빈 페이지로 보내는 링크를 없앤다. 비활성
-    // 링크가 아니라 링크 자체를 두지 않는다 — aria-disabled 를 붙인 링크는
-    // 스크린리더가 여전히 링크로 읽어 혼란스럽다.
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
-    );
-
-    expect(screen.queryByRole("link", { name: /덕수궁관/ })).not.toBeInTheDocument();
-    expect(screen.getByText("국립현대미술관 덕수궁관")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("서비스 예정")).toBeInTheDocument());
-
-    // 나머지 관은 그대로 링크
-    expect(screen.getByRole("link", { name: /국립현대미술관 과천관/ })).toHaveAttribute(
-      "href",
-      "/venues/mmca-gwacheon"
     );
   });
 
@@ -126,11 +101,9 @@ describe("HomePage", () => {
   });
 
   it("keeps MMCA venues clickable while they are only temporarily inactive", async () => {
-    // 이 PR 의 핵심 결정: 클릭 차단은 요약 라벨이 아니라 DISABLED_MMCA_VENUES 로
-    // 가른다. 라벨로 가르면 "영업 전"·"정보 없음" 처럼 곧 값이 돌아오는 상태의
-    // 관까지 함께 막히고, 그 페이지엔 지난주 곡선 등 볼 것이 남아 있다.
-    // 다른 케이스들도 서울관을 link role 로 조회하므로 깨지긴 하지만, 그 테스트의
-    // 주제는 시계 판정과 관별 독립 실패라서 무엇이 깨졌는지가 읽히지 않는다.
+    // 카드가 값을 못 보여주는 것과 갈 곳이 없는 것은 다르다 — "영업 전"·"정보
+    // 없음" 은 곧 값이 돌아오는 상태이고, 그 페이지엔 지난주 곡선 등 볼 것이
+    // 남아 있다. 라벨을 보고 링크를 떼면 그 길이 막힌다.
     vi.setSystemTime(new Date("2026-08-20T07:00:00")); // 개관 전 — 모든 관이 inactive
     vi.spyOn(mmcaApi, "fetchMmcaRooms").mockRejectedValue(new Error("network error"));
 
@@ -143,14 +116,12 @@ describe("HomePage", () => {
     for (const [name, path] of [
       ["국립현대미술관 서울관", "/venues/mmca-seoul"],
       ["국립현대미술관 과천관", "/venues/mmca-gwacheon"],
+      ["국립현대미술관 덕수궁관", "/venues/mmca-deoksugung"],
     ] as const) {
       const card = screen.getByRole("link", { name: new RegExp(name) });
       expect(card).toHaveAttribute("href", path);
       expect(card).toHaveTextContent("영업 전");
     }
-
-    // 영구히 서비스가 없는 관만 링크가 아니다
-    expect(screen.queryByRole("link", { name: /덕수궁관/ })).not.toBeInTheDocument();
   });
 
   it("shows the national museum level with its population", async () => {
@@ -179,16 +150,6 @@ describe("HomePage", () => {
     await waitFor(() => expect(seoulCard).toHaveTextContent("여유2"));
     expect(seoulCard).toHaveTextContent("보통1");
     expect(seoulCard).toHaveTextContent("14:20 기준");
-  });
-
-  it("shows the service-pending state for Deoksugung", async () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => expect(screen.getByText("서비스 예정")).toBeInTheDocument());
   });
 
   it("ignores a slow response from an earlier poll", async () => {

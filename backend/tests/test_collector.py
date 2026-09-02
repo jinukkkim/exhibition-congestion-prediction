@@ -506,9 +506,8 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    # MMCA-SPACE-9001 stands in for a Monday-closed venue that isn't in
-    # MMCA_DISABLED_SPACE_CODES — keeps this test isolated to the
-    # business-hours gate, not the separate disabled-codes gate.
+    # MMCA-SPACE-9001 stands in for a Monday-closed venue — keeps this test
+    # isolated to the business-hours gate.
     monkeypatch.setattr(
         collector_module,
         "_VENUE_CLOSED_DAYS",
@@ -578,7 +577,7 @@ def test_collect_mmca_once_polls_a_room_that_read_empty_all_first_hour(monkeypat
     assert len(result) == 2
 
 
-def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_factory):
+def test_collect_mmca_once_polls_every_configured_room(monkeypatch, session_factory):
     import app.collector as collector_module
 
     seen_codes = []
@@ -594,18 +593,15 @@ def test_collect_mmca_once_excludes_disabled_space_codes(monkeypatch, session_fa
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
-    monkeypatch.setattr(
-        collector_module.settings,
-        "mmca_venue_space_codes",
-        {"gwacheon": ["MMCA-SPACE-2001", "MMCA-SPACE-2008"]},
-    )
 
-    # 2026-07-28 is a Tuesday, so Gwacheon is open — the point being that the
-    # disabled-codes filter is separate from the business-hours gate, and
-    # MMCA-SPACE-2008 (children's museum) must never be fetched regardless.
+    # settings 를 갈아끼우지 않는다 — 실제 설정의 17개 방(서울 8 + 과천 8 +
+    # 덕수궁 1)이 전부 폴링되는지가 요점이다. 덕수궁 1전시실과 과천
+    # 어린이미술관은 쿼터 때문에 수집에서 빠져 있었고, 운영 계정으로 바뀐 뒤
+    # 다시 대상이 되었다.
+    # 2026-07-28 은 화요일 — 세 관 모두 개관일이다.
     result = collector_module.collect_mmca_once(
         session_factory=session_factory, now=datetime(2026, 7, 28, 14, 0)
     )
 
-    assert len(result) == 1
-    assert seen_codes == ["MMCA-SPACE-2001"]
+    assert len(result) == 17
+    assert {"MMCA-SPACE-4001", "MMCA-SPACE-2008"} <= set(seen_codes)

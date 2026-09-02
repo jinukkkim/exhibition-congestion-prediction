@@ -1,7 +1,6 @@
 import type { CurrentCongestion } from "../api/congestion";
 import type { MmcaRoomStatus, MmcaVenue } from "../api/mmca";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
-import { DISABLED_MMCA_SPACE_CODES, DISABLED_MMCA_VENUES } from "./mmcaDisabledRooms";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
 import { STATUS_LEVELS } from "./status";
 
@@ -53,36 +52,31 @@ export function mmcaSummary(
   rooms: MmcaRoomStatus[] | null,
   now: Date
 ): VenueSummary {
-  // 시각 판정보다 위 — 덕수궁관은 시간과 무관하게 영구히 수집 대상이 아니므로,
-  // 밤에 "영업 종료"로 적으면 아침에는 값이 나올 것처럼 읽힌다. 다만 이 판정만은
-  // 방 목록이 있어야 가능하므로, 목록이 없는 동안은 아래 시계 판정에 맡긴다.
-  const active = rooms?.filter((room) => !DISABLED_MMCA_SPACE_CODES.has(room.space_code)) ?? null;
-  if (active !== null && active.length === 0) {
-    return { kind: "inactive", label: "서비스 예정" };
-  }
-
-  // 목록을 기다리는 동안에도 결론이 정해진 관은 미리 답한다 (덕수궁관). 시계
-  // 답을 먼저 보여주면 곧 "서비스 예정"으로 바뀌는 값을 한 번 스쳐 보이게 된다.
-  if (active === null && DISABLED_MMCA_VENUES.has(venue)) {
-    return { kind: "inactive", label: "서비스 예정" };
-  }
-
-  // 나머지 시계 판정은 데이터 없이도 확정된다 — nationalMuseumSummary 와 같은
+  // 시계 판정은 데이터 없이도 확정된다 — nationalMuseumSummary 와 같은
   // 이유로 데이터 검사보다 위에 둔다.
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
   if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };
 
-  if (active === null) return { kind: "inactive", label: "불러오는 중" };
+  if (rooms === null) return { kind: "inactive", label: "불러오는 중" };
 
-  const read = active.filter(
+  const read = rooms.filter(
     (room): room is MmcaRoomStatus & { congestion_nm: string; observed_at: string } =>
       room.congestion_nm !== null && room.observed_at !== null
   );
-  // /mmca/rooms는 당일 판독만 돌려주고 수집기의 첫 폴은 개관 10분 뒤에 돈다
-  // (backend/app/collector.py의 _COLLECTION_START) — 그 창은 오류가 아니다.
-  if (read.length === 0) return { kind: "inactive", label: "집계 중" };
+  if (read.length === 0) {
+    // 당일 폴이 한 번이라도 돌았는지로 "아직"과 "없음"을 가른다. /mmca/rooms는
+    // 당일 판독만 돌려주므로 개관 직후에는 방이 비어 있는 것이 정상이고
+    // (backend/app/collector.py의 _COLLECTION_START), 그 창은 오류가 아니다.
+    // 반면 폴이 돈 뒤에도 값이 없는 것은 집계가 늦은 것이 아니라 줄 값이 없는
+    // 것이다 — MMCA API 는 진행 중인 전시가 없거나 혼잡도를 제공하지 않는
+    // 전시실에 resultCode 0002 로 빈 응답을 준다. 덕수궁관은 전시실이
+    // MMCA-SPACE-4001 하나뿐이고 그 방이 계속 이 상태라, 가르지 않으면 영업
+    // 시간 내내 곧 값이 올 것처럼 "집계 중"이 떠 있는다.
+    const polled = rooms.some((room) => room.observed_at !== null);
+    return { kind: "inactive", label: polled ? "정보 없음" : "집계 중" };
+  }
 
   const tally = new Map<string, number>();
   for (const room of read) {

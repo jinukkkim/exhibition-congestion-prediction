@@ -47,8 +47,7 @@ def build_scheduler() -> BackgroundScheduler:
         # instead of free-running from server start. The spacing lives in
         # MMCA_POLL_MINUTES because collect_mmca_once floors its stamps to the
         # same grid — see that constant for the quota arithmetic and for what
-        # actually bounds the interval. See MMCA_DISABLED_SPACE_CODES for the
-        # two rooms still excluded.
+        # actually bounds the interval.
         trigger=CronTrigger(minute=f"*/{MMCA_POLL_MINUTES}", timezone=_SEOUL_TZ),
         id="collect_mmca_congestion",
         misfire_grace_time=60,

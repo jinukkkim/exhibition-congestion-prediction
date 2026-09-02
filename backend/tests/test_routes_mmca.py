@@ -48,21 +48,29 @@ def test_mmca_rooms_returns_503_when_no_data(client):
     assert response.status_code == 503
 
 
-def test_mmca_rooms_returns_placeholder_instead_of_503_when_venue_is_fully_disabled(client):
-    test_client, _ = client
+def test_mmca_rooms_returns_the_deoksugung_room(client):
+    test_client, session_factory = client
+    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
 
-    # Deoksugung's only code (MMCA-SPACE-4001) is in MMCA_DISABLED_SPACE_CODES,
-    # so collection will never backfill history for it — a fresh/empty DB
-    # must not 503 forever, or the frontend falls through to a generic error
-    # page instead of its "서비스 예정" placeholder UI.
+    # 덕수궁관은 전시실이 MMCA-SPACE-4001 하나뿐이라, 그 한 칸이 빠지면 관
+    # 전체가 빈다 — 수집에서 제외돼 있던 동안 실제로 그랬다.
+    with session_factory() as session:
+        session.add(
+            RawMmcaCongestion(
+                observed_at=today.replace(hour=10, minute=0),
+                space_code="MMCA-SPACE-4001",
+                space_nm="1전시실",
+                congestion_nm="여유",
+            )
+        )
+        session.commit()
+
     response = test_client.get("/mmca/rooms?venue=deoksugung")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
     assert body[0]["space_code"] == "MMCA-SPACE-4001"
-    assert body[0]["space_nm"] == "1전시실"
-    assert body[0]["congestion_nm"] is None
-    assert body[0]["observed_at"] is None
+    assert body[0]["congestion_nm"] == "여유"
 
 
 def test_mmca_rooms_returns_400_for_unknown_venue(client):
@@ -148,31 +156,7 @@ def test_mmca_rooms_filters_by_venue(client):
     gwacheon_response = test_client.get("/mmca/rooms?venue=gwacheon")
     assert gwacheon_response.status_code == 200
     gwacheon_codes = {r["space_code"] for r in gwacheon_response.json()}
-    assert gwacheon_codes == {"MMCA-SPACE-2001", "MMCA-SPACE-2008"}
-
-
-def test_mmca_rooms_always_includes_disabled_room_even_without_its_own_history(client):
-    test_client, session_factory = client
-    today = datetime.now(_SEOUL_TZ).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
-
-    with session_factory() as session:
-        # Only the non-disabled Gwacheon room has any history; MMCA-SPACE-2008
-        # (the disabled children's museum) has zero rows in this DB.
-        session.add(
-            RawMmcaCongestion(
-                observed_at=today.replace(hour=10, minute=0),
-                space_code="MMCA-SPACE-2001",
-                space_nm="1전시실",
-                congestion_nm="여유",
-            )
-        )
-        session.commit()
-
-    response = test_client.get("/mmca/rooms?venue=gwacheon")
-    assert response.status_code == 200
-    disabled_room = next(r for r in response.json() if r["space_code"] == "MMCA-SPACE-2008")
-    assert disabled_room["congestion_nm"] is None
-    assert disabled_room["space_nm"] == "1층 어린이미술관"
+    assert gwacheon_codes == {"MMCA-SPACE-2001"}
 
 
 def test_mmca_daily_returns_400_for_unknown_venue(client):
