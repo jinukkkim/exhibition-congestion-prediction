@@ -202,13 +202,10 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 # Collection starts at the opening time the frontend shows, so the day's first
 # sample is the opening minute itself.
 #
-# It was 10:10 for two years' worth of quota arithmetic: 15 rooms * 66 rounds
-# came to 990 calls, one under the MMCA API's old 1,000/day, and dropping the
-# 10:00 round is what bought that last slot. The cap is now 100,000/day. The
-# stated justification — congestion at opening is reliably 여유, so the round
-# buys nothing — was the excuse, not the reason: a reliably-여유 reading is
-# still the reading, and the charts drew their first point ten minutes into a
-# day whose axis started at 10:00.
+# It was 10:10 to fit the MMCA API's old 1,000-call/day cap: 15 rooms * 66
+# rounds came to 990, and dropping the 10:00 round bought that last slot. The
+# cap is now 100,000/day. Recorded so the saving is not re-derived — opening
+# congestion being reliably 여유 was the stated reason, never the real one.
 _COLLECTION_START = time(10, 0)
 
 # Same open/close hours as Seoul; only Deoksugung (inside the palace grounds)
