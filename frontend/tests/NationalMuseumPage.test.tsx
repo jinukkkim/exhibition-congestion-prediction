@@ -142,6 +142,19 @@ describe("NationalMuseumPage", () => {
     expect(todayCallsAfter).toBe(todayCallsBefore + 1);
   });
 
+  it("keeps polling the prediction on the today tab so the dashed line follows today", async () => {
+    // 보정이 요청 시각에 붙으므로(백엔드 routes/prediction.py) 응답이 판독마다
+    // 바뀐다. 받고 멈추면 점선이 페이지를 연 시점에 얼어붙은 채 실선만 자란다.
+    renderPage();
+
+    await waitFor(() => expect(api.fetchPrediction).toHaveBeenCalled());
+    const before = vi.mocked(api.fetchPrediction).mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(vi.mocked(api.fetchPrediction).mock.calls.length).toBe(before + 1);
+  });
+
   it("stops refetching last week's log once it has arrived", async () => {
     renderPage();
 
@@ -206,6 +219,24 @@ describe("NationalMuseumPage date tabs", () => {
     expect(screen.getByTestId("sparkline-prediction-line")).toBeInTheDocument();
     expect(screen.getByText("예측")).toBeInTheDocument();
     expect(screen.queryByText(/시간대별 예측/)).not.toBeInTheDocument();
+  });
+
+  it("keeps polling the prediction on a future tab too — one payload holds today", async () => {
+    // 한 응답이 7일치를 다 담으므로 미래 탭에 서 있어도 그 안의 오늘 곡선이
+    // 낡는다. 탭으로 멈추면 오늘 탭으로 돌아왔을 때 옛 점선을 보게 된다.
+    render(
+      <MemoryRouter>
+        <NationalMuseumPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+    fireEvent.click(screen.getByRole("tab", { name: "토 8/22" }));
+
+    const before = vi.mocked(api.fetchPrediction).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(vi.mocked(api.fetchPrediction).mock.calls.length).toBe(before + 1);
   });
 
   it("shows the business hours once in the header and keeps them on the selected date", async () => {

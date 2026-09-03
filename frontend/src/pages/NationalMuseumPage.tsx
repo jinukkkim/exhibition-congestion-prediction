@@ -37,12 +37,15 @@ export function NationalMuseumPage() {
     [chartDate]
   );
 
-  // 성공하면 정지: 다시 요청해도 같은 답이 오는 값. 실패했을 때만 다음 tick 에
-  // 재시도한다 (지난주 로그는 지나간 날의 확정 데이터, 예측은 일 1회 배치).
-  const prediction = usePolledFetch(fetchPrediction, {
-    intervalMs: POLL_INTERVAL_MS,
-    stopWhenLoaded: true,
-  });
+  // 계속 폴링한다. 받으면 멈추던 자리인데(배치가 하루 한 번 만드는 값이었다),
+  // 오늘 곡선의 보정이 요청 시각에 붙게 된 뒤로는 그러면 점선이 페이지를 연
+  // 시점에 얼어붙은 채 실선만 자라난다 — 이 보정의 요점이 사라진다.
+  //
+  // 탭에 따라 멈추지는 않는다. 한 응답이 7일치를 다 담으므로 미래 탭에서도
+  // 그 안의 오늘 곡선이 계속 낡고 있고, MmcaPage 처럼 날짜를 deps 로 걸 수도
+  // 없다 — 이 엔드포인트는 날짜를 받지 않아 deps 가 없고, 억지로 넣으면 훅이
+  // 탭을 옮길 때마다 값을 비워 차트가 한 번씩 사라진다.
+  const prediction = usePolledFetch(fetchPrediction, { intervalMs: POLL_INTERVAL_MS });
   const lastWeekDaily = usePolledFetch(
     () => fetchDaily(lastWeek),
     { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
