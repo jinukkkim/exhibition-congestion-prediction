@@ -18,8 +18,6 @@ function curveOf(value: number) {
 // 2026-08-20 목요일 기준 오늘 + 2일
 const READY_PREDICTION = {
   status: "ready" as const,
-  baseline_mae: 120.5,
-  model_mae: 95.2,
   curve: curveOf(1000),
   days: [
     { date: "2026-08-20", is_holiday: false, curve: curveOf(1000) },

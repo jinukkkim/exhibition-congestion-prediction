@@ -14,6 +14,8 @@ export async function fetchCurrent(): Promise<CurrentCongestion> {
 
 export interface PredictionCurvePoint {
   hour: number;
+  // 보정 전 프로파일 값. 그리지는 않지만 응답만 보고도 오늘 앵커가 곡선을 얼마나
+  // 밀었는지 읽힌다 (백엔드 prediction/seoul.py 의 curve()).
   baseline: number | null;
   model: number;
 }
@@ -27,8 +29,6 @@ export interface PredictionDay {
 export interface PredictionResult {
   status: "collecting" | "ready";
   days_collected?: number;
-  baseline_mae?: number;
-  model_mae?: number;
   // days 를 담기 전 배치가 남긴 캐시가 TTL(24시간) 안에 남아 있을 수 있고,
   // 배포 중에도 구 백엔드 응답을 받을 수 있어 둘 다 optional 이다.
   curve?: PredictionCurvePoint[];

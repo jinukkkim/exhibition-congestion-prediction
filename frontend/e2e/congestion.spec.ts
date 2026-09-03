@@ -20,8 +20,6 @@ test("renders current congestion and the prediction line inside the chart", asyn
     route.fulfill({
       json: {
         status: "ready",
-        baseline_mae: 120.5,
-        model_mae: 95.2,
         // 점선은 days 에서 그리는 날짜를 찾아 그린다 — 고정한 시계와 같은 날짜.
         days: [
           {
