@@ -691,13 +691,17 @@ describe("CongestionCard chart geometry", () => {
         viewDate="2026-07-09"
         daily={fullDay("2026-07-09", (m) => 1000 + (m - 570))}
         lastWeekDaily={fullDay("2026-07-02", (m) => 900 + (m - 570) / 2)}
+        // 백엔드와 같은 모양: 영업시간 정시만 (09:30 개관은 9시 셀, 17:30 폐관은
+        // 17시 셀이 마지막 — 18시는 응답에 없다). 24시간을 주면 축 끝 보간이
+        // 실제로는 없는 표본에 기대는 것을 가린다.
+        //
         // 정시 표본이 직선(model = a + b·hour)이면 Catmull-Rom 도 직선이 되어
         // 현과 곡선이 같아진다 — 아래 "곡선 위에 앉는다" 회귀를 못 잡으므로
         // 포물선을 쓴다.
-        prediction={Array.from({ length: 24 }, (_, hour) => ({
-          hour,
+        prediction={Array.from({ length: 9 }, (_, i) => ({
+          hour: 9 + i,
           baseline: null,
-          model: 1000 + (hour - 9) * (18 - hour) * 40,
+          model: 1000 + i * (17 - i) * 40,
         }))}
       />
     );

@@ -186,6 +186,25 @@ function predictionAt(points: Point[], minutes: number): Point | undefined {
   return undefined;
 }
 
+// 축 양 끝의 예측 점. 표본 사이면 보간하고, 표본 구간 밖이면 가장 가까운 표본
+// 값으로 눕힌다.
+//
+// 폐관에서 실제로 밖으로 나간다: 백엔드는 영업시간 정시만 담으므로(seoul.py 의
+// in_business_hours) 17:30 폐관인 날의 마지막 표본이 17시고, 17:30 을 감쌀 18시
+// 표본이 없다. 보간만 하면 그 30분을 못 그려 점선이 폐관 눈금보다 일찍 끊긴다.
+// 눕히는 것이 값으로도 옳다: 17시 셀은 17:00~17:30 판독의 평균이라, 그 구간을
+// 그 값으로 채우는 것이 없는 18시 값을 향해 기울이는 것보다 데이터에 가깝다.
+// (개관 쪽은 09:30 판독이 9시 셀에 들어가 표본이 있어 보간으로 풀린다 —
+// 그 셀이 빠진 날에는 여기서 눕는다.)
+function predictionEdge(points: Point[], minutes: number): Point | undefined {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first) return undefined;
+  if (minutes <= first.minutes) return { minutes, value: first.value };
+  if (minutes >= last.minutes) return { minutes, value: last.value };
+  return predictionAt(points, minutes);
+}
+
 // Centripetal Catmull-Rom -> cubic Bezier. Unlike the uniform variant (which
 // weights every neighbor equally regardless of how close it is), this
 // parametrizes each segment by sqrt(distance), so a point sitting unusually
@@ -376,14 +395,14 @@ export function CongestionCard({
 
   // 예측은 실측과 같은 단위(population_avg)라 같은 축에 그대로 올라간다.
   // 표본이 정시뿐이라 영업시간 밖 점을 그냥 버리면 곡선이 개관·폐관 눈금에
-  // 닿지 못한다(09:30~10:00, 17:00~17:30 이 빈다). 버리는 대신 축 양 끝에서
-  // 값을 보간해 곡선을 축에 맞춰 자른다 — 응답에는 09시·18시 값이 다 있다.
+  // 닿지 못한다(09:30~10:00, 17:00~17:30 이 빈다). 버리는 대신 축 양 끝에
+  // 점을 만들어 곡선을 축에 맞춰 자른다.
   const predHourly: Point[] = (prediction ?? []).map((p) => ({
     minutes: p.hour * 60,
     value: p.model,
   }));
-  const predOpen = predictionAt(predHourly, open);
-  const predClose = predictionAt(predHourly, close);
+  const predOpen = predictionEdge(predHourly, open);
+  const predClose = predictionEdge(predHourly, close);
   const predRawPoints: Point[] = predHourly.length === 0
     ? []
     : [
