@@ -33,10 +33,9 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from app.collector import _is_venue_open
-from app.config import settings
+from app.config import KR_HOLIDAYS, settings
 from app.db import SessionLocal
 from app.models import RawMmcaCongestion
-from app.prediction.model import _KR_HOLIDAYS
 
 # space_code -> venue, inverted from the same config the collector gates on.
 VENUE_OF: dict[str, str] = {
@@ -63,7 +62,7 @@ def out_of_hours(rows: Sequence[Row]) -> list[Row]:
         (row_id, observed_at, space_code)
         for row_id, observed_at, space_code in rows
         if space_code in VENUE_OF
-        and observed_at.date() not in _KR_HOLIDAYS
+        and observed_at.date() not in KR_HOLIDAYS
         and not _is_venue_open(VENUE_OF[space_code], observed_at)
     ]
 
@@ -86,7 +85,7 @@ def main(session_factory=SessionLocal) -> None:
         doomed = out_of_hours(rows)
         unknown = sum(1 for _, _, space_code in rows if space_code not in VENUE_OF)
 
-        holiday = sum(1 for _, observed_at, _ in rows if observed_at.date() in _KR_HOLIDAYS)
+        holiday = sum(1 for _, observed_at, _ in rows if observed_at.date() in KR_HOLIDAYS)
         print(
             f"{len(rows)} rows examined, {len(doomed)} outside opening hours, "
             f"{holiday} on a public holiday (kept), "

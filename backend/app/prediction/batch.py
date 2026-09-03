@@ -1,88 +1,100 @@
-from datetime import date, datetime, time, timedelta
-from statistics import mean
+"""하루 한 번 도는 예측 배치.
+
+`days` 는 오늘부터 7일이고, 오늘 곡선은 여기서 만들 때 앵커가 없다 — 배치는
+00:02 에 돌아 그날 판독이 아직 하나도 없다. 오늘의 보정은 routes/prediction.py
+가 요청 시각에 붙인다 (MMCA 는 곡선 전체를 요청 시각에 만든다 — 그쪽은 캐시
+TTL 이 60초라 그래도 되지만, 이쪽은 24시간이라 배치가 만든 것을 route 가
+덧칠하는 형태가 된다).
+
+프로파일을 페이로드에 함께 담는 이유가 그것이다: route 가 앵커를 잡으려면
+"같은 시각의 프로파일 값"이 필요한데, 배치가 쓴 창과 다른 창으로 다시 만들면
+보정의 기준이 갈라진다.
+"""
+
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func
+
 from app.cache import set_prediction
+from app.config import KR_HOLIDAYS
 from app.db import SessionLocal
 from app.models import RawCongestion
-from app.prediction.baseline import compute_baseline, predict_baseline
-from app.prediction.model import _KR_HOLIDAYS, predict_model, train_model
+from app.prediction.seoul import PROFILE_WINDOW_DAYS, build_profile, curve, in_business_hours
 
-MIN_DAYS_REQUIRED = 14
+# 프로파일이 (요일, 시각) 키라 모든 요일이 한 번씩은 들어와야 한다.
+MIN_DAYS_REQUIRED = PROFILE_WINDOW_DAYS
 
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
-def run_daily_batch(session_factory=SessionLocal, today: date | None = None) -> dict:
-    with session_factory() as session:
-        rows = session.query(RawCongestion).order_by(RawCongestion.observed_at).all()
+def profile_key(weekday: int, hour: int) -> str:
+    """캐시는 JSON 이라 튜플 키를 담지 못한다."""
+    return f"{weekday}-{hour}"
 
-    if not rows:
+
+def parse_profile(raw: dict[str, float]) -> dict[tuple[int, int], float]:
+    out = {}
+    for key, value in raw.items():
+        weekday, hour = key.split("-")
+        out[(int(weekday), int(hour))] = value
+    return out
+
+
+def run_daily_batch(session_factory=SessionLocal, today: date | None = None) -> dict:
+    # 커브에 박힌 날짜는 KST 기준이다. 프로덕션은 Etc/UTC 라 naive now() 는 KST
+    # 오전 내내 전날로 떨어진다.
+    first_day = today or datetime.now(_SEOUL_TZ).date()
+    window_start = datetime.combine(first_day - timedelta(days=PROFILE_WINDOW_DAYS), datetime.min.time())
+
+    with session_factory() as session:
+        # 집계로 묻는다. order_by 를 두 번 붙이면 두 번째가 첫 번째를 대체하지
+        # 않고 뒤에 붙어(asc, desc) 최신 행이 아니라 같은 행이 두 번 나온다.
+        oldest, newest = session.query(
+            func.min(RawCongestion.observed_at), func.max(RawCongestion.observed_at)
+        ).one()
+        rows = (
+            session.query(RawCongestion)
+            .filter(RawCongestion.observed_at >= window_start)
+            .order_by(RawCongestion.observed_at)
+            .all()
+        )
+
+    if oldest is None:
         result = {"status": "collecting", "days_collected": 0}
         set_prediction(result)
         return result
 
-    days_collected = (rows[-1].observed_at - rows[0].observed_at).days
-    if days_collected < MIN_DAYS_REQUIRED:
+    days_collected = (newest - oldest).days
+    # 영업시간만 쓴다 — 앵커가 심야 판독을 잡으면 안 되는 것과 같은 이유이고,
+    # 프로파일과 앵커가 같은 모집단 위에 있어야 비율이 뜻을 갖는다.
+    window = [row for row in rows if in_business_hours(row.observed_at)]
+    if days_collected < MIN_DAYS_REQUIRED or not window:
         result = {"status": "collecting", "days_collected": days_collected}
         set_prediction(result)
         return result
 
-    split = int(len(rows) * 0.8)
-    train_rows, test_rows = rows[:split], rows[split:]
+    profile = build_profile(window)
 
-    baseline = compute_baseline(train_rows)
-    model = train_model(train_rows)
-    overall_avg = mean(row.population_avg for row in train_rows)
-
-    baseline_errors, model_errors = [], []
-    for row in test_rows:
-        weekday, hour = row.observed_at.weekday(), row.observed_at.hour
-        baseline_pred = predict_baseline(baseline, weekday, hour)
-        if baseline_pred is None:
-            baseline_pred = overall_avg
-        model_pred = predict_model(model, row.observed_at)
-
-        baseline_errors.append(abs(baseline_pred - row.population_avg))
-        model_errors.append(abs(model_pred - row.population_avg))
-
-    # This is where the 7-day window starts, and weekday() picks which day's
-    # baseline each curve is built from. observed_at is KST wall-clock, so this
-    # has to be too — production runs on Etc/UTC, where a naive now() lands on
-    # the previous day for the whole KST morning.
-    first_day = today or datetime.now(_SEOUL_TZ).date()
-
-    def day_curve(day: date) -> list[dict]:
-        return [
-            {
-                "hour": hour,
-                "baseline": predict_baseline(baseline, day.weekday(), hour),
-                "model": predict_model(model, datetime.combine(day, time(hour=hour))),
-            }
-            for hour in range(24)
-        ]
-
-    # 오늘 + 6일. 피처가 (weekday, hour, is_holiday) 뿐이라 8일째부터는 곡선이
-    # 그대로 반복되므로 7일이 중복 없는 최대치다.
+    # 오늘 + 6일. 프로파일이 (요일, 시각) 키라 8일째부터는 곡선이 그대로 반복된다.
     days = []
     for offset in range(7):
         day = first_day + timedelta(days=offset)
         days.append(
             {
                 "date": day.isoformat(),
-                "is_holiday": day in _KR_HOLIDAYS,
-                "curve": day_curve(day),
+                "is_holiday": day in KR_HOLIDAYS,
+                "curve": curve(profile, day),
             }
         )
 
     result = {
         "status": "ready",
-        "baseline_mae": mean(baseline_errors),
-        "model_mae": mean(model_errors),
         # 배포 중 "구 프론트 + 신 백엔드" 구간이 이 필드를 읽는다. days[0] 과 같은
         # 리스트이며, 프론트가 days 를 쓰게 된 뒤에도 지우지 않는다.
         "curve": days[0]["curve"],
         "days": days,
+        "profile": {profile_key(*key): value for key, value in profile.items()},
     }
     set_prediction(result)
     return result
