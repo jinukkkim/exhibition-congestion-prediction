@@ -432,10 +432,6 @@ export function CongestionCard({
     const svgX = ((event.clientX - rect.left) / rect.width) * SPARKLINE_WIDTH;
     // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
     const minutes = open + (svgX / SPARKLINE_WIDTH) * (close - open || 1);
-    // 예측은 곡선 위 어디서든 값이 나오므로 짚은 시각을 10분 격자로 맞춘다 —
-    // 툴팁의 시계가 픽셀마다 흔들리지 않는다. 버킷 중심은 30분 간격이라
-    // LAST_WEEK_MATCH_MINUTES(15분) 창 안에 그대로 들어온다. 스냅을 먼저,
-    // 영업시간 가두기를 나중에.
     // 계열과 같은 마크 격자로 맞춘다 — 값이 있으면 조회 거리가 늘 0 이고, 툴팁의
     // 시계도 10분 단위로만 튄다. 스냅을 먼저, 영업시간 가두기를 나중에 (순서를
     // 바꾸면 개관·폐관이 10분 배수가 아닐 때 영업시간 밖으로 튀어나간다).
