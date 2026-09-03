@@ -154,6 +154,15 @@ function yOf(value: number, range: Range): number {
   );
 }
 
+// yOf 의 역. 그린 곡선에서 읽은 y 를 툴팁에 적을 값으로 되돌린다 — 점의 위치와
+// 숫자가 같은 곳에서 나와야 서로 어긋나지 않는다.
+function valueOf(y: number, range: Range): number {
+  const span = range.max - range.min || 1;
+  return (
+    range.min + ((SPARKLINE_HEIGHT - CHART_PAD - y) / (SPARKLINE_HEIGHT - 2 * CHART_PAD)) * span
+  );
+}
+
 function toXY(points: Point[], open: number, close: number, range: Range): XY[] {
   return points.map(({ minutes, value }) => ({
     x: xOf(minutes, open, close),
@@ -161,10 +170,11 @@ function toXY(points: Point[], open: number, close: number, range: Range): XY[] 
   }));
 }
 
-// 예측은 정시로만 표본되지만 연속 곡선으로 그려진다 — 곡선 위 어디를 짚어도
-// 값이 나와야 한다. 그린 Catmull-Rom 과의 차이는 사람 수 기준 한 자릿수라
-// 선형 보간으로 족하다 (MmcaRoomChartCard 의 같은 함수와 같은 이유).
-// 구간 밖(첫 점 이전·마지막 점 이후)에는 예측값이 없다.
+// 정시 표본 사이의 선형 보간. 축 양 끝(개관·폐관)의 예측 점을 만드는 데만
+// 쓴다 — 그 점들은 곡선의 제어점이 되므로 곡선이 정확히 그 위를 지난다.
+// 호버 값에는 쓰지 않는다: 제어점 사이에서 곡선은 현(弦)에서 부풀어 올라
+// (실측 최대 12단위 ≈ 11px) 점이 선에서 떠 보인다. 그쪽은 yAtX 가 그린
+// 베지어를 그대로 읽는다.
 function predictionAt(points: Point[], minutes: number): Point | undefined {
   for (let i = 0; i < points.length - 1; i++) {
     const [a, b] = [points[i], points[i + 1]];
@@ -182,9 +192,11 @@ function predictionAt(points: Point[], minutes: number): Point | undefined {
 // close to its neighbor (e.g. the 09:30 raw reading, ~15min from the first
 // 30min bucket while every other point is a full bucket apart) contributes
 // proportionally less to the tangent instead of bending the curve.
-function smoothPath(xy: XY[]): string {
+type Segment = { p1: XY; cp1: XY; cp2: XY; p2: XY };
+
+function bezierSegments(xy: XY[]): Segment[] {
+  const segments: Segment[] = [];
   const dist = (a: XY, b: XY) => Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)) || 1e-6;
-  let d = `M ${xy[0].x} ${xy[0].y}`;
   for (let i = 0; i < xy.length - 1; i++) {
     const p0 = xy[i - 1] ?? xy[i];
     const p1 = xy[i];
@@ -201,13 +213,46 @@ function smoothPath(xy: XY[]): string {
     const m2x = (t2 - t1) * ((p2.x - p1.x) / (t2 - t1) - (p3.x - p1.x) / (t3 - t1) + (p3.x - p2.x) / (t3 - t2));
     const m2y = (t2 - t1) * ((p2.y - p1.y) / (t2 - t1) - (p3.y - p1.y) / (t3 - t1) + (p3.y - p2.y) / (t3 - t2));
 
-    const cp1x = p1.x + m1x / 3;
-    const cp1y = p1.y + m1y / 3;
-    const cp2x = p2.x - m2x / 3;
-    const cp2y = p2.y - m2y / 3;
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    segments.push({
+      p1,
+      cp1: { x: p1.x + m1x / 3, y: p1.y + m1y / 3 },
+      cp2: { x: p2.x - m2x / 3, y: p2.y - m2y / 3 },
+      p2,
+    });
   }
-  return d;
+  return segments;
+}
+
+function smoothPath(xy: XY[]): string {
+  return bezierSegments(xy).reduce(
+    (d, { cp1, cp2, p2 }) => `${d} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`,
+    `M ${xy[0].x} ${xy[0].y}`
+  );
+}
+
+function cubicAt(t: number, a: number, b: number, c: number, d: number): number {
+  const u = 1 - t;
+  return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
+}
+
+// 그려진 곡선 자체에서 x 의 y 를 읽는다 — 호버 점이 선 위에 앉으려면 점의 y 가
+// 화면에 그린 것과 같은 식에서 나와야 한다.
+//
+// 이분탐색인 이유는 베지어가 t 로 매개화돼 x 를 직접 풀 수 없기 때문이다. 우리
+// 데이터에서 x(t) 는 단조라(제어점의 x 가 시간 순) 탐색이 성립한다. 24회면
+// 1120 단위 폭에서 오차가 10^-4 단위 아래다.
+function yAtX(segments: Segment[], x: number): number | undefined {
+  const segment = segments.find((s) => x >= s.p1.x && x <= s.p2.x);
+  if (!segment) return undefined;
+  const { p1, cp1, cp2, p2 } = segment;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (cubicAt(mid, p1.x, cp1.x, cp2.x, p2.x) < x) lo = mid;
+    else hi = mid;
+  }
+  return cubicAt((lo + hi) / 2, p1.y, cp1.y, cp2.y, p2.y);
 }
 
 function areaPath(xy: XY[], linePath: string): string {
@@ -369,7 +414,10 @@ export function CongestionCard({
   const predXy = predPoints.length > 1 ? toXY(predPoints, open, close, range) : [];
   const linePath = xy.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekXy.length > 1 ? smoothPath(lastWeekXy) : "";
-  const predictionPath = predXy.length > 1 ? smoothPath(predXy) : "";
+  // 점선의 기하는 한 곳에서만 나온다 — 그린 path 와 호버가 읽는 곡선이 같은
+  // 세그먼트다.
+  const predSegments = predXy.length > 1 ? bezierSegments(predXy) : [];
+  const predictionPath = predSegments.length > 0 ? smoothPath(predXy) : "";
   const areaD = xy.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekXy.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = xy[xy.length - 1];
@@ -416,9 +464,15 @@ export function CongestionCard({
   // 두면 예측 점만 십자선에서 최대 15분 옆에 떨어진다.
   const anchorMinutes = (hoverActual ?? hoverCompare)?.minutes ?? hoverMinutes;
   // 실측이 있는 x 에서는 예측을 지운다 — 값이 확정된 자리에 나란히 놓인 추정치는
-  // 잡음이다.
+  // 잡음이다. 값은 그린 곡선에서 직접 읽는다 (yAtX 주석 참고).
+  const hoverPredictionY =
+    anchorMinutes == null || hoverActual
+      ? undefined
+      : yAtX(predSegments, xOf(anchorMinutes, open, close));
   const hoverPrediction =
-    anchorMinutes == null || hoverActual ? undefined : predictionAt(predPoints, anchorMinutes);
+    hoverPredictionY == null || anchorMinutes == null
+      ? undefined
+      : { minutes: anchorMinutes, value: valueOf(hoverPredictionY, range) };
 
   // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교 계열
   // 자신일 때만 괄호를 생략한다.

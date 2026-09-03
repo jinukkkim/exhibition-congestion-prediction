@@ -691,10 +691,13 @@ describe("CongestionCard chart geometry", () => {
         viewDate="2026-07-09"
         daily={fullDay("2026-07-09", (m) => 1000 + (m - 570))}
         lastWeekDaily={fullDay("2026-07-02", (m) => 900 + (m - 570) / 2)}
+        // 정시 표본이 직선(model = a + b·hour)이면 Catmull-Rom 도 직선이 되어
+        // 현과 곡선이 같아진다 — 아래 "곡선 위에 앉는다" 회귀를 못 잡으므로
+        // 포물선을 쓴다.
         prediction={Array.from({ length: 24 }, (_, hour) => ({
           hour,
           baseline: null,
-          model: 1200 + hour * 20,
+          model: 1000 + (hour - 9) * (18 - hour) * 40,
         }))}
       />
     );
@@ -734,6 +737,58 @@ describe("CongestionCard chart geometry", () => {
       expect(Math.min(...ys), id).toBeGreaterThanOrEqual(0);
       expect(Math.max(...ys), id).toBeLessThanOrEqual(viewBox().height);
     }
+  });
+
+  // path 의 d 를 세그먼트로 되돌려 x 에서의 y 를 구한다 — 컴포넌트의 yAtX 와
+  // 같은 계산이지만 그린 문자열에서만 읽으므로, 둘이 갈라지면 실패한다.
+  // (jsdom 에는 getPointAtLength 가 없어 브라우저에서처럼 물어볼 수 없다.)
+  function yOnDrawnPath(d: string, x: number): number {
+    const n = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    const cubic = (t: number, a: number, b: number, c: number, e: number) => {
+      const u = 1 - t;
+      return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * e;
+    };
+    for (let i = 2; i + 5 < n.length; i += 6) {
+      const [p1x, p1y] = [n[i - 2], n[i - 1]];
+      const [c1x, c1y, c2x, c2y, p2x, p2y] = n.slice(i, i + 6);
+      if (x < p1x || x > p2x) continue;
+      let lo = 0;
+      let hi = 1;
+      for (let k = 0; k < 40; k++) {
+        const mid = (lo + hi) / 2;
+        if (cubic(mid, p1x, c1x, c2x, p2x) < x) lo = mid;
+        else hi = mid;
+      }
+      return cubic((lo + hi) / 2, p1y, c1y, c2y, p2y);
+    }
+    throw new Error(`x=${x} is outside the drawn path`);
+  }
+
+  it("sits the prediction dot on the drawn curve, not on the chord between samples", () => {
+    // 예측 표본은 정시뿐이고 호버 격자는 10분이다. 정시 사이를 직선으로
+    // 보간하면 점이 곡선에서 뜬다 — 실측 최대 12단위(≈11px)였다.
+    const { container } = render_();
+
+    const svg = screen.getByTestId("history-sparkline");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    // 정시에서 20분 떨어진 자리 — 현과 곡선의 차이가 가장 큰 구간이다.
+    // 09:30~17:30 축에서 12:20 은 (740−570)/480.
+    fireEvent.mouseMove(container.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX: (480 * (740 - 570)) / 480,
+      clientY: 0,
+    });
+
+    expect(screen.getByTestId("sparkline-tooltip")).toHaveTextContent("12:20");
+    const dot = [...container.querySelectorAll("circle")].find(
+      (c) => c.getAttribute("r") === "4" && c.getAttribute("stroke") === "#0071E3"
+    )!;
+    const d = screen.getByTestId("sparkline-prediction-line").getAttribute("d")!;
+
+    expect(Number(dot.getAttribute("cy"))).toBeCloseTo(
+      yOnDrawnPath(d, Number(dot.getAttribute("cx"))),
+      3
+    );
   });
 
   it("puts the guide line and every hover dot on one x", () => {
