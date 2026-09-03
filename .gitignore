@@ -16,6 +16,6 @@ frontend/test-results/
 .superpowers/
 
 # Local data
-backend/congestion.db
+congestion.db
 .env
 .env.local
