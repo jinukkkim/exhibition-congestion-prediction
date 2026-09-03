@@ -30,7 +30,51 @@ def test_build_profile_averages_ranks_per_room_weekday_hour():
 
     profile = build_profile(rows)
 
-    assert profile[("A", 5, 15)] == (3 + 2 + 3) / 3
+    # 날짜별로 먼저 평균, 그 다음 날짜끼리 평균 — 08-01 이 판독 2개라고 08-08
+    # 보다 두 배 무거워지지 않는다. 판독을 통째로 평균내면 (3+2+3)/3 이다.
+    assert profile[("A", 5, 15)] == ((3 + 2) / 2 + 3) / 2
+
+
+def test_build_profile_weighs_days_equally_regardless_of_poll_interval():
+    """수집 간격이 셀 가중치를 정하면 안 된다.
+
+    MMCA_POLL_MINUTES 가 10 에서 1 로 바뀌면서 실제로 생긴 편향이다. 프로파일
+    창(14일)에는 요일마다 두 날이 들어가는데, 1분 격자로 수집한 날은 시각당
+    판독이 10분 격자 날의 10배다 — 실측 2026-09-03 방 1006 의 13시 셀이 60판독
+    대 2026-08-27 의 6판독으로, 판독을 통째로 평균내면 최근 하루가 셀 가중치의
+    91% 를 먹고 PROFILE_WINDOW_DAYS=14 가 요일별로 "가장 최근 1일"로 붕괴한다.
+    """
+    # 10분 격자로 수집한 날: 시각당 판독 6개, 전부 여유(rank 0)
+    sparse_day = [Row("A", f"2026-08-01T15:{minute:02d}:00", "여유") for minute in range(0, 60, 10)]
+    # 1분 격자로 수집한 날: 시각당 판독 60개, 전부 붐빔(rank 3)
+    dense_day = [Row("A", f"2026-08-08T15:{minute:02d}:00", "붐빔") for minute in range(60)]
+
+    profile = build_profile(sparse_day + dense_day)
+
+    # 두 날이 한 표씩 — 여유 하루와 붐빔 하루의 중간이다. 판독을 통째로
+    # 평균내면 60/66 이 붐빔이라 2.73 으로 붐빔에 붙는다.
+    assert profile[("A", 5, 15)] == 1.5
+
+
+def test_build_profile_averages_within_a_day_before_weighing_it():
+    """하루 안에서 판독 수가 시각마다 달라도 그 하루는 한 표다.
+
+    수집 장애·부분 라운드 때문에 실제로 흔하다 — 2026-09-03 방 1006 은 같은
+    날 안에서 시각당 판독이 20~60 개로 흔들렸다.
+    """
+    rows = [
+        # 08-01 15시: 판독 4개, 평균 0.5
+        Row("A", "2026-08-01T15:00:00", "여유"),
+        Row("A", "2026-08-01T15:01:00", "여유"),
+        Row("A", "2026-08-01T15:02:00", "보통"),
+        Row("A", "2026-08-01T15:03:00", "보통"),
+        # 08-08 15시: 수집이 죽어 판독 1개
+        Row("A", "2026-08-08T15:00:00", "약간 붐빔"),
+    ]
+
+    profile = build_profile(rows)
+
+    assert profile[("A", 5, 15)] == (0.5 + 2) / 2
 
 
 def test_build_profile_skips_rows_with_no_exhibition():

@@ -31,8 +31,48 @@ def build_profile(rows) -> dict[tuple[str, int, int], float]:
     최빈값이 아니라 평균인 이유: 평행이동이 연속값 산술을 요구하고, 차트의
     yOf(tier) 가 이미 소수를 받는다. 평균 기반 + 평행이동(47.4%)이 최빈값
     단독(44.8%)을 이겼다.
+
+    **날짜별로 먼저 평균을 내고 그 평균들을 평균낸다.** 셀 안의 판독을 통째로
+    평균내면 판독 수가 가중치가 되고, 판독 수는 관측이 아니라 수집 간격이
+    정한다 — 즉 MMCA_POLL_MINUTES 를 바꾸는 것만으로 예측이 바뀐다. 실제로
+    바뀌었다: 10 → 1 이 된 뒤 1분 격자 날은 시각당 판독이 10분 격자 날의
+    10배다. 창(PROFILE_WINDOW_DAYS=14)에는 요일마다 두 날이 들어가므로,
+    2026-09-03 방 1006 의 13시 셀은 60판독 대 2026-08-27 의 6판독 — 최근
+    하루가 가중치의 91% 를 먹어 14일 창이 요일별로 "가장 최근 1일"로 붕괴한다.
+    백테스트가 7일(63.5%)·21일(63.4%) 대신 14일(64.0%)을 고른 근거가 그대로
+    무효가 되는 자리다.
+
+    같은 이유로 하루 안의 불균등 표본도 같이 막힌다. 부분 라운드와 수집 장애로
+    실제로 흔하다 — 2026-09-03 방 1006 은 같은 날 안에서 시각당 판독이 20~60
+    개로 흔들렸다. 이쪽은 격자가 다 1분으로 채워진 뒤에도 남는다.
+
+    실질적인 차이는 격자가 섞인 셀에만 나타난다. 2026-09-03 기준 14일 창의
+    479셀 실측: 407셀이 완전히 동일하고, 움직이는 72셀은 두 무리로 갈린다.
+
+      1분 격자가 섞인 요일(목) 48셀 — 최대 1.155, 중위 0.374, 0.5 이상 15셀
+      10분 격자끼리인 그 밖 24셀 — 최대 0.108, 중위 0.037, 0.5 이상 0셀
+
+    최대는 방 1006 목 16시의 2.74 → 1.58 이다. 통째 평균은 그 시각을 "붐빔에
+    가깝다"고 말하는데 근거는 목요일 두 날 중 촘촘히 수집한 하루뿐이고, 다른
+    목요일은 0.17 이었다. 뒤 무리(≤0.108)가 곧 위에서 말한 하루 안 불균등의
+    잔여분이다 — 실재하지만 등급을 바꾸지 않는 크기다.
+
+    그래서 백테스트로는 이 고침의 이득을 볼 수 없다 — 데이터가 거의 다 10분
+    격자라 판독 수가 이미 날짜별로 고르고, 위 407셀이 곧 그 항등이다. 프로덕션
+    설정(14일/120분/90분/보정)의 합계 정확도는 59.8% → 59.6% 로, 이득 없이
+    비용만 재고 있는 수치다. 네 상수의 순위는 그대로다(14일 3/5, 90분 3/5,
+    보정 있음 5/5) — 앵커 창만 120분과 240분이 59.6% 로 붙었으니, 1분 데이터가
+    2주 쌓이면 그때 ANCHOR_WINDOW_MINUTES 를 다시 재는 것이 맞다.
+
+    ponytail: 하루 한 표라 판독이 하나뿐인 날도 온전한 날과 같은 무게를 갖는다.
+    창에 요일별 두 날뿐이라 그런 날은 50% 를 먹는다 (통째 평균이었다면 1/n).
+    셀·날짜별 최소 판독수 게이트는 두지 않았다 — MIN_SAMPLE_DAYS 가 이미 방
+    단위로 걸러 주고, 이 게이트가 필요할 만큼 짧은 날-셀이 예측을 실제로
+    틀리게 한 사례가 아직 없다. 생기면 그때 재 볼 것.
     """
-    buckets: dict[tuple[str, int, int], list[int]] = defaultdict(list)
+    by_day: dict[tuple[str, int, int], dict[date, list[int]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for row in rows:
         if row.congestion_nm is None:
             continue
@@ -40,8 +80,11 @@ def build_profile(rows) -> dict[tuple[str, int, int], float]:
         if rank is None:
             continue
         key = (row.space_code, row.observed_at.weekday(), row.observed_at.hour)
-        buckets[key].append(rank)
-    return {key: sum(values) / len(values) for key, values in buckets.items()}
+        by_day[key][row.observed_at.date()].append(rank)
+    return {
+        key: sum(sum(ranks) / len(ranks) for ranks in days.values()) / len(days)
+        for key, days in by_day.items()
+    }
 
 
 def today_shift(
