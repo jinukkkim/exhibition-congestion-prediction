@@ -77,6 +77,15 @@ def run_daily_batch(session_factory=SessionLocal, today: date | None = None) -> 
     profile = build_profile(window)
 
     # 오늘 + 6일. 프로파일이 (요일, 시각) 키라 8일째부터는 곡선이 그대로 반복된다.
+    #
+    # MMCA 쪽의 MIN_SAMPLE_DAYS 에 대응하는 가드를 두지 않았다. 그쪽은 이력이
+    # 모자란 방(신설 전시실, 혼잡도를 안 주는 방)이 상시로 있어 게이트가 필요
+    # 하지만, 이쪽은 관이 하나고 수집이 24시간 */5 라 요일이 통째로 빠지려면
+    # 그 요일 하루의 수집이 전부 실패해야 한다 — 49일 스냅샷에서 영업시간 정시
+    # 셀이 빈 날은 진행 중인 오늘 하루뿐이었다. 그리고 그때 curve() 가 내는 빈
+    # 리스트가 곧 "그 날짜는 예측 없음"이라, MMCA 가드가 만드는 것과 같은
+    # 결과다(프론트는 점선과 범례를 함께 뺀다). 없는 조건에 가드를 세우는 대신
+    # 이 문단을 둔다 — 요일 결측이 실제로 생기면 그때 sample_days 를 옮겨온다.
     days = []
     for offset in range(7):
         day = first_day + timedelta(days=offset)
