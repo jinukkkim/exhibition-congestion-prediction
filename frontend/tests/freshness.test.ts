@@ -39,8 +39,12 @@ describe("thresholds", () => {
     // 정상 수집 중에도 30분가량 낡아 있다. MMCA 는 폴링 시각을 그대로 쓰므로
     // 그 여유가 필요 없다. backend/app/routes/health.py 의 짝과 같은 값이어야
     // 한다 — 한쪽만 바꾸면 배지와 헬스체크가 같은 판독을 다르게 부른다.
+    //
+    // MMCA 값은 수집 격자(MMCA_POLL_MINUTES)에 매여 있다. 재는 것이 분이 아니라
+    // 라운드라서, 격자가 바뀌면 이 숫자도 함께 바뀌어야 한다 — 12 는 */2 에서
+    // 6라운드 결손이다. 격자만 바꾸고 여기를 두면 배지가 조용해지기만 한다.
     expect(SEOUL_STALE_MINUTES).toBe(75);
-    expect(MMCA_STALE_MINUTES).toBe(25);
+    expect(MMCA_STALE_MINUTES).toBe(12);
   });
 });
 
