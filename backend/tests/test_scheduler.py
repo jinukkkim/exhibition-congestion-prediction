@@ -127,12 +127,12 @@ def test_scheduler_jobs_have_no_immediate_off_grid_startup_poll():
         # Whatever moment the test runs, the computed next_run_time must
         # already land on each job's own grid.
         #
-        # The sub-second pair is what actually carries that for MMCA: at
-        # MMCA_POLL_MINUTES=1 the modulus is vacuous (every minute is on the
-        # grid), and an override pinned to "now" is what it has to catch —
-        # such an instant keeps the wall clock's seconds and microseconds,
-        # while a cron-computed fire time is zero in both. The modulus stays
-        # so it regains teeth if the constant ever grows again.
+        # Both halves carry weight again now that MMCA_POLL_MINUTES is 2 —
+        # while it was 1 the modulus was vacuous (every minute sits on the
+        # grid) and the sub-second pair was the whole test. That pair is
+        # still the part that catches an override pinned to "now": such an
+        # instant keeps the wall clock's seconds and microseconds, while a
+        # cron-computed fire time is zero in both.
         mmca_job = scheduler.get_job("collect_mmca_congestion")
         assert mmca_job.next_run_time.minute % MMCA_POLL_MINUTES == 0
         assert (mmca_job.next_run_time.second, mmca_job.next_run_time.microsecond) == (0, 0)
@@ -155,8 +155,9 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
 
     00:02 rather than midnight: the Seoul collector runs on */5, so every
     multiple-of-five minute fires a full-table-scan batch alongside an insert.
-    MMCA now fires every minute and cannot be avoided at all, but at midnight
-    it returns from _is_venue_open without a request or a row.
+    MMCA is on */2, so an even minute like :02 does sit on its grid — but at
+    midnight it returns from _is_venue_open without a request or a row, which
+    is what made the collision irrelevant while the grid was every minute too.
     """
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -178,8 +179,8 @@ def test_daily_batch_fires_just_after_midnight_seoul_not_server_time():
 
 
 def test_daily_batch_does_not_collide_with_the_collector_grid():
-    """서울시 수집기가 */5 라 5의 배수 분은 동시 발사된다. MMCA 는 매분 발사되어
-    피할 수 없지만 자정에는 영업시간 게이트에 걸려 아무것도 하지 않는다."""
+    """서울시 수집기가 */5 라 5의 배수 분은 동시 발사된다. MMCA 는 */2 라 짝수 분인
+    :02 가 그 격자 위에 있지만, 자정에는 영업시간 게이트에 걸려 아무것도 하지 않는다."""
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
