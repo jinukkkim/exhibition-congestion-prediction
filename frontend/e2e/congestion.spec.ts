@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("renders current congestion and prediction chart from the API", async ({ page }) => {
+test("renders current congestion and the prediction line inside the chart", async ({ page }) => {
   // National Museum's congest-level text only renders during business hours
   // (CongestionCard checks real wall-clock time), so pin the clock inside
   // the fixtures' business hours to keep this deterministic around the clock.
@@ -20,13 +20,18 @@ test("renders current congestion and prediction chart from the API", async ({ pa
     route.fulfill({
       json: {
         status: "ready",
-        baseline_mae: 120.5,
-        model_mae: 95.2,
-        curve: Array.from({ length: 24 }, (_, hour) => ({
-          hour,
-          baseline: 1000 + hour,
-          model: 1050 + hour,
-        })),
+        // 점선은 days 에서 그리는 날짜를 찾아 그린다 — 고정한 시계와 같은 날짜.
+        days: [
+          {
+            date: "2026-07-15",
+            is_holiday: false,
+            curve: Array.from({ length: 24 }, (_, hour) => ({
+              hour,
+              baseline: 1000 + hour,
+              model: 1050 + hour,
+            })),
+          },
+        ],
       },
     })
   );
@@ -70,8 +75,9 @@ test("renders current congestion and prediction chart from the API", async ({ pa
   await page.goto("/venues/national-museum");
 
   await expect(page.getByText("보통")).toBeVisible();
-  await expect(page.getByTestId("prediction-svg")).toBeVisible();
   await expect(page.getByTestId("history-sparkline")).toBeVisible();
+  // 예측은 실측과 같은 차트 안 점선이다 — 별도 카드가 없다.
+  await expect(page.getByTestId("sparkline-prediction-line")).toBeVisible();
 });
 
 test("navigates from the home picker to each venue page", async ({ page }) => {

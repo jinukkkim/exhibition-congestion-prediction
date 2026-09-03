@@ -37,6 +37,12 @@ locally. Needs `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` set in
 scripts/dev.sh
 ```
 
+It also fills the prediction cache when that is empty. The prediction
+response is served from Redis, not the DB, and only the daily batch
+(00:02 KST) writes it — so a server started after that time used to answer
+"collecting, 0/14 days" on a DB full of data, and the chart's dashed
+prediction line was simply absent.
+
 The pull is skipped when the local DB is less than 30 minutes old — production
 only moves every 5 minutes (Seoul) / 10 minutes (MMCA), so restarting the
 backend a few times while working on one thing does not re-download it:
