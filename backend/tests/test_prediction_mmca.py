@@ -1,5 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
+from app.collector import MMCA_POLL_MINUTES
 from app.prediction.mmca import (
     ANCHOR_WINDOW_MINUTES,
     MIN_ANCHOR_OBSERVATIONS,
@@ -22,18 +23,29 @@ class Row:
         self.congestion_nm = congestion_nm
 
 
-def _anchor_rows(level: str, hour: int = 15, count: int | None = None) -> list[Row]:
+# 이 파일의 프로파일 키가 전부 ("A", 5, 15) 라 판독도 같은 셀 안에 있어야 한다 —
+# 2026-08-01 은 토요일(weekday 5)이고 15시다.
+_ANCHOR_START = datetime(2026, 8, 1, 15, 0)
+
+
+def _anchor_rows(level: str, count: int | None = None) -> list[Row]:
     """앵커 게이트를 통과하는 판독을 한 시각 셀 안에 만든다.
 
-    개수를 MIN_ANCHOR_OBSERVATIONS 에서 끌어오는 이유는 그 상수가 수집 격자에
-    매여 있어 격자가 바뀌면 함께 움직이기 때문이다 — 판독을 손으로 나열하면
-    상수를 올릴 때마다 이 파일의 today_shift 테스트를 전부 다시 써야 하고,
-    그 사이 테스트는 게이트를 넘기는 것이 아니라 옛 숫자를 고정하게 된다.
+    개수도 간격도 상수에서 끌어온다. 둘 다 수집 격자에 매여 있어서다 —
+    MIN_ANCHOR_OBSERVATIONS 는 격자가 바뀌면 함께 움직여야 하고(그 결합은 아래
+    test_the_anchor_gate_asks_for_at_least_twenty_minutes_of_collection 이
+    지킨다), 판독 간격은 격자 그 자체다. 어느 쪽이든 손으로 적어 두면 이 헬퍼만
+    현실과 어긋난 채 남는다 — 이 PR 이 프로덕션 코드에서 고치고 있는 것과 같은
+    모양이다.
 
-    간격은 2분(= 현재 격자)이라 기본 개수로 한 시각 안에 들어간다.
+    timedelta 로 더하는 이유는 분을 문자열로 만들면 간격이 커질 때 60 을 넘겨
+    "15:100" 같은 값이 나오기 때문이다.
     """
     count = MIN_ANCHOR_OBSERVATIONS if count is None else count
-    return [Row("A", f"2026-08-01T{hour:02d}:{i * 2:02d}:00", level) for i in range(count)]
+    return [
+        Row("A", (_ANCHOR_START + timedelta(minutes=i * MMCA_POLL_MINUTES)).isoformat(), level)
+        for i in range(count)
+    ]
 
 
 def test_build_profile_averages_ranks_per_room_weekday_hour():
@@ -149,8 +161,6 @@ def test_the_anchor_gate_asks_for_at_least_twenty_minutes_of_collection():
     상한은 앵커 창이다. 요구 시간이 창보다 길면 게이트를 영영 통과할 수 없어
     평행이동이 조용히 사라진다.
     """
-    from app.collector import MMCA_POLL_MINUTES
-
     span_minutes = (MIN_ANCHOR_OBSERVATIONS - 1) * MMCA_POLL_MINUTES
 
     assert span_minutes >= 20
