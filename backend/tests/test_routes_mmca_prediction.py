@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.models import RawMmcaCongestion
+from app.prediction.mmca import MIN_ANCHOR_OBSERVATIONS
 
 # 시각을 고정한다. 오늘 곡선은 "최근 120분"에 매달려 있어, 실제 벽시계로
 # 돌리면 심어 둔 15시 판독이 앵커 창 밖으로 나가는 시간대가 생긴다 —
@@ -115,9 +116,12 @@ def test_todays_curve_is_anchored_to_todays_readings(client):
     # 하나뿐이면(이음매보다 앞선 시각) curve() 가 이음매 1점만 내 방이 응답에서
     # 빠진다 (2점 미만은 경로를 못 그린다).
     _seed(Session, days=14, hour=16, level="여유")
-    # 오늘 같은 시각에 여유가 3개 — 프로파일(3.0)보다 훨씬 한산하다.
+    # 오늘 같은 시각에 여유가 앵커 게이트를 채울 만큼 — 프로파일(3.0)보다 훨씬
+    # 한산하다. 개수를 MIN_ANCHOR_OBSERVATIONS 에서 끌어오는 이유는 그 상수가
+    # 수집 격자에 매여 움직이기 때문이다. 간격 2분은 현재 격자이고, 마지막 판독이
+    # 15:20 에 떨어져 아래 이음매 단정과 맞는다.
     with Session() as session:
-        for minute in (0, 10, 20):
+        for minute in range(0, MIN_ANCHOR_OBSERVATIONS * 2, 2):
             session.add(
                 RawMmcaCongestion(
                     observed_at=datetime.combine(today, datetime.min.time()).replace(
