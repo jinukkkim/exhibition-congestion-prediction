@@ -200,54 +200,15 @@ describe("MmcaRoomChartCard", () => {
     expect(d.match(/C/g)).toHaveLength(1);
   });
 
-  it("extends the line back to a synthetic 여유 point at open when the :10 reading exists", () => {
+  it("averages the readings inside one mark into a fractional tier", () => {
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
         daily={[
-          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
-        ]}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday
-      />
-    );
-
-    // 2 real readings + 1 synthetic opening point → 2 Bezier segments.
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d.match(/C/g)).toHaveLength(2);
-  });
-
-  it("skips the synthetic opening point when the :10 reading is missing", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        daily={[
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:30:00", { "MMCA-SPACE-2001": "보통" }),
-        ]}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday
-      />
-    );
-
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d.match(/C/g)).toHaveLength(1);
-  });
-
-  it("never surfaces a hover tooltip for the synthetic opening point", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        daily={[
-          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
+          // 한 마크(10:00) 안의 두 판독이 여유(0)와 붐빔(3) — 평균 1.5 다.
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:02:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "보통" }),
         ]}
         open={OPEN}
         close={CLOSE}
@@ -260,20 +221,42 @@ describe("MmcaRoomChartCard", () => {
     const svg = screen.getByTestId("mmca-room-chart");
     svg.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
-    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+    fireEvent.mouseMove(svg.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX: 0,
+      clientY: 0,
+    });
 
-    // Mouse all the way at the left edge, right over the synthetic 10:00 point.
-    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
-
-    // The decorative 10:00 여유 point isn't in the hover-eligible set, and no
-    // other series reaches 10:00 — so there is nothing to report there.
-    expect(screen.queryByTestId("mmca-room-chart-tooltip")).not.toBeInTheDocument();
-
-    // The real 10:10 reading one grid step over is still hoverable.
-    fireEvent.mouseMove(hoverTarget, { clientX: 10, clientY: 0 });
+    // 어느 판독도 "약간 붐빔"이 아니었다 — 평균 1.5 를 반올림한 이름이라야만
+    // 나온다. 생판독을 그대로 그리던 시절에는 여유나 붐빔 중 하나가 나왔다.
     const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
-    expect(tooltip.getByText("10:10")).toBeInTheDocument();
-    expect(tooltip.getByText(/^여유$/)).toBeInTheDocument();
+    expect(tooltip.getByText("10:00")).toBeInTheDocument();
+    expect(tooltip.getByText(/^약간 붐빔$/)).toBeInTheDocument();
+  });
+
+  it("draws one point per mark, not one per reading", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:02:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:04:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:12:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:14:00", { "MMCA-SPACE-2001": "여유" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 판독 6개가 마크 2개(10:00, 10:10)로 모여 베지어 구간은 하나다. 생판독을
+    // 그리면 5개였고, 그 계단 위를 지나는 곡선이 곧 요동이었다.
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d.match(/C/g)).toHaveLength(1);
   });
 
   it("shows the live glow marker only when open", () => {
