@@ -419,6 +419,34 @@ export function MmcaRoomChartCard({
                     </radialGradient>
                   )}
                 </defs>
+                {/* 등급 눈금 네 줄. 곡선이 마크 평균이 된 뒤로 값이 소수라
+                    등급 위에 정확히 앉지 않는다 — 2026-09-05 하루를 재 보면
+                    점 335개 중 147개(44%)가 층 사이에 있다(분리 버킷이던
+                    시절에는 83개, 25%). 기준선이 없으면 그 높이의 뜻을 호버
+                    하지 않고는 알 수 없다.
+
+                    라벨은 붙이지 않는다. 곡선이 아침에 낮게 시작해 왼쪽 아래가
+                    항상 곡선과 겹치고, 피하려면 라벨용 여백을 내야 하는데 그러면
+                    xOf 가 [0, CHART_WIDTH] 이 아니게 되어 호버 좌표 계산이 전부
+                    딸려 온다. 지금 등급은 카드 위 큰 글자가 말하고 임의의 점은
+                    호버가 말하므로, 눈금은 "네 단계"라는 구조만 보이면 된다.
+
+                    세로선(‘지금’ 점선·호버 십자선)과 같은 색이지만 방향이 달라
+                    섞이지 않는다. */}
+                {TIERS.map((_, tier) => (
+                  <line
+                    key={tier}
+                    data-testid="mmca-room-chart-tier-line"
+                    x1={0}
+                    y1={yOf(tier)}
+                    x2={CHART_WIDTH}
+                    y2={yOf(tier)}
+                    stroke="#D2D2D7"
+                    strokeWidth={1}
+                    strokeDasharray="2 5"
+                    opacity={0.7}
+                  />
+                ))}
                 {lastWeekAreaD && (
                   <path data-testid="mmca-room-chart-last-week-area" d={lastWeekAreaD} fill={LAST_WEEK_FILL} opacity={0.2} />
                 )}
