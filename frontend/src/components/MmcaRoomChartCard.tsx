@@ -4,27 +4,31 @@ import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../a
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
+import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES, resample } from "../lib/resample";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
 const CHART_HEIGHT = 200;
 const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
-// How close a 10-minute-grid reading must sit to the hovered x to count as a
-// value there — applies to every grid series (today's, last week's, the
-// future tab's D−7 proxy), not just the last-week comparison.
+// How close a resampled point must sit to the hovered x to count as a value
+// there — applies to every series drawn on the mark grid (today's, last
+// week's, the future tab's D−7 proxy), not just the last-week comparison.
 //
-// MMCA readings snap to a 10-minute grid (see collector.py) and the hovered
-// x is snapped to that same grid (handleHoverMove), so in practice this
-// window only ever admits distance 0: an exact-slot match. It stays a
-// window rather than an equality test for the case the grid assumption
-// breaks — a series whose points drift off the multiples of 10 (a rescued
-// backfill, a schedule change) still matches within a few minutes instead
-// of going silent. The width must stay strictly below the grid spacing
-// (nearestWithin uses `dist <= maxDistance`): at exactly 10 the adjacent,
-// different-time reading would match whenever a series is simply missing
-// the hovered slot (e.g. a confirmed-empty skip in collector.py) — the same
-// boundary bug as CongestionCard's bucket-width window.
-const HOVER_MATCH_MINUTES = 5;
+// Both sides sit on the mark grid: roomPoints resamples onto multiples of
+// BUCKET_MINUTES and handleHoverMove snaps the hovered x to the same marks,
+// so in practice this window only ever admits distance 0. It stays a window
+// rather than an equality test for the case that assumption breaks — a
+// series whose points drift off the marks still matches instead of going
+// silent. The width must stay strictly below the mark spacing (nearestWithin
+// uses `dist <= maxDistance`): at exactly BUCKET_MINUTES the adjacent,
+// different-time mark would match whenever a series is simply missing the
+// hovered one — the same boundary bug as CongestionCard's window.
+//
+// This was written when readings themselves landed on 10-minute marks. It
+// stopped being true when collection went to */1 and then */2 — the tooltip
+// could report a value up to 5 minutes from the time it printed. Resampling
+// is what makes it true again, this time without depending on the grid.
+const HOVER_MATCH_MINUTES = BUCKET_MINUTES / 2;
 
 // Several helpers here (tick math, xOf, chart dimensions, most of the JSX
 // shell) are duplicated from CongestionCard.tsx rather than shared — they're
@@ -132,16 +136,34 @@ function areaPath(xy: XY[], linePath: string): string {
   return `M ${first.x} ${CHART_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${CHART_HEIGHT} Z`;
 }
 
+// 판독을 마크 격자로 모아 평균낸 점. 생판독을 그대로 그리지 않는 이유는
+// lib/resample.ts 에 있다 — 요약하면 등급이 0~3 네 단계라 생값은 계단이고,
+// 그 위를 지나는 Catmull-Rom 은 출렁일 수밖에 없다. 마크 평균이 소수를 만들어
+// 곡선이 실제로 연속이 된다.
+//
+// 영업시간 자르기가 리샘플보다 **먼저**다: 폐관 뒤 판독이 폐관 마크로 반올림돼
+// 마지막 값에 섞이면 안 된다.
 function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: number, close: number): Point[] {
-  return (daily ?? [])
-    .flatMap((row): Point[] => {
+  const raw = (daily ?? [])
+    .flatMap((row): { minutes: number; value: number }[] => {
       const value = row.rooms.find((r) => r.space_code === spaceCode)?.congestion_nm;
       if (value == null) return [];
       const tier = TIERS.indexOf(value);
       if (tier === -1) return [];
-      return [{ minutes: minutesOfDay(row.observed_at), tier, label: value }];
+      return [{ minutes: minutesOfDay(row.observed_at), value: tier }];
     })
     .filter((p) => p.minutes >= open && p.minutes <= close);
+
+  // 등급명은 평균 뒤에 다시 붙인다 — 1.4 는 "보통"이라 부른다. 곡선은 1.4 를
+  // 그리고 툴팁만 반올림한 이름을 쓴다.
+  //
+  // 창(±20분)이 마크 간격(10분)보다 넓어 이웃 마크가 판독을 나눠 갖는다. 왜
+  // 그래야 하는지와 두 값을 어떻게 골랐는지는 lib/resample.ts 에 있다.
+  return resample(raw, close, BUCKET_MINUTES, MMCA_WINDOW_MINUTES).map((p) => ({
+    minutes: p.minutes,
+    tier: p.value,
+    label: TIERS[Math.round(p.value)],
+  }));
 }
 
 // 예측 점은 이미 방별로 갈라져 있고 tier 가 소수다 — roomPoints 처럼 등급명을
@@ -185,7 +207,7 @@ export function MmcaRoomChartCard({
   isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  // 커서의 x 를 분으로 되돌려 10분 격자에 맞춘 값 하나. 계열 위의 점으로
+  // 커서의 x 를 분으로 되돌려 마크 격자에 맞춘 값 하나. 계열 위의 점으로
   // 스냅하는 게 아니다 — 격자 위의 그 시각에서 각 계열을 따로 조회해 있는
   // 것만 말한다.
   const [hoverMinutes, setHoverMinutes] = useState<number | null>(null);
@@ -207,26 +229,20 @@ export function MmcaRoomChartCard({
   const lastWeekPoints = roomPoints(lastWeekDaily, spaceCode, open, close);
 
   const ticks = hourlyTicks(open, close);
-  // The backend skips the 10:00 poll (opening congestion is reliably 여유,
-  // see collector.py's _COLLECTION_START comment), so the real data never has
-  // a point there. Draw one anyway purely so the line starts from 여유 at
-  // open instead of from the first real reading — but only when that first
-  // reading actually landed at :10, and keep it out of `points` (used for
-  // hover) so it can never surface as an interactive "10:00 여유" tooltip.
-  const hasOpeningReading = points.length > 0 && points[0].minutes === open + 10;
-  const renderPoints: Point[] = hasOpeningReading
-    ? [{ minutes: open, tier: 0, label: "여유" }, ...points]
-    : points;
-  const xy = renderPoints.length > 0 ? toXY(renderPoints, open, close) : [];
+  // 합성 개관점이 여기 있었다. 백엔드가 10:00 폴을 건너뛰던 시절 곡선이 10:10
+  // 에서 시작하는 것을 가리려고 10:00 에 여유 한 점을 얹던 것인데, 수집 시작이
+  // 10:00 이 된 뒤로(collector.py 의 _COLLECTION_START) 그 조건(첫 점이 :10)이
+  // 참이 되는 일이 없어 죽은 코드였다. 지금은 첫 마크가 곧 개관이다.
+  const xy = points.length > 0 ? toXY(points, open, close) : [];
   const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close) : [];
-  const linePath = renderPoints.length > 1 ? smoothPath(xy) : "";
+  const linePath = points.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
-  const areaD = renderPoints.length > 1 ? areaPath(xy, linePath) : "";
+  const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
   const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
   const lastPoint = points[points.length - 1];
   // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한 폴링
-  // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 최신
-  // 판독보다 한 그리드 스텝(10분) 뒤처져 실선과 겹쳐 그려진다. 페이로드를
+  // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 마지막
+  // 마크보다 뒤처져 실선과 겹쳐 그려진다. 페이로드를
   // 믿는 대신 프론트가 항상 다시 고정한다: 실선 마지막 시각 이하의 예측 점을
   // 버리고 실선의 마지막 점을 그대로 앞에 붙인다. 신선한 페이로드는 버림+
   // 재삽입이 같은 값이라 결과가 그대로고(분기 없음), 낡았을 때만 실질적으로
@@ -270,11 +286,11 @@ export function MmcaRoomChartCard({
     const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
     // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
     const minutes = open + (svgX / CHART_WIDTH) * (close - open || 1);
-    // 수집이 10분 격자(스케줄러의 */10 cron)라 짚은 위치도 같은 격자로 맞춘다 —
-    // 십자선이 미끄러지지 않고 10분 단위로 튀고, 시계에 12:43 같은 임의의 분이
-    // 뜨지 않는다. 스냅을 먼저, 영업시간 가두기를 나중에 (순서를 바꾸면
-    // open/close 가 10의 배수가 아닐 때 영업시간 밖으로 튀어나간다).
-    const snapped = Math.round(minutes / 10) * 10;
+    // 계열이 마크 격자 위에 있으므로(roomPoints 의 resample) 짚은 위치도 같은
+    // 격자로 맞춘다 — 십자선이 미끄러지지 않고 마크 단위로 튀고, 시계에 12:43
+    // 같은 임의의 분이 뜨지 않는다. 스냅을 먼저, 영업시간 가두기를 나중에
+    // (순서를 바꾸면 open/close 가 마크가 아닐 때 영업시간 밖으로 튀어나간다).
+    const snapped = Math.round(minutes / BUCKET_MINUTES) * BUCKET_MINUTES;
     setHoverMinutes(Math.min(Math.max(snapped, open), close));
   }
 
@@ -284,7 +300,7 @@ export function MmcaRoomChartCard({
   // 미래 탭의 괄호가 영구히 빈다.
   const comparePoints = isTodayView ? lastWeekPoints : points;
 
-  // 10분 그리드 계열은 짚은 x 에 판독이 실제로 있을 때만 값을 낸다 (창을 넓히면
+  // 마크 격자 계열은 짚은 x 에 값이 실제로 있을 때만 값을 낸다 (창을 넓히면
   // 없는 시각을 있는 것처럼 말한다 — HOVER_MATCH_MINUTES 주석 참고).
   //
   // 오늘의 실측은 오늘 탭에만 있다: 미래 탭의 `points` 는 오늘의 판독이 아니라
@@ -403,6 +419,34 @@ export function MmcaRoomChartCard({
                     </radialGradient>
                   )}
                 </defs>
+                {/* 등급 눈금 네 줄. 곡선이 마크 평균이 된 뒤로 값이 소수라
+                    등급 위에 정확히 앉지 않는다 — 2026-09-05 하루를 재 보면
+                    점 335개 중 147개(44%)가 층 사이에 있다(분리 버킷이던
+                    시절에는 83개, 25%). 기준선이 없으면 그 높이의 뜻을 호버
+                    하지 않고는 알 수 없다.
+
+                    라벨은 붙이지 않는다. 곡선이 아침에 낮게 시작해 왼쪽 아래가
+                    항상 곡선과 겹치고, 피하려면 라벨용 여백을 내야 하는데 그러면
+                    xOf 가 [0, CHART_WIDTH] 이 아니게 되어 호버 좌표 계산이 전부
+                    딸려 온다. 지금 등급은 카드 위 큰 글자가 말하고 임의의 점은
+                    호버가 말하므로, 눈금은 "네 단계"라는 구조만 보이면 된다.
+
+                    세로선(‘지금’ 점선·호버 십자선)과 같은 색이지만 방향이 달라
+                    섞이지 않는다. */}
+                {TIERS.map((_, tier) => (
+                  <line
+                    key={tier}
+                    data-testid="mmca-room-chart-tier-line"
+                    x1={0}
+                    y1={yOf(tier)}
+                    x2={CHART_WIDTH}
+                    y2={yOf(tier)}
+                    stroke="#D2D2D7"
+                    strokeWidth={1}
+                    strokeDasharray="2 5"
+                    opacity={0.7}
+                  />
+                ))}
                 {lastWeekAreaD && (
                   <path data-testid="mmca-room-chart-last-week-area" d={lastWeekAreaD} fill={LAST_WEEK_FILL} opacity={0.2} />
                 )}
@@ -523,9 +567,9 @@ export function MmcaRoomChartCard({
                 left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
               }}
             >
-              {/* 짚은 x 는 이미 10분 격자 위라 걸린 그리드 판독의 시각과 항상
-                  같고, 예측만 걸린 x 에서는 예측이 곧 그 x 의 값이다 — 어느
-                  쪽이든 짚은 시각을 그대로 적으면 된다. */}
+              {/* 짚은 x 는 이미 마크 위라 걸린 계열 값의 시각과 항상 같고,
+                  예측만 걸린 x 에서는 예측이 곧 그 x 의 값이다 — 어느 쪽이든
+                  짚은 시각을 그대로 적으면 된다. */}
               <span className="font-mono tabular-nums text-ink-soft">
                 {formatMinutes(hoverMinutes)}
               </span>

@@ -20,13 +20,13 @@ from app.db import SessionLocal
 from app.mmca_exhibitions import current_exhibitions, fetch_exhibitions
 from app.models import RawMmcaCongestion
 from app.prediction.mmca import (
-    CONGESTION_RANKS,
     MIN_SAMPLE_DAYS,
     PROFILE_WINDOW_DAYS,
     RAMP_MINUTES,
     build_profile,
     curve,
     sample_days,
+    seam,
     today_shift,
 )
 from app.schemas import (
@@ -228,12 +228,9 @@ def mmca_prediction(venue: str, date: str | None = Query(default=None)) -> list[
     days_by_code = sample_days(profile_rows)
     shifts = today_shift(profile, today_rows, now=now) if is_today else {}
 
-    latest: dict[str, tuple[int, int]] = {}
-    for row in today_rows:
-        rank = CONGESTION_RANKS.get(row.congestion_nm)
-        if rank is None:
-            continue
-        latest[row.space_code] = (row.observed_at.hour * 60 + row.observed_at.minute, rank)
+    # 램프의 출발점. 마지막 판독 하나가 아니라 그 판독이 속한 마크의 평균이다 —
+    # 이유는 prediction/mmca.py 의 seam() 에 있다.
+    latest = seam(today_rows) if is_today else {}
 
     now_minutes = now.hour * 60 + now.minute
     if is_today:

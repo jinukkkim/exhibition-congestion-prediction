@@ -5,6 +5,7 @@ import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
+import { BUCKET_MINUTES, resample } from "../lib/resample";
 import { statusOf } from "../lib/status";
 
 // svg 는 w-full 이라 렌더 높이는 카드 폭 × (HEIGHT/WIDTH) 다 — 이 비율이 곧
@@ -62,43 +63,14 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 
 type Point = { minutes: number; value: number; isRaw?: boolean };
 
-// 서울시 판독은 5분 간격이고, 그것을 10분 마크(10:00, 10:10, …)에 붙여 평균낸다
-// — MMCA 차트의 격자와 같은 간격(그쪽은 수집이 */10 이라 판독 자체가 마크에
-// 있다)이라 두 관의 호버가 같은 눈금을 쓴다.
+// 서울시 판독은 5분 간격이고, 그것을 마크에 붙여 평균낸다 — 마크 격자와 그
+// 이유는 lib/resample.ts 에 있고 MMCA 차트도 같은 것을 쓴다. 두 관의 호버가
+// 같은 눈금 위에 있는 것은 그래서다.
 //
-// 마크는 자정 기준의 10분 배수다. 개관(09:30)·폐관(17:30, 수·토 21:00)이 모두
-// 10분 배수라 축의 양 끝도 마크이고, 그래서 호버·툴팁에 09:35 같은 시각이 아니라
-// 10분·20분·30분만 나온다. 개관 기준으로 끊으면 마크가 5분씩 밀린다.
-//
-// 30분이던 이유는 이 차트가 2열 카드(480 단위 폭)였기 때문이다 — 그때 10분
-// 간격은 22단위였다. 전폭이 된 뒤로는 같은 10분이 22px 라 점이 뭉치지 않는다.
-const BUCKET_MINUTES = 10;
 // 두 계열이 같은 마크 격자에 앉으므로 같은 마크는 항상 거리 0 이고 옆 마크는 정확히
 // BUCKET_MINUTES 만큼 떨어져 있다 — 창을 한 마크 전체로 잡으면 그 옆의 (다른 시각)
 // 마크가 걸려, 값이 없는 자리에서 없다고 말하지 못한다. 반 마크는 0 만 받는다.
 const LAST_WEEK_MATCH_MINUTES = BUCKET_MINUTES / 2;
-
-function resample(points: Point[], close: number, bucketMinutes: number): Point[] {
-  const marks = new Map<number, Point[]>();
-  for (const point of points) {
-    // 가장 가까운 마크로 — 개관 기준 버킷의 시작·중심이 아니라 마크 자체가 그
-    // 점의 시각이 된다. 09:55·10:00 이 10:00 에, 10:05·10:10 이 10:10 에 모인다.
-    const mark = Math.round(point.minutes / bucketMinutes) * bucketMinutes;
-    const bucket = marks.get(mark);
-    if (bucket) bucket.push(point);
-    else marks.set(mark, [point]);
-  }
-  return [...marks.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([mark, bucketPoints]) => ({
-      minutes: mark,
-      value: bucketPoints.reduce((sum, p) => sum + p.value, 0) / bucketPoints.length,
-    }))
-    // 폐관이 10분 배수인 동안에는 걸릴 일이 없다 (판독이 폐관 이하이므로 마크도
-    // 그렇다). 영업시간이 09:45 처럼 바뀌면 마지막 마크가 축을 넘고, svg 가
-    // overflow-visible 이라 곡선이 축 밖 빈 자리로 이어져 그려진다.
-    .filter((p) => p.minutes <= close);
-}
 
 // 곡선의 양 끝을 실제 판독으로 개관·폐관 시각에 닿게 한다. 개관·폐관이 10분
 // 배수인 동안에는 첫·마지막 마크가 이미 축의 끝이라 아무것도 붙지 않고, 그날 첫

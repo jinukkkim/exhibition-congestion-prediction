@@ -9,7 +9,10 @@ from app.prediction.mmca import (
     build_profile,
     curve,
     predict_tier,
+    SEAM_BUCKET_MINUTES,
+    SEAM_WINDOW_MINUTES,
     sample_days,
+    seam,
     today_shift,
 )
 
@@ -369,3 +372,78 @@ def test_predict_tier_ramps_from_current_to_profile():
 def test_predict_tier_with_zero_ramp_jumps_straight_to_the_profile():
     # 백테스트의 "램프 없음" 변형. 근거리 정확도가 18%p 떨어지는 쪽이다.
     assert predict_tier(3.0, shift=0.0, current=0, minutes_ahead=10, ramp_minutes=0) == 3.0
+
+
+def test_seam_averages_the_readings_in_the_last_mark():
+    """램프 출발점은 마지막 판독 하나가 아니라 그 마크의 평균이다.
+
+    프론트가 같은 마크 평균을 실선으로 그리고 점선을 그 끝에 잇는다
+    (lib/resample.ts, MmcaRoomChartCard). 여기서 생판독을 쓰면 이음매 좌표는
+    프론트가 맞춰 주지만 램프 기울기가 다른 값에서 계산돼 방향이 어긋난다.
+    """
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "여유"),      # rank 0, 마크 15:00
+        Row("A", "2026-08-01T15:02:00", "붐빔"),      # rank 3, 마크 15:00
+        Row("A", "2026-08-01T15:04:00", "붐빔"),      # rank 3, 마크 15:00
+    ]
+
+    assert seam(rows) == {"A": (15 * 60, 2.0)}
+
+
+def test_seam_takes_only_the_last_window_not_the_whole_day():
+    rows = [
+        Row("A", "2026-08-01T14:00:00", "여유"),      # 창 밖 (마크에서 80분 전)
+        Row("A", "2026-08-01T15:20:00", "붐빔"),
+        Row("A", "2026-08-01T15:22:00", "약간 붐빔"),
+    ]
+
+    # 마지막 마크의 창만 — 하루 전체 평균이면 (0+3+2)/3 = 1.67 이 된다.
+    assert seam(rows) == {"A": (15 * 60 + 20, 2.5)}
+
+
+def test_seam_window_reaches_past_its_own_mark():
+    """창이 마크 간격보다 넓어 이웃 마크의 판독까지 들어온다.
+
+    프론트의 실선이 같은 창으로 그려지므로(lib/resample.ts) 여기서 마크 하나
+    분량만 보면 점선이 실선과 다른 값에서 출발한다.
+    """
+    rows = [
+        Row("A", "2026-08-01T15:05:00", "여유"),      # 마크 15:20 의 창 안 (15분 전)
+        Row("A", "2026-08-01T15:20:00", "붐빔"),
+    ]
+
+    assert seam(rows) == {"A": (15 * 60 + 20, 1.5)}
+
+
+def test_seam_constants_pair_with_the_frontend():
+    """frontend/src/lib/resample.ts 의 BUCKET_MINUTES / MMCA_WINDOW_MINUTES 와 짝이다.
+
+    두 언어에 흩어져 있어 임포트로 묶을 수 없다. 한쪽만 바꾸면 점선이 실선과
+    다른 값에서 출발하므로, 최소한 리뷰에서 "왜 한쪽만 움직이나"가 보이도록
+    값 자체를 고정한다 — freshness.ts 와 health.py 의 짝을 다루는 방식과 같다.
+
+    창이 간격보다 넓어야 이웃 마크가 판독을 공유한다. 같거나 좁으면 분리 버킷
+    이라 벽이 그대로 남는다.
+    """
+    assert SEAM_BUCKET_MINUTES == 10
+    assert SEAM_WINDOW_MINUTES == 20
+    assert SEAM_WINDOW_MINUTES > SEAM_BUCKET_MINUTES / 2
+
+
+def test_seam_with_a_zero_bucket_is_the_single_last_reading():
+    """백테스트가 옛 동작(생판독)과 비교할 수 있어야 한다."""
+    rows = [
+        Row("A", "2026-08-01T15:00:00", "여유"),
+        Row("A", "2026-08-01T15:02:00", "붐빔"),
+    ]
+
+    assert seam(rows, bucket_minutes=0) == {"A": (15 * 60 + 2, 3.0)}
+
+
+def test_seam_ignores_rooms_with_no_usable_reading():
+    rows = [
+        Row("A", "2026-08-01T15:00:00", None),
+        Row("B", "2026-08-01T15:00:00", "보통"),
+    ]
+
+    assert seam(rows) == {"B": (15 * 60, 1.0)}
