@@ -9,6 +9,8 @@ from app.prediction.mmca import (
     build_profile,
     curve,
     predict_tier,
+    SEAM_BUCKET_MINUTES,
+    SEAM_WINDOW_MINUTES,
     sample_days,
     seam,
     today_shift,
@@ -388,15 +390,44 @@ def test_seam_averages_the_readings_in_the_last_mark():
     assert seam(rows) == {"A": (15 * 60, 2.0)}
 
 
-def test_seam_takes_only_the_last_mark_not_the_whole_day():
+def test_seam_takes_only_the_last_window_not_the_whole_day():
     rows = [
-        Row("A", "2026-08-01T15:00:00", "여유"),      # 마크 15:00 — 지난 마크
-        Row("A", "2026-08-01T15:20:00", "붐빔"),      # 마크 15:20
-        Row("A", "2026-08-01T15:22:00", "약간 붐빔"),  # 마크 15:20
+        Row("A", "2026-08-01T14:00:00", "여유"),      # 창 밖 (마크에서 80분 전)
+        Row("A", "2026-08-01T15:20:00", "붐빔"),
+        Row("A", "2026-08-01T15:22:00", "약간 붐빔"),
     ]
 
-    # 마지막 마크만 — 하루 전체 평균이면 (0+3+2)/3 = 1.67 이 된다.
+    # 마지막 마크의 창만 — 하루 전체 평균이면 (0+3+2)/3 = 1.67 이 된다.
     assert seam(rows) == {"A": (15 * 60 + 20, 2.5)}
+
+
+def test_seam_window_reaches_past_its_own_mark():
+    """창이 마크 간격보다 넓어 이웃 마크의 판독까지 들어온다.
+
+    프론트의 실선이 같은 창으로 그려지므로(lib/resample.ts) 여기서 마크 하나
+    분량만 보면 점선이 실선과 다른 값에서 출발한다.
+    """
+    rows = [
+        Row("A", "2026-08-01T15:05:00", "여유"),      # 마크 15:20 의 창 안 (15분 전)
+        Row("A", "2026-08-01T15:20:00", "붐빔"),
+    ]
+
+    assert seam(rows) == {"A": (15 * 60 + 20, 1.5)}
+
+
+def test_seam_constants_pair_with_the_frontend():
+    """frontend/src/lib/resample.ts 의 BUCKET_MINUTES / MMCA_WINDOW_MINUTES 와 짝이다.
+
+    두 언어에 흩어져 있어 임포트로 묶을 수 없다. 한쪽만 바꾸면 점선이 실선과
+    다른 값에서 출발하므로, 최소한 리뷰에서 "왜 한쪽만 움직이나"가 보이도록
+    값 자체를 고정한다 — freshness.ts 와 health.py 의 짝을 다루는 방식과 같다.
+
+    창이 간격보다 넓어야 이웃 마크가 판독을 공유한다. 같거나 좁으면 분리 버킷
+    이라 벽이 그대로 남는다.
+    """
+    assert SEAM_BUCKET_MINUTES == 10
+    assert SEAM_WINDOW_MINUTES == 20
+    assert SEAM_WINDOW_MINUTES > SEAM_BUCKET_MINUTES / 2
 
 
 def test_seam_with_a_zero_bucket_is_the_single_last_reading():
