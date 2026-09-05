@@ -15,33 +15,78 @@ export const BUCKET_MINUTES = 10;
 
 type Sample = { minutes: number; value: number };
 
-/** 판독을 가장 가까운 마크로 모아 평균낸다.
+// MMCA 전시실 곡선이 마크마다 평균낼 창(분). 마크 간격보다 넓어서 이웃 마크가
+// 판독을 나눠 갖는다 — 그 공유가 계단의 벽을 경사로 만든다.
+//
+// 간격과 창은 서로 다른 손잡이다. 2026-09-05 서울관 하루(9,794 판독)로 5x5 를
+// 재 보면 한 칸 최대 등급 변화와 그 벽의 기울기가 이렇게 갈린다:
+//
+//   창을 ±15분에 고정하고 간격만 넓히면   5분 0.54 → 10분 0.96 → 30분 2.59
+//                                        82°       81°        81°   (기울기 불변)
+//   간격을 10분에 고정하고 창만 넓히면   ±5분 2.27 → ±20분 0.75 → ±30분 0.50
+//                                        86°        79°         74°   (같이 눕는다)
+//
+// 간격을 넓히면 이웃 창이 덜 겹쳐 한 칸 점프가 커지지만 가로 거리도 같이 늘어
+// 기울기는 그대로다 — 해상도만 잃는다. 곡선의 모양을 바꾸는 것은 창뿐이다.
+//
+// 20 을 고른 근거: 최대 벽이 2.27 → 0.75 등급(−67%)으로 눕는 동안 피크는 최대
+// 0.29 등급만 깎인다. 진짜 붐빔은 20분보다 오래 가서 살아남고, 깎이는 것은 짧은
+// 스파이크뿐이다. ±30분은 벽을 더 눕히지만(0.50) 피크 손실은 거의 같으면서
+// (0.31) 전환 시각이 더 번진다.
+//
+// 국중박 차트는 이 창을 쓰지 않는다 — 연속값(인구 추정)이라 애초에 계단이
+// 아니고, 기본값(간격의 절반)이 지금 동작이다.
+export const MMCA_WINDOW_MINUTES = 20;
+
+/** 판독을 마크 격자로 모아 평균낸다.
  *
- * 마크 자체가 그 점의 시각이 된다 — 버킷의 시작도 중심도 아니다. 09:55·10:00 이
- * 10:00 에, 10:05·10:10 이 10:10 에 모인다.
+ * 마크 자체가 그 점의 시각이 된다 — 버킷의 시작도 중심도 아니다.
+ *
+ * `windowMinutes` 가 마크 간격의 절반이면 창끼리 빈틈없이 맞물려 겹침이 0 이고,
+ * 판독 하나가 마크 하나에만 들어간다(분리 버킷). 그보다 넓히면 이웃이 판독을
+ * 공유하기 시작한다. 기본값이 그 절반이라 창을 주지 않으면 분리 버킷이다.
+ *
+ * 창을 **반개구간** `[mark - w, mark + w)` 으로 잡는 것이 중요하다. 서울시
+ * 판독은 정확히 5의 배수 분에 떨어져 마크 사이 정중앙에 앉는데, 양끝을 다 닫으면
+ * 그 판독이 두 마크에 동시에 들어간다. 반개구간은 기본값에서 예전 구현
+ * (`Math.round(m / bucket) * bucket`)과 결과가 완전히 같다 — JS 의 반올림이
+ * .5 를 위로 보내는 것과 같은 규칙이다.
  *
  * 평균이 하는 일은 점을 줄이는 것만이 아니다. MMCA 판독은 0~3 네 단계라 생값을
  * 그대로 그리면 네 층 사이를 오가는 계단이고, 그 위를 지나는 Catmull-Rom 은
  * 오버슈트할 수밖에 없다. 마크 평균은 소수를 만들어 곡선이 실제로 연속이 되게
  * 한다 — yOf 는 두 차트 모두 이미 소수를 받는다.
  *
- * `close` 로 자르는 이유: 폐관이 10분 배수인 동안에는 걸릴 일이 없지만(판독이
- * 폐관 이하이므로 마크도 그렇다), 영업시간이 09:45 처럼 바뀌면 마지막 마크가
- * 축을 넘고 svg 가 overflow-visible 이라 곡선이 축 밖 빈 자리로 이어져 그려진다.
+ * 창이 간격보다 넓으면 짧은 수집 공백은 이웃 판독으로 메워져 선이 끊기지
+ * 않는다. 창의 두 배보다 긴 공백은 그대로 빈 마크가 되어 선이 끊긴다 — 없는
+ * 시간을 이어 그리지 않는다.
  */
-export function resample(points: Sample[], close: number, bucketMinutes: number): Sample[] {
-  const marks = new Map<number, Sample[]>();
-  for (const point of points) {
-    const mark = Math.round(point.minutes / bucketMinutes) * bucketMinutes;
-    const bucket = marks.get(mark);
-    if (bucket) bucket.push(point);
-    else marks.set(mark, [point]);
+export function resample(
+  points: Sample[],
+  close: number,
+  bucketMinutes: number,
+  windowMinutes: number = bucketMinutes / 2,
+): Sample[] {
+  if (points.length === 0) return [];
+
+  // 입력 순서에 기대지 않는다 — 예전 구현은 Map 에 담아 정렬했으므로 정렬을
+  // 요구하지 않았고, 그 성질을 여기서 잃을 이유가 없다.
+  const mins = points.map((p) => p.minutes);
+  const firstMark = Math.round(Math.min(...mins) / bucketMinutes) * bucketMinutes;
+  const lastMark = Math.round(Math.max(...mins) / bucketMinutes) * bucketMinutes;
+
+  const out: Sample[] = [];
+  for (let mark = firstMark; mark <= Math.min(lastMark, close); mark += bucketMinutes) {
+    let sum = 0;
+    let n = 0;
+    for (const point of points) {
+      const d = point.minutes - mark;
+      if (d >= -windowMinutes && d < windowMinutes) {
+        sum += point.value;
+        n++;
+      }
+    }
+    if (n > 0) out.push({ minutes: mark, value: sum / n });
   }
-  return [...marks.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([mark, bucketPoints]) => ({
-      minutes: mark,
-      value: bucketPoints.reduce((sum, p) => sum + p.value, 0) / bucketPoints.length,
-    }))
-    .filter((p) => p.minutes <= close);
+  return out;
 }

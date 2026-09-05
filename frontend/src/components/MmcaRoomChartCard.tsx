@@ -4,7 +4,7 @@ import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../a
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
-import { BUCKET_MINUTES, resample } from "../lib/resample";
+import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES, resample } from "../lib/resample";
 import { statusOf } from "../lib/status";
 
 const CHART_WIDTH = 480;
@@ -156,7 +156,10 @@ function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: 
 
   // 등급명은 평균 뒤에 다시 붙인다 — 1.4 는 "보통"이라 부른다. 곡선은 1.4 를
   // 그리고 툴팁만 반올림한 이름을 쓴다.
-  return resample(raw, close, BUCKET_MINUTES).map((p) => ({
+  //
+  // 창(±20분)이 마크 간격(10분)보다 넓어 이웃 마크가 판독을 나눠 갖는다. 왜
+  // 그래야 하는지와 두 값을 어떻게 골랐는지는 lib/resample.ts 에 있다.
+  return resample(raw, close, BUCKET_MINUTES, MMCA_WINDOW_MINUTES).map((p) => ({
     minutes: p.minutes,
     tier: p.value,
     label: TIERS[Math.round(p.value)],
