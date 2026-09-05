@@ -1204,3 +1204,50 @@ describe("mark grid", () => {
     expect(MMCA_WINDOW_MINUTES).toBeGreaterThan(BUCKET_MINUTES / 2);
   });
 });
+
+describe("tier gridlines", () => {
+  it("draws one line per congestion level, at the level's own height", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 곡선이 마크 평균이라 값이 소수다 — 등급 위에 앉지 않는 높이가 무슨 뜻인지
+    // 읽으려면 눈금이 있어야 한다. 네 줄이 등간격이라는 것이 "4단계"를 말한다.
+    const lines = screen.getAllByTestId("mmca-room-chart-tier-line");
+    expect(lines).toHaveLength(4);
+
+    const ys = lines.map((l) => Number(l.getAttribute("y1")));
+    // yOf 는 tier 가 클수록 위(작은 y)로 간다.
+    expect(ys[0]).toBeGreaterThan(ys[3]);
+    const gaps = ys.slice(0, -1).map((y, i) => y - ys[i + 1]);
+    for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0], 6);
+  });
+
+  it("does not draw them on a card with nothing to plot", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 빈 차트에 눈금만 남으면 값이 있는 것처럼 보인다.
+    expect(screen.queryAllByTestId("mmca-room-chart-tier-line")).toHaveLength(0);
+  });
+});
