@@ -209,10 +209,18 @@ def test_an_hours_old_mmca_round_is_fine_outside_opening_hours(client):
     assert response.json()["mmca"]["stale"] is False
 
 
-def test_mmca_is_not_stale_in_the_first_minutes_after_opening(client):
-    """The first round of the day hasn't run yet at 10:15."""
+def test_mmca_is_not_stale_inside_the_grace_window_after_opening(client):
+    """Just after opening the newest round is legitimately yesterday's.
+
+    The offset is derived from MMCA_STALE_MINUTES rather than written as a
+    clock time. It used to be a literal 10:15, which was inside the grace
+    window only while the threshold was 25 — the two are the same window, so
+    a hardcoded time silently stops testing the boundary it was chosen for.
+    """
+    from app.routes.health import MMCA_STALE_MINUTES
+
     test_client, session_factory, monkeypatch = client
-    just_opened = datetime(2026, 8, 12, 10, 15)
+    just_opened = datetime(2026, 8, 12, 10, 0) + timedelta(minutes=MMCA_STALE_MINUTES - 1)
     _freeze(monkeypatch, just_opened)
     _add(
         session_factory,
@@ -224,6 +232,31 @@ def test_mmca_is_not_stale_in_the_first_minutes_after_opening(client):
 
     assert response.status_code == 200
     assert response.json()["mmca"]["stale"] is False
+
+
+def test_mmca_is_stale_once_the_grace_window_after_opening_has_passed(client):
+    """The other edge of the same window — the half that catches a dead start.
+
+    Without this, widening MMCA_STALE_MINUTES back out is invisible to the
+    suite: the test above passes for every value, since it moves with the
+    constant. Here the venue has been open longer than the threshold with no
+    round at all, which is the shape of a collector that never woke up.
+    """
+    from app.routes.health import MMCA_STALE_MINUTES
+
+    test_client, session_factory, monkeypatch = client
+    past_grace = datetime(2026, 8, 12, 10, 0) + timedelta(minutes=MMCA_STALE_MINUTES + 1)
+    _freeze(monkeypatch, past_grace)
+    _add(
+        session_factory,
+        seoul=past_grace - timedelta(minutes=3),
+        mmca=[past_grace - timedelta(hours=13)],
+    )
+
+    response = test_client.get("/health/collection")
+
+    assert response.status_code == 503
+    assert response.json()["mmca"]["stale"] is True
 
 
 def test_an_empty_database_reads_as_stale(client):

@@ -152,3 +152,26 @@ def test_fetch_congestion_stays_quiet_for_the_real_success_code(caplog):
 
     assert reading.congestion_nm == "여유"
     assert caplog.text == ""
+
+
+def test_worst_case_round_fits_the_poll_grid_with_a_room_to_spare():
+    """라운드 최악 시간이 수집 격자 안에 들어와야 한다.
+
+    방을 순차 호출하므로 최악은 `방 수 × FETCH_TIMEOUT_SECONDS` 이고, 넘기면
+    APScheduler 가 다음 라운드를 버린다(max_instances 기본값 1). 세 값이 서로
+    묶여 있는데 세 파일에 흩어져 있어서, 어느 하나만 만져도 조용히 깨진다 —
+    2026-09-03 에 실제로 깨져 하루 수집의 20.6% 를 잃었다.
+
+    방을 하나 더한 수로 재는 이유는 방 수가 설정값이기 때문이다
+    (settings.mmca_venue_space_codes). 딱 맞게 통과하는 상한에 앉으면 전시실
+    코드 하나 추가가 곧 수집 장애가 된다. 현재 값으로는 18방 × 3초 = 54초로
+    120초 예산의 45% 다.
+    """
+    from app.collector import MMCA_POLL_MINUTES
+    from app.config import settings
+    from app.mmca_api import FETCH_TIMEOUT_SECONDS
+
+    rooms = sum(len(codes) for codes in settings.mmca_venue_space_codes.values())
+    worst_case_seconds = (rooms + 1) * FETCH_TIMEOUT_SECONDS
+
+    assert worst_case_seconds < MMCA_POLL_MINUTES * 60

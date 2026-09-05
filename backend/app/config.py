@@ -1,4 +1,10 @@
+import holidays
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 한국 공휴일 달력. 예측 배치(오늘 + 6일의 is_holiday 플래그)와
+# scripts/purge_out_of_hours_mmca.py 가 공유한다 — 걷어낸 prediction/model.py 에
+# 얹혀 있던 것을 두 소비자 어느 쪽도 아닌 자리로 옮겼다.
+KR_HOLIDAYS = holidays.country_holidays("KR")
 
 # Official MMCA space-code -> room-name table (전시실코드_v1.xlsx). Room
 # names for a given code don't change, so this is hardcoded rather than
