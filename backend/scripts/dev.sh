@@ -5,7 +5,7 @@
 # The pull is skipped when the local DB was refreshed recently. Restarting the
 # backend a few times while working on one thing used to re-download the whole
 # snapshot every time, and production only moves every 5 minutes (Seoul) /
-# 10 minutes (MMCA) — so a copy from half an hour ago is as useful for dev as
+# 2 minutes (MMCA) — so a copy from half an hour ago is as useful for dev as
 # a fresh one. --reload restarts only the app import on file changes, not this
 # wrapper, so a save never re-pulls either way.
 #

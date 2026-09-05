@@ -80,10 +80,11 @@ def store_forecast_revisions(
 #
 # No equivalent retry for collect_mmca_once: losing one room of seventeen is a
 # far smaller hole than losing the only call of a round, and that room's retry
-# is simply the next round — one minute away on the MMCA_POLL_MINUTES grid,
-# against the ten it used to be. An in-round retry would buy back 58 of those
-# 60 seconds and nothing else, so the finer grid is what removed the case for
-# one. The quota argument that used to sit here is void either way: see
+# is simply the next round — two minutes away on the MMCA_POLL_MINUTES grid,
+# against the ten it was before that constant went 10 -> 1 -> 2. An in-round
+# retry would buy back all but a few seconds of that wait and nothing else, so
+# the grid is what removed the case for one, at either of the finer settings.
+# The quota argument that used to sit here is void either way: see
 # MMCA_POLL_MINUTES, where that arithmetic now lives.
 _FETCH_ATTEMPTS = 3
 _FETCH_RETRY_SECONDS = 2
@@ -224,22 +225,48 @@ _COLLECTION_START = time(10, 0)
 # 조용한 실패 경로다.
 #
 # 100,000/day 쿼터 대비 비용: 최대일(수/토 — 세 관 모두 개관, 서울·덕수궁이
-# 21:00 까지)에 10분이 995콜(1.0%), 1분이 9,797콜(9.8%). 방 17개지만 과천은
-# 18:00 에 닫아 하루 481라운드, 나머지 9개 방이 661라운드다.
+# 21:00 까지)에 10분이 995콜(1.0%), 2분이 4,907콜(4.9%), 1분이 9,797콜(9.8%).
+# 방 17개지만 과천은 18:00 에 닫아 하루 241라운드, 나머지 9개 방이 331라운드다.
+# 쿼터는 어느 쪽도 제약하지 않는다 — 간격을 정하는 값이 아니다.
 #
-# 쿼터는 약 6초까지 버티므로(하루 방·초 총량 586,800 / 100,000) 간격을 정하는
-# 값이 아니다. 진짜 상한은 둘 다 실측이 필요한 쪽이다:
+# 1분이었다가 2분이 됐다. 1분을 고를 때 남겨 둔 두 질문에 하루치 실측이 답했다:
 #
-# (a) 라운드 실행 시간. 방 17개를 순차 호출하며 방당 timeout 이 10초라 최악
-#     170초까지 늘어난다. 2026-09-02 실측은 총 0.58초(방당 평균 33ms)로 60초
-#     격자의 1.0% 였다 — 60초를 넘기려면 6개 방 이상이 동시에 timeout 을
-#     맞아야 한다. 넘겨도 예외가 아니라 그 라운드가 스킵된다(APScheduler
-#     max_instances 기본값 1, EVENT_JOB_MAX_INSTANCES 는 EVENT_JOB_ERROR 가
-#     아니라 scheduler.py 의 _log_job_error 도 반응하지 않는다).
-# (b) 상류 갱신 주기. /congestion 응답에 타임스탬프가 없어(mmca_api.py)
-#     페이로드만으로는 받은 값이 새것인지 10분 전 값인지 알 수 없다. 1분 수집
-#     하루치의 전이 시각이 그 답이고, 그것으로 최종 간격을 정한다.
-MMCA_POLL_MINUTES = 1
+# (a) 라운드 실행 시간 — 넘쳤다. 방을 순차 호출하므로 라운드 최악 시간이
+#     `방 수 × 방당 timeout` 인데 그 timeout 이 10초라 멈춘 방 6개면 60초
+#     격자를 넘었고, 넘으면 다음 라운드가 스킵된다(APScheduler max_instances
+#     기본값 1. EVENT_JOB_MAX_INSTANCES 는 EVENT_JOB_ERROR 가 아니라
+#     scheduler.py 의 _log_job_error 가 반응하지 않는다). 2026-09-03 에
+#     라운드 407개 중 55개가 통째로 스킵돼 20.6% 를 잃었다. 이건 간격이 아니라
+#     timeout 이 원인이라 그쪽에서 고쳤다 — mmca_api.py 의
+#     FETCH_TIMEOUT_SECONDS 에 산식과 근거가 있다.
+#
+# (b) 상류 갱신 주기 — 실시간이다. /congestion 응답에 타임스탬프가 없어
+#     페이로드만으로는 알 수 없었는데, 1분 수집 하루치의 전이 시각이 답을 줬다:
+#     1분 해상도 전이 159건의 발생 분을 5·10 으로 나눈 나머지가 완전 균일해
+#     (mod 5: 28/35/33/28/35, mod 10: 11~21) 상류에 5분·10분 주기가 없다.
+#
+# 그런데 (b) 는 1분을 정당화하지 않는다. 상류가 매분 바뀐다는 것과 매분 받을
+# 값이 있다는 것은 다르다. 처음에 근거로 삼았던 "간격별 포착 전이 수"(1분 208,
+# 2분 174, 10분 87)는 폐기했다 — 208건 중 34% 가 2분 이하만 유지되고 바뀐 것,
+# 37% 가 3분 안에 직전 값으로 되돌아간 왕복이라, 그 표는 센서 임계 근처의
+# 잡음에 대한 충실도를 이득으로 세고 있었다.
+#
+# 간격은 소비자가 실제로 그리는 값으로 정해야 한다. 차트는 10분 버킷 평균을
+# 그리므로(프론트 MmcaRoomChartCard), 1분 수집으로 만든 버킷 값을 기준으로
+# 간격별 오차를 재면:
+#
+#     2분   평균 0.016 등급, 최대 0.333, 0.5 이상 벗어난 버킷 0개
+#     3분   평균 0.031,      최대 0.500, 1개
+#     5분   평균 0.054,      최대 0.889, 6개
+#    10분   평균 0.073,      최대 0.889, 13개
+#
+# 2분은 1분과 화면상 구분되지 않는다. 뒤집으면 1분이 2분보다 얻는 것이 없다는
+# 뜻이고, 비용은 두 배다. 3분이 경계선이라 그 아래로는 내려가지 않는다.
+#
+# 간격을 바꾸는 것이 안전해진 것은 PR #84 이후다. 그전에는 build_profile 이
+# 셀 안의 판독을 통째로 평균내 판독 수가 곧 가중치였고, 간격을 바꾸면 예측이
+# 조용히 따라 움직였다. 지금은 날짜별 선평균이라 간격과 예측이 분리돼 있다.
+MMCA_POLL_MINUTES = 2
 
 # 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
 # 문을 여는 것은 서울관뿐이다.

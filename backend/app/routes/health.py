@@ -58,10 +58,51 @@ SEOUL_STALE_MINUTES = 75
 
 # collect_mmca_once polls on the MMCA_POLL_MINUTES grid, but only while a venue
 # is open, so this threshold only applies inside opening hours. It is sized as
-# "a few missed rounds" at the 10-minute grid this number was set under —
-# a finer grid only makes it more forgiving, never noisier, so it is left alone
-# until the interval settles.
-MMCA_STALE_MINUTES = 25
+# "a few missed rounds", which means it has to move whenever that grid moves —
+# the number is minutes, but the failure it detects is counted in rounds.
+#
+# It was 25, set when the grid was 10 minutes (2.5 rounds). Leaving it there
+# through the 10 -> 1 -> 2 changes was defended as "a finer grid only makes it
+# more forgiving, never noisier". That is true and was the problem: at */2 it
+# allows 12.5 missed rounds, and it did not catch the outage that made it worth
+# rechecking. On 2026-09-03 a per-room timeout let rounds overrun their grid
+# (see mmca_api.py's FETCH_TIMEOUT_SECONDS); 55 of 407 rounds were dropped and
+# 20.6% of the day's readings were lost, with a worst round-to-round gap of 9
+# minutes on the 1-minute grid — 18 minutes' worth of missed rounds at */2, and
+# still under 25. The monitor stayed green through a fifth of a day going
+# missing.
+#
+# 12 comes from 37 days of collection history (2026-07-29..09-03), measured as
+# the worst gap between one room's own readings inside opening hours, in units
+# of the grid in force that day, then read back at */2. Rooms with no active
+# exhibition are excluded: they answer resultCode 0002 for weeks on end (room
+# 1002's gap is 120 minutes nearly every day) and the frontend already demotes
+# them to an inactive card with no freshness badge at all.
+#
+#   threshold   days it would flag
+#      6 min     8 / 37
+#      8 min     5 / 37
+#     10 min     4 / 37
+#     12 min     2 / 37   <-- knee
+#     15 min     2 / 37
+#     20 min     2 / 37
+#     25 min     1 / 37
+#
+# Past 12 there is nothing left to buy — 15 and 20 flag the same two days while
+# taking longer to notice a collector that has actually died. Both remaining
+# days are ones where saying "stale" is correct: 09-03 above, and 09-01, where
+# room 1003 went through an exhibition changeover mid-window.
+#
+# The asymmetry runs the same way as SEOUL_STALE_MINUTES: a dead collector
+# stays dead, so this endpoint is read through max(observed_at) across every
+# room, which is far harder to make stale than any single room. At 12 minutes
+# that is one alerting day in 40 — and it is the one day that deserved it.
+#
+# Re-run this table before moving the number, and move it whenever
+# MMCA_POLL_MINUTES moves. frontend/src/lib/freshness.ts holds the same
+# constant for the badge; the two must agree or the badge and the healthcheck
+# disagree about the same reading.
+MMCA_STALE_MINUTES = 12
 
 
 def _age_minutes(last: datetime | None, now: datetime) -> float | None:

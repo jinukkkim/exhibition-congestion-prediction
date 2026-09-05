@@ -44,7 +44,7 @@ response is served from Redis, not the DB, and only the daily batch
 prediction line was simply absent.
 
 The pull is skipped when the local DB is less than 30 minutes old — production
-only moves every 5 minutes (Seoul) / 10 minutes (MMCA), so restarting the
+only moves every 5 minutes (Seoul) / 2 minutes (MMCA), so restarting the
 backend a few times while working on one thing does not re-download it:
 
 ```bash
@@ -238,8 +238,9 @@ restoring from in a hurry.
    no `CRON_TZ` and the box is `Etc/UTC`. Korea has no DST, so +9 never drifts.
    `:33` keeps it clear of the 00:02 daily batch and of the `*/5` Seoul
    collector, which would otherwise scan and INSERT at the same instant. The
-   MMCA collector is on a 1-minute grid and can no longer be dodged, but it
-   writes nothing outside venue hours.
+   MMCA collector is on `*/2`, so an odd minute like `:33` is off its grid as
+   well — but nothing rests on that, since it writes nothing outside venue
+   hours either way.
 
    ```
    33 15 * * * /home/ubuntu/exhibition-traffic/deploy/backup_db.sh >> /home/ubuntu/backups/backup.log 2>&1

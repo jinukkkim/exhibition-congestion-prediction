@@ -1,6 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
+from app.collector import MMCA_POLL_MINUTES
 from app.prediction.mmca import (
+    ANCHOR_WINDOW_MINUTES,
+    MIN_ANCHOR_OBSERVATIONS,
     MIN_SAMPLE_DAYS,
     RAMP_MINUTES,
     build_profile,
@@ -18,6 +21,31 @@ class Row:
         self.space_code = space_code
         self.observed_at = datetime.fromisoformat(observed_at)
         self.congestion_nm = congestion_nm
+
+
+# 이 파일의 프로파일 키가 전부 ("A", 5, 15) 라 판독도 같은 셀 안에 있어야 한다 —
+# 2026-08-01 은 토요일(weekday 5)이고 15시다.
+_ANCHOR_START = datetime(2026, 8, 1, 15, 0)
+
+
+def _anchor_rows(level: str, count: int | None = None) -> list[Row]:
+    """앵커 게이트를 통과하는 판독을 한 시각 셀 안에 만든다.
+
+    개수도 간격도 상수에서 끌어온다. 둘 다 수집 격자에 매여 있어서다 —
+    MIN_ANCHOR_OBSERVATIONS 는 격자가 바뀌면 함께 움직여야 하고(그 결합은 아래
+    test_the_anchor_gate_asks_for_at_least_twenty_minutes_of_collection 이
+    지킨다), 판독 간격은 격자 그 자체다. 어느 쪽이든 손으로 적어 두면 이 헬퍼만
+    현실과 어긋난 채 남는다 — 이 PR 이 프로덕션 코드에서 고치고 있는 것과 같은
+    모양이다.
+
+    timedelta 로 더하는 이유는 분을 문자열로 만들면 간격이 커질 때 60 을 넘겨
+    "15:100" 같은 값이 나오기 때문이다.
+    """
+    count = MIN_ANCHOR_OBSERVATIONS if count is None else count
+    return [
+        Row("A", (_ANCHOR_START + timedelta(minutes=i * MMCA_POLL_MINUTES)).isoformat(), level)
+        for i in range(count)
+    ]
 
 
 def test_build_profile_averages_ranks_per_room_weekday_hour():
@@ -123,6 +151,22 @@ def test_sample_days_ignores_rows_with_no_exhibition():
     assert sample_days(rows) == {"A": 1}
 
 
+def test_the_anchor_gate_asks_for_at_least_twenty_minutes_of_collection():
+    """게이트의 단위는 판독 개수지만 재는 것은 시간이라, 격자에 매여 있다.
+
+    3 이던 동안 이 값은 10분 격자에서 20분치를 뜻했는데, 격자가 1분이 되면서
+    같은 3 이 3분치가 됐다. 상수 자체는 그대로라 어떤 테스트도 반응하지 않았다 —
+    MMCA_POLL_MINUTES 를 바꾸면 깨지는 것이 여기 있어야 하는 이유다.
+
+    상한은 앵커 창이다. 요구 시간이 창보다 길면 게이트를 영영 통과할 수 없어
+    평행이동이 조용히 사라진다.
+    """
+    span_minutes = (MIN_ANCHOR_OBSERVATIONS - 1) * MMCA_POLL_MINUTES
+
+    assert span_minutes >= 20
+    assert span_minutes < ANCHOR_WINDOW_MINUTES
+
+
 def test_min_sample_days_is_three():
     # 전시 교체 직후 재개된 방을 걸러내는 게이트. 스펙 확정값.
     assert MIN_SAMPLE_DAYS == 3
@@ -131,13 +175,9 @@ def test_min_sample_days_is_three():
 def test_today_shift_is_observed_minus_profile_on_the_same_timestamps():
     # 토요일 15시 프로파일이 2.0 인데 오늘 실측이 1.0 이면 편차 -1.0
     profile = {("A", 5, 15): 2.0}
-    rows = [
-        Row("A", "2026-08-01T15:00:00", "보통"),      # rank 1
-        Row("A", "2026-08-01T15:10:00", "보통"),      # rank 1
-        Row("A", "2026-08-01T15:20:00", "보통"),      # rank 1
-    ]
+    rows = _anchor_rows("보통")  # rank 1
 
-    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+    shift = today_shift(profile, rows, now=rows[-1].observed_at)
 
     assert shift == {"A": -1.0}
 
@@ -148,12 +188,10 @@ def test_today_shift_uses_only_the_last_120_minutes():
     profile = {("A", 5, 12): 0.0, ("A", 5, 15): 2.0}
     rows = [
         Row("A", "2026-08-01T12:00:00", "붐빔"),      # 창 밖 — 무시돼야 한다
-        Row("A", "2026-08-01T15:00:00", "보통"),      # rank 1
-        Row("A", "2026-08-01T15:10:00", "보통"),
-        Row("A", "2026-08-01T15:20:00", "보통"),
+        *_anchor_rows("보통"),                        # rank 1
     ]
 
-    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+    shift = today_shift(profile, rows, now=rows[-1].observed_at)
 
     # 창 안 판독만 쓰면 (1+1+1)/3 - 2.0 = -1.0
     assert shift == {"A": -1.0}
@@ -161,26 +199,19 @@ def test_today_shift_uses_only_the_last_120_minutes():
 
 def test_today_shift_omits_rooms_below_the_minimum_observations():
     profile = {("A", 5, 15): 2.0}
-    rows = [
-        Row("A", "2026-08-01T15:00:00", "보통"),
-        Row("A", "2026-08-01T15:10:00", "보통"),
-    ]
+    rows = _anchor_rows("보통", count=MIN_ANCHOR_OBSERVATIONS - 1)
 
-    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:10:00"))
+    shift = today_shift(profile, rows, now=rows[-1].observed_at)
 
-    # 2개는 MIN_ANCHOR_OBSERVATIONS(3) 미만 — 개관 직후 편차는 노이즈다.
+    # 하나 모자라면 편차를 만들지 않는다 — 개관 직후 편차는 노이즈다.
     assert shift == {}
 
 
 def test_today_shift_omits_rooms_whose_cells_are_missing_from_the_profile():
     profile: dict[tuple[str, int, int], float] = {}
-    rows = [
-        Row("A", "2026-08-01T15:00:00", "보통"),
-        Row("A", "2026-08-01T15:10:00", "보통"),
-        Row("A", "2026-08-01T15:20:00", "보통"),
-    ]
+    rows = _anchor_rows("보통")
 
-    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+    shift = today_shift(profile, rows, now=rows[-1].observed_at)
 
     # 비교 기준이 없으면 편차를 만들 수 없다.
     assert shift == {}
@@ -189,44 +220,37 @@ def test_today_shift_omits_rooms_whose_cells_are_missing_from_the_profile():
 def test_today_shift_is_not_clamped():
     # 클램프는 측정에서 손해였다(없음 64.0% / ±1.0 63.3% / ±0.5 61.9%).
     profile = {("A", 5, 15): 0.0}
-    rows = [
-        Row("A", "2026-08-01T15:00:00", "붐빔"),
-        Row("A", "2026-08-01T15:10:00", "붐빔"),
-        Row("A", "2026-08-01T15:20:00", "붐빔"),
-    ]
+    rows = _anchor_rows("붐빔")
 
-    shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T15:20:00"))
+    shift = today_shift(profile, rows, now=rows[-1].observed_at)
 
     assert shift == {"A": 3.0}
 
 
 def test_today_shift_drops_cell_less_readings_from_both_means():
-    # 셀 있는 판독 3개(게이트 통과) + 셀 없는 판독 2개를 같은 방·같은 창에 섞는다.
+    # 셀 있는 판독(게이트 통과) + 셀 없는 판독 2개를 같은 방·같은 창에 섞는다.
     # 셀 없는 판독이 observed 에만 들어가고 expected 에서 빠지면 편차가 시간대
     # 효과를 빨아들인다 — 브리프가 최중요 불변식이라 부른 버그다.
     profile = {("A", 5, 15): 2.0}          # 16시 셀은 일부러 비워 둔다
     rows = [
-        Row("A", "2026-08-01T15:00:00", "보통"),   # rank 1, 셀 있음
-        Row("A", "2026-08-01T15:10:00", "보통"),   # rank 1, 셀 있음
-        Row("A", "2026-08-01T15:20:00", "보통"),   # rank 1, 셀 있음
+        *_anchor_rows("보통"),                     # rank 1, 셀 있음
         Row("A", "2026-08-01T16:00:00", "붐빔"),   # rank 3, 셀 없음 → 양쪽에서 빠져야 한다
         Row("A", "2026-08-01T16:10:00", "보통"),   # rank 1, 셀 없음 → 양쪽에서 빠져야 한다
     ]
 
     shift = today_shift(profile, rows, now=datetime.fromisoformat("2026-08-01T16:10:00"))
 
-    # 셀 있는 3개만 쓰면 (1+1+1)/3 - 2.0 = -1.0.
-    # 셀 없는 판독이 observed 에만 섞이면 (1+1+1+3+1)/5 - 2.0 = -0.6 이라 실패한다.
+    # 셀 있는 판독만 쓰면 전부 rank 1 이라 1.0 - 2.0 = -1.0.
+    # 셀 없는 판독이 observed 에만 섞이면 평균이 1 위로 끌려 올라가 실패한다.
     assert shift == {"A": -1.0}
 
 
 def test_today_shift_gate_counts_usable_readings_not_raw_window_rows():
-    # in-window 4개지만 셀이 맞는 것은 2개뿐 — 표본 2개로 만든 편차는
-    # MIN_ANCHOR_OBSERVATIONS(3) 가 막으려는 바로 그 노이즈다.
+    # 창 안 행 수는 게이트를 넘지만 셀이 맞는 것은 하나 모자란다 — 그렇게 만든
+    # 편차야말로 MIN_ANCHOR_OBSERVATIONS 가 막으려는 노이즈다.
     profile = {("A", 5, 15): 2.0}
     rows = [
-        Row("A", "2026-08-01T15:00:00", "보통"),   # 셀 있음
-        Row("A", "2026-08-01T15:10:00", "보통"),   # 셀 있음
+        *_anchor_rows("보통", count=MIN_ANCHOR_OBSERVATIONS - 1),   # 셀 있음
         Row("A", "2026-08-01T16:00:00", "붐빔"),   # 셀 없음
         Row("A", "2026-08-01T16:10:00", "보통"),   # 셀 없음
     ]
