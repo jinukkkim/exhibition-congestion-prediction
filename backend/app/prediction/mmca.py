@@ -173,13 +173,20 @@ def sample_days(rows) -> dict[str, int]:
     return {code: len(dates) for code, dates in days.items()}
 
 
-# 램프의 출발점을 만드는 마크 격자(분). 프론트 lib/resample.ts 의 BUCKET_MINUTES
-# 와 같은 값이어야 한다 — 실선의 마지막 점이 그 격자의 평균이고, 점선은 거기서
-# 출발해야 이음매에서 기울기가 튀지 않는다.
+# 램프의 출발점을 만드는 마크 격자와 평균 창(분). 프론트 lib/resample.ts 의
+# BUCKET_MINUTES / MMCA_WINDOW_MINUTES 와 같은 값이어야 한다 — 실선의 마지막
+# 점이 그 마크에서 그 창으로 낸 평균이고, 점선은 같은 값에서 출발해야 이음매의
+# 좌표뿐 아니라 기울기까지 맞는다. 한쪽만 바꾸면 점선이 이어 붙은 자리에서
+# 엉뚱한 방향으로 떠난다.
 SEAM_BUCKET_MINUTES = 10
+SEAM_WINDOW_MINUTES = 20
 
 
-def seam(rows, bucket_minutes: int = SEAM_BUCKET_MINUTES) -> dict[str, tuple[int, float]]:
+def seam(
+    rows,
+    bucket_minutes: int = SEAM_BUCKET_MINUTES,
+    window_minutes: int | None = None,
+) -> dict[str, tuple[int, float]]:
     """방별 (마크 시각, 그 마크의 평균 등급). 램프가 여기서 출발한다.
 
     마지막 판독 하나가 아니라 마크 평균인 이유는 둘이다.
@@ -193,9 +200,11 @@ def seam(rows, bucket_minutes: int = SEAM_BUCKET_MINUTES) -> dict[str, tuple[int
     쓰면 이음매의 좌표는 프론트가 맞춰 주지만 램프의 기울기는 다른 값에서
     계산돼, 점선이 이은 자리에서 어긋난 방향으로 출발한다.
 
-    `bucket_minutes` 는 백테스트가 구간을 스윕하기 위한 것이다 — 프로덕션은
-    기본값을 쓴다. 스크립트가 로직을 재구현하면 근거가 프로덕션 코드와 갈라진다.
-    0 을 주면 마지막 판독 하나(옛 동작)가 된다.
+    `bucket_minutes` 는 마지막 판독을 어느 마크로 내릴지, `window_minutes` 는
+    그 마크에서 몇 분을 평균낼지다. 창을 주지 않으면 SEAM_WINDOW_MINUTES 를
+    쓴다. 둘 다 백테스트가 스윕하기 위해 인자로 열려 있고 — 스크립트가 로직을
+    재구현하면 근거가 프로덕션 코드와 갈라진다 — 프로덕션은 기본값을 쓴다.
+    `bucket_minutes=0` 은 마지막 판독 하나(옛 동작)다.
 
     스윕 결과(프로덕션 설정 14일/120분/90분/보정, n=33,797):
 
@@ -227,13 +236,14 @@ def seam(rows, bucket_minutes: int = SEAM_BUCKET_MINUTES) -> dict[str, tuple[int
         if bucket_minutes <= 0:
             out[code] = (last_minutes, float(CONGESTION_RANKS[last.congestion_nm]))
             continue
+        window = SEAM_WINDOW_MINUTES if window_minutes is None else window_minutes
         mark = round(last_minutes / bucket_minutes) * bucket_minutes
+        # 프론트 resample 과 같은 반개구간 [mark - w, mark + w) — 마크 사이
+        # 정중앙에 떨어지는 판독이 두 마크에 겹쳐 들어가지 않게 한다.
         ranks = [
             CONGESTION_RANKS[r.congestion_nm]
             for r in room_rows
-            if round((r.observed_at.hour * 60 + r.observed_at.minute) / bucket_minutes)
-            * bucket_minutes
-            == mark
+            if -window <= (r.observed_at.hour * 60 + r.observed_at.minute) - mark < window
         ]
         out[code] = (mark, sum(ranks) / len(ranks))
     return out
