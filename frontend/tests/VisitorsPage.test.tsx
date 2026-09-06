@@ -1,20 +1,39 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsApi from "../src/api/analytics";
+import type { VisitStats } from "../src/api/analytics";
 import { VisitorsPage } from "../src/pages/VisitorsPage";
 
-const STATS = {
+const STATS: VisitStats = {
   daily: [
-    { date: "2026-09-06", views: 4, visitors: 3, bots: 12 },
-    { date: "2026-09-07", views: 10, visitors: 6, bots: 9 },
+    { date: "2026-09-06", views: 4, visitors: 3, unconfirmed: 7, bots: 12 },
+    { date: "2026-09-07", views: 10, visitors: 6, unconfirmed: 2, bots: 9 },
   ],
   referrers: [
     { source: "www.google.com", views: 8 },
     { source: "직접 방문", views: 6 },
   ],
   devices: { mobile: 9, desktop: 5 },
+  visits: [
+    {
+      at: "2026-09-07T14:20:00",
+      path: "/logs",
+      kind: "human",
+      visitor: "93345f",
+      device: "desktop",
+      referrer: "직접 방문",
+    },
+    {
+      at: "2026-09-07T03:11:00",
+      path: "/",
+      kind: "unconfirmed",
+      visitor: "57a58d",
+      device: "mobile",
+      referrer: null,
+    },
+  ],
 };
 
 // 카드와 표의 숫자는 화면 곳곳에서 겹친다 (봇 9 와 모바일 9). 라벨이 있는
@@ -25,6 +44,12 @@ function metric(label: string): string {
 
 function row(label: string): string {
   return screen.getByText(label).closest("tr")?.textContent ?? "";
+}
+
+// 표가 넷이라 "모바일" 같은 말은 두 표에 함께 나온다. 표 이름으로 좁힌다.
+function rowIn(table: string, label: string): string {
+  const scope = within(screen.getByRole("table", { name: table }));
+  return scope.getByText(label).closest("tr")?.textContent ?? "";
 }
 
 function visit(search = "") {
@@ -85,8 +110,29 @@ describe("VisitorsPage", () => {
     expect(row("2026-09-07")).toContain("6");
     expect(row("2026-09-06")).toContain("4");
     expect(row("www.google.com")).toContain("8");
-    expect(row("모바일")).toContain("9");
-    expect(row("데스크톱")).toContain("5");
+    expect(rowIn("기기", "모바일")).toContain("9");
+    expect(rowIn("기기", "데스크톱")).toContain("5");
+  });
+
+  it("lists each visit newest-first with what it was", async () => {
+    visit();
+
+    await waitFor(() => expect(screen.getByText("93345f")).toBeInTheDocument());
+    expect(row("93345f")).toContain("사람");
+    expect(row("93345f")).toContain("/logs");
+    expect(row("93345f")).toContain("09-07 14:20");
+    // 앱이 뜨지 않은 요청은 방문과 같은 표에 있되 다른 이름을 단다.
+    expect(row("57a58d")).toContain("미확인");
+    expect(rowIn("방문 목록", "57a58d")).toContain("모바일");
+    // referrer 가 없는 줄도 칸을 비우지 않는다.
+    expect(row("57a58d")).toContain("—");
+  });
+
+  it("shows the unconfirmed count next to the day's visits", async () => {
+    visit();
+
+    await waitFor(() => expect(row("2026-09-07")).toContain("10"));
+    expect(row("2026-09-07")).toContain("2");
   });
 
   it("says so when nothing could be fetched", async () => {

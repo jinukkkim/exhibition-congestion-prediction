@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 
-import { fetchVisits, type VisitDay } from "../api/analytics";
+import { fetchVisits, type Visit, type VisitDay } from "../api/analytics";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 
@@ -48,7 +48,35 @@ function DayRow({ day, max }: { day: VisitDay; max: number }) {
         </div>
       </td>
       <td className="px-4 py-2 text-right font-mono tabular-nums text-ink">{day.visitors}</td>
+      <td className="px-4 py-2 text-right font-mono tabular-nums text-ink-soft">
+        {day.unconfirmed}
+      </td>
       <td className="px-4 py-2 text-right font-mono tabular-nums text-ink-soft">{day.bots}</td>
+    </tr>
+  );
+}
+
+const KIND_LABEL: Record<Visit["kind"], string> = {
+  human: "사람",
+  unconfirmed: "미확인",
+  bot: "봇",
+};
+
+function VisitRow({ visit }: { visit: Visit }) {
+  const isHuman = visit.kind === "human";
+  return (
+    <tr className="border-b border-hairline/40 last:border-0">
+      <td className="whitespace-nowrap px-4 py-2 font-mono tabular-nums text-ink-soft">
+        {/* 날짜와 시각만. 초는 이 표에서 읽을 일이 없다. */}
+        {visit.at.slice(5, 16).replace("T", " ")}
+      </td>
+      <td className="px-4 py-2 font-mono text-ink-soft">{visit.visitor}</td>
+      <td className={`px-4 py-2 ${isHuman ? "text-ink" : "text-ink-soft"}`}>
+        {KIND_LABEL[visit.kind]}
+      </td>
+      <td className="px-4 py-2 text-ink-soft">{visit.device === "mobile" ? "모바일" : "데스크톱"}</td>
+      <td className="px-4 py-2 font-mono text-[12px] text-ink-soft">{visit.path}</td>
+      <td className="px-4 py-2 text-ink-soft">{visit.referrer ?? "—"}</td>
     </tr>
   );
 }
@@ -88,8 +116,9 @@ export function VisitorsPage() {
             방문자
           </h1>
           <p className="mt-3 text-sm text-ink-soft">
-            Caddy 접근 로그에서 집계합니다. 로그가 롤되면 오래된 날짜부터 사라지므로
-            여기 보이는 기간이 남아 있는 기록의 전부입니다.
+            Caddy 접근 로그에서 집계합니다. 방문으로 세는 것은 앱이 실제로 뜬 요청뿐입니다.
+            로그가 롤되면 오래된 날짜부터 사라지므로 여기 보이는 기간이 남아 있는 기록의
+            전부입니다.
           </p>
         </header>
 
@@ -121,8 +150,13 @@ export function VisitorsPage() {
             </div>
 
             <section className="mb-12">
-              <h2 className="mb-3 text-sm font-semibold text-ink">일별</h2>
-              <table className="w-full border-collapse text-left text-[13px]">
+              <h2 id="visits-daily" className="mb-3 text-sm font-semibold text-ink">
+                일별
+              </h2>
+              <table
+                aria-labelledby="visits-daily"
+                className="w-full border-collapse text-left text-[13px]"
+              >
                 <thead>
                   <tr className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
                     <th className="border-b border-hairline/60 px-4 py-3">날짜</th>
@@ -130,6 +164,7 @@ export function VisitorsPage() {
                     <th className="border-b border-hairline/60 px-4 py-3 text-right">
                       순방문자
                     </th>
+                    <th className="border-b border-hairline/60 px-4 py-3 text-right">미확인</th>
                     <th className="border-b border-hairline/60 px-4 py-3 text-right">봇</th>
                   </tr>
                 </thead>
@@ -143,11 +178,16 @@ export function VisitorsPage() {
 
             <section className="grid gap-10 sm:grid-cols-2">
               <div>
-                <h2 className="mb-3 text-sm font-semibold text-ink">유입 경로</h2>
+                <h2 id="visits-referrers" className="mb-3 text-sm font-semibold text-ink">
+                  유입 경로
+                </h2>
                 {data && data.referrers.length === 0 ? (
                   <p className="text-sm text-ink-soft">아직 없습니다.</p>
                 ) : (
-                  <table className="w-full border-collapse text-left text-[13px]">
+                  <table
+                    aria-labelledby="visits-referrers"
+                    className="w-full border-collapse text-left text-[13px]"
+                  >
                     <tbody>
                       {data?.referrers.map((referrer) => (
                         <tr
@@ -166,8 +206,13 @@ export function VisitorsPage() {
               </div>
 
               <div>
-                <h2 className="mb-3 text-sm font-semibold text-ink">기기</h2>
-                <table className="w-full border-collapse text-left text-[13px]">
+                <h2 id="visits-devices" className="mb-3 text-sm font-semibold text-ink">
+                  기기
+                </h2>
+                <table
+                  aria-labelledby="visits-devices"
+                  className="w-full border-collapse text-left text-[13px]"
+                >
                   <tbody>
                     <tr className="border-b border-hairline/40">
                       <td className="px-4 py-2 text-ink">모바일</td>
@@ -184,6 +229,46 @@ export function VisitorsPage() {
                   </tbody>
                 </table>
               </div>
+            </section>
+
+            <section className="mt-12">
+              <h2 id="visits-list" className="mb-1 text-sm font-semibold text-ink">
+                방문 목록
+              </h2>
+              {/* 이 페이지의 진짜 용도. "나 말고 누가 왔나" 는 합계로는 안 읽히고
+                  목록으로 읽힌다 — 같은 방문자 이름이 계속 나오면 그게 답이다. */}
+              <p className="mb-3 text-xs text-ink-soft">
+                최근 순. <strong className="font-semibold text-ink">사람</strong>은 페이지를 받은 뒤
+                앱이 실제로 떠서 API 를 부른 방문입니다. <strong className="font-semibold">미확인</strong>은
+                HTML 만 받아 가고 앱은 뜨지 않은 요청 — 대개 스캐너입니다.
+              </p>
+              <div className="overflow-x-auto">
+                <table
+                  aria-labelledby="visits-list"
+                  className="w-full border-collapse text-left text-[13px]"
+                >
+                  <thead>
+                    <tr className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                      <th className="border-b border-hairline/60 px-4 py-3">시각</th>
+                      <th className="border-b border-hairline/60 px-4 py-3">방문자</th>
+                      <th className="border-b border-hairline/60 px-4 py-3">구분</th>
+                      <th className="border-b border-hairline/60 px-4 py-3">기기</th>
+                      <th className="border-b border-hairline/60 px-4 py-3">경로</th>
+                      <th className="border-b border-hairline/60 px-4 py-3">유입</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.visits.map((visit, index) => (
+                      // 같은 초에 같은 곳에서 두 번 온 요청이 있다 (새로고침 연타).
+                      // 시각만으로는 키가 안 되므로 순서를 함께 쓴다.
+                      <VisitRow key={`${visit.at}-${index}`} visit={visit} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {data && data.visits.length === 0 && (
+                <p className="text-sm text-ink-soft">아직 없습니다.</p>
+              )}
             </section>
           </>
         )}
