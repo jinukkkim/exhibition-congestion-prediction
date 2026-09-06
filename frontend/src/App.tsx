@@ -4,6 +4,7 @@ import { HomePage } from "./pages/HomePage";
 import { LogsPage } from "./pages/LogsPage";
 import { MmcaPage } from "./pages/MmcaPage";
 import { NationalMuseumPage } from "./pages/NationalMuseumPage";
+import { VisitorsPage } from "./pages/VisitorsPage";
 
 export default function App() {
   return (
@@ -11,6 +12,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/logs" element={<LogsPage />} />
+        {/* 개발자용. UI 어디에서도 링크하지 않는다 — 집계 숫자뿐이라 그 이상은 잠그지 않았다. */}
+        <Route path="/visitors" element={<VisitorsPage />} />
         <Route path="/venues/national-museum" element={<NationalMuseumPage />} />
         <Route path="/venues/mmca-seoul" element={<MmcaPage venue="seoul" />} />
         <Route path="/venues/mmca-gwacheon" element={<MmcaPage venue="gwacheon" />} />
