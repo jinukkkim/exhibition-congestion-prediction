@@ -11,6 +11,7 @@ from app.prediction.seoul import (
     ANCHOR_WINDOW_MINUTES,
     curve,
     in_business_hours,
+    seam,
     today_anchor,
 )
 
@@ -66,15 +67,15 @@ def _anchored_today(cached: dict, today_entry: dict, now: datetime) -> list[dict
     anchor = today_anchor(profile, readings, now, anchor_minutes=ANCHOR_WINDOW_MINUTES)
     if anchor is None:
         return None
-    last = readings[-1]
     day = date.fromisoformat(today_entry["date"])
     return curve(
         profile,
         day,
         anchor=anchor,
         # 이음매: 실선의 마지막 점에서 출발한다. 프론트도 같은 자리에서 이어
-        # 붙이므로(CongestionCard 의 predPoints) 두 곡선이 한 번만 만난다.
-        last=(last.observed_at.hour * 60 + last.observed_at.minute, last.population_avg),
+        # 붙이므로(CongestionCard 의 predPoints) 두 곡선이 한 번만 만난다 —
+        # 그래서 마지막 판독 하나가 아니라 그 마크의 평균이다(seam 의 주석).
+        last=seam(readings),
     )
 
 

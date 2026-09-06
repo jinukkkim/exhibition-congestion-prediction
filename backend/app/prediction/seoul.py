@@ -84,6 +84,83 @@ def today_anchor(
     return Anchor(sum(observed) / len(observed), sum(expected) / len(expected))
 
 
+# 램프의 출발점을 만드는 마크 격자와 평균 창(분). 프론트 CongestionCard 의
+# resample 이 쓰는 BUCKET_MINUTES 와 그 기본 창(간격의 절반)과 같은 값이어야
+# 한다 — 실선의 마지막 점이 그 마크에서 그 창으로 낸 평균이고, 점선은 같은
+# 값에서 출발해야 이음매의 좌표뿐 아니라 기울기까지 맞는다.
+# MMCA(mmca.py)는 창이 간격보다 넓다 — 4단계 계단을 눕히려는 것이고, 여기
+# 인구수는 애초에 계단이 아니라 분리 버킷 그대로다.
+SEAM_BUCKET_MINUTES = 10
+SEAM_WINDOW_MINUTES = 5
+
+
+def seam(
+    rows,
+    bucket_minutes: int = SEAM_BUCKET_MINUTES,
+    window_minutes: int | None = None,
+) -> tuple[int, float] | None:
+    """(마크 시각, 그 마크의 평균 인구수). 램프가 여기서 출발한다. 판독이 없으면 None.
+
+    마지막 판독 하나가 아니라 마크 평균인 이유는 mmca.seam 과 같은 둘이다.
+
+    하나는 밴드다. 인구수는 연속값처럼 보이지만 서울시 API 가 내는 것은 굵은
+    구간이라 이 관의 영업시간 판독은 사실상 여섯 단계다(950·1250·1750·2250·
+    2750·3250). 2026-08-20~09-06 판독 2,435개로 재면 한 마크의 두 판독이 서로
+    다른 밴드에 앉는 경우가 7.2% 고, 그때 차이는 수준의 11%(중앙값)다. 그런
+    판독에서 출발하면 램프 90분 **전체**가 밴드 한 칸을 물고 간다.
+
+    다른 하나는 프론트와의 이음매다. 차트는 마크 평균을 그리고 점선을 실선의
+    마지막 점에 다시 잇는다(CongestionCard 의 predPoints). 여기서 생판독을 쓰면
+    이음매의 좌표는 프론트가 맞춰 주지만 램프의 기울기는 다른 값에서 계산돼,
+    점선이 이은 자리에서 어긋난 방향으로 출발한다.
+
+    `bucket_minutes` 는 마지막 판독을 어느 마크로 내릴지, `window_minutes` 는 그
+    마크에서 몇 분을 평균낼지다. 둘 다 백테스트가 스윕하기 위해 열려 있고(⑥⑦),
+    프로덕션은 기본값을 쓴다. `bucket_minutes=0` 은 마지막 판독 하나(옛 동작)다.
+
+    스윕 결과(프로덕션 설정 7일/690분/90분/비율, n=1,845. 백테스트 ⑥⑦):
+
+        마크 폭(창 5분 고정)      창 폭(마크 10분 고정)
+        생판독(0)  MAE 168        5분   MAE 169
+        5분        MAE 169        10분  MAE 170
+        10분       MAE 169        15분  MAE 171
+        20분       MAE 169        20분  MAE 171
+        30분       MAE 169        30분  MAE 173
+
+    생판독이 5창 전부에서 1 이긴다(168 대 169, 0.6%). 창을 넓히면 단조 나빠지는
+    것도 MMCA 와 같다 — 미래 판독이 아직 없으니 창을 넓히는 것은 잡음 평균이
+    아니라 직전 판독을 끌어오는 지연으로 작동한다. 그래서 창은 프론트와 같은
+    분리 버킷(간격의 절반)에서 멈춘다.
+
+    그 1 을 내주고 마크 평균을 쓰는 근거는 정확도가 아니라 위의 두 가지다.
+    특히 이음매: 생판독이면 점선이 실선의 끝값과 다른 값에서 기울기를 잡는
+    경우가 7.2% 인데, 마크 평균이면 0% 다 — 프론트가 같은 마크·같은 창으로
+    그 점을 그리기 때문이다.
+    """
+    if not rows:
+        return None
+    last = max(rows, key=lambda r: r.observed_at)
+    last_minutes = last.observed_at.hour * 60 + last.observed_at.minute
+    if bucket_minutes <= 0:
+        return (last_minutes, last.population_avg)
+    window = SEAM_WINDOW_MINUTES if window_minutes is None else window_minutes
+    # JS 의 Math.round 와 같은 규칙(.5 는 위로)이어야 한다 — 파이썬 round 는
+    # 짝수로 붙어서 :25 판독이 프론트는 마크 30, 여기는 마크 20 이 된다. 서울시
+    # 수집은 */5 라 .5 가 실제로 나온다(MMCA 는 */2 라 나오지 않는다).
+    mark = int(last_minutes / bucket_minutes + 0.5) * bucket_minutes
+    # 프론트 resample 과 같은 반개구간 [mark - w, mark + w).
+    values = [
+        r.population_avg
+        for r in rows
+        if -window <= (r.observed_at.hour * 60 + r.observed_at.minute) - mark < window
+    ]
+    # 창이 마크 반폭보다 좁으면 마지막 판독조차 창 밖으로 떨어진다 — 백테스트가
+    # 창을 스윕하는 이상 도달 가능한 경로다. 그때는 생판독으로 돌아간다.
+    if not values:
+        values = [last.population_avg]
+    return (mark, sum(values) / len(values))
+
+
 def predict_value(
     cell: float,
     anchor: Anchor | None,
