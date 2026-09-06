@@ -245,7 +245,11 @@ def seam(
             out[code] = (last_minutes, float(CONGESTION_RANKS[last.congestion_nm]))
             continue
         window = SEAM_WINDOW_MINUTES if window_minutes is None else window_minutes
-        mark = round(last_minutes / bucket_minutes) * bucket_minutes
+        # JS 의 Math.round 와 같은 규칙(.5 는 위로)이어야 한다 — 파이썬 round 는
+        # 짝수로 붙어서 마크 사이 정중앙(*/5 격자의 :25)에 떨어진 판독이 프론트와
+        # 다른 마크로 내려간다. 지금 수집은 */2 라 .5 가 나오지 않지만, 이 격자는
+        # 지금까지 여러 번 바뀌었고 바뀌는 순간 이음매가 조용히 어긋난다.
+        mark = int(last_minutes / bucket_minutes + 0.5) * bucket_minutes
         # 프론트 resample 과 같은 반개구간 [mark - w, mark + w) — 마크 사이
         # 정중앙에 떨어지는 판독이 두 마크에 겹쳐 들어가지 않게 한다.
         ranks = [
