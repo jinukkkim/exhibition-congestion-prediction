@@ -327,3 +327,20 @@ def test_the_same_address_carries_the_same_label_and_the_address_is_not_in_it(wr
     assert len(labels) == 2
     # 주소 자체는 어디에도 실리지 않는다 — /visitors 는 잠겨 있지 않다.
     assert "14.47.51.124" not in json.dumps(visits)
+
+
+def test_the_route_takes_only_the_ranges_the_page_offers(write_log, monkeypatch):
+    import app.cache as cache_module
+
+    monkeypatch.setattr(cache_module, "r", fakeredis.FakeRedis(decode_responses=True))
+    write_log(visit(datetime.now(_SEOUL_TZ)))
+
+    from app.main import app
+
+    client = TestClient(app)
+
+    assert client.get("/analytics/visits?days=30").status_code == 200
+    # 1~365 를 열어두면 값마다 캐시 슬롯이 생겨 TTL 이 무의미해진다. 잠금 없는
+    # 라우트에서 캐시 미스 한 번의 비용이 크므로 화면이 쓰는 값만 받는다.
+    assert client.get("/analytics/visits?days=14").status_code == 422
+    assert client.get("/analytics/visits?days=1").status_code == 422

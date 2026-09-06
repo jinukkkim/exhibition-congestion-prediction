@@ -18,13 +18,14 @@ import hashlib
 import json
 import re
 from collections import Counter, defaultdict
+from enum import IntEnum
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterator, NamedTuple
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from app import cache
 from app.config import settings
@@ -153,7 +154,11 @@ def _entries(since: date) -> Iterator[dict]:
     for path in _log_files(since):
         opener = gzip.open if path.suffix == ".gz" else open
         try:
-            with opener(path, "rt", errors="replace") as handle:
+            # encoding 을 안 주면 로케일 기본값을 따른다. systemd 유닛에는 LANG 이
+            # 없고, 그 자리에서 UTF-8 이 되는 것은 CPython 의 로케일 강제(PEP 538)
+            # 덕이지 보장이 아니다. errors="replace" 때문에 어긋나도 예외가 아니라
+            # 한글 referrer 와 경로가 조용히 깨진 채 집계된다.
+            with opener(path, "rt", encoding="utf-8", errors="replace") as handle:
                 for raw in handle:
                     try:
                         yield json.loads(raw)
@@ -205,6 +210,15 @@ def _collect(since: date) -> tuple[list[_Page], dict[str, list[float]]]:
 
 
 def _app_started(calls: dict[str, list[float]], page: _Page) -> bool:
+    """Was there a call from that address just after the page was served?
+
+    The call is not consumed, so one address's traffic confirms every page
+    request in the same window. Behind a NAT that shares an address between a
+    person with a tab open and a scanner, the scanner's request rides on the
+    person's poll and counts as human. It is the same ceiling as counting
+    unique visitors by address, and it moves the same way: a beacon the app
+    sends itself is what separates them, and that needs a table.
+    """
     series = calls.get(page.address)
     if not series:
         return False
@@ -283,13 +297,33 @@ def _aggregate(days: int, now: datetime) -> dict:
     }
 
 
+class Range(IntEnum):
+    """화면의 기간 탭(VisitorsPage 의 RANGES)이 쓰는 값 전부.
+
+    임의의 1~365 를 받으면 값마다 캐시 슬롯이 따로 생겨 10분 TTL 이 무의미해진다.
+    이 라우트는 잠겨 있지 않고 캐시 미스 한 번이 로그 창 전체를 훑는 일이라
+    (보관 상한에서 원본 8.8GB, 약 35초) days 를 1부터 세는 것만으로 같은 박스의
+    혼잡도 API 까지 함께 느려진다. 화면이 안 쓰는 값을 받을 이유도 없다.
+
+    Literal[7, 30, 90] 이 더 짧지만 pydantic 2.13 이 쿼리스트링 "30" 을 int 로
+    바꾸지 않아 정상 요청까지 422 가 된다. IntEnum 은 그 변환을 한다.
+    """
+
+    week = 7
+    month = 30
+    quarter = 90
+
+
 @router.get("/visits")
-def visits(days: int = Query(30, ge=1, le=365)) -> dict:
-    cached = cache.get_analytics(days)
+def visits(days: Range = Range.month) -> dict:
+    # int() 세 번: 캐시 키가 f-string 이라 IntEnum 의 __str__ 에 기대면 파이썬
+    # 버전에 따라 "analytics:visits:Range.month" 가 되고, 그 어긋남은 프로덕션
+    # 에서만 조용히 드러난다.
+    cached = cache.get_analytics(int(days))
     if cached is not None:
         return cached
     # 한 번에 로그 창 전체를 훑는다. 개발자 한 사람이 가끔 여는 페이지라 그
     # 비용은 캐시로 덮으면 충분하다 — 열어둔 탭이 폴링하지 않는다.
-    result = _aggregate(days, datetime.now(_SEOUL_TZ))
-    cache.set_analytics(days, result)
+    result = _aggregate(int(days), datetime.now(_SEOUL_TZ))
+    cache.set_analytics(int(days), result)
     return result
