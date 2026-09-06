@@ -30,9 +30,12 @@ from app.prediction.seoul import (  # noqa: E402
     ANCHOR_WINDOW_MINUTES,
     PROFILE_WINDOW_DAYS,
     RAMP_MINUTES,
+    SEAM_BUCKET_MINUTES,
+    SEAM_WINDOW_MINUTES,
     build_profile,
     in_business_hours,
     predict_value,
+    seam,
     today_anchor,
 )
 
@@ -67,6 +70,8 @@ def evaluate(
     train_days: int = PROFILE_WINDOW_DAYS,
     anchor: int = ANCHOR_WINDOW_MINUTES,
     ramp: int = RAMP_MINUTES,
+    seam_bucket: int = SEAM_BUCKET_MINUTES,
+    seam_window: int = SEAM_WINDOW_MINUTES,
     use_anchor: bool = True,
     ratio: bool = True,
     method: str = "profile",
@@ -106,6 +111,9 @@ def evaluate(
             found = today_anchor(profile, readings[: i + 1], now, anchor_minutes=anchor)
             if found is None:
                 continue
+            # 램프 출발점도 프로덕션 함수로 만든다 — readings[i] 를 그대로 쓰면
+            # seam() 을 바꿔도 근거가 따라오지 않는다.
+            start = seam(readings[: i + 1], bucket_minutes=seam_bucket, window_minutes=seam_window)
             for horizon in HORIZONS:
                 target = now + timedelta(minutes=horizon)
                 if target not in actual or not in_business_hours(target):
@@ -119,7 +127,7 @@ def evaluate(
                     value = predict_value(
                         cell,
                         found if use_anchor else None,
-                        readings[i].population_avg,
+                        start[1],
                         horizon,
                         ramp_minutes=ramp,
                         ratio=ratio,
@@ -208,6 +216,15 @@ def main() -> None:
         ("90분", {"ramp": 90}),
         ("180분", {"ramp": 180}),
         ("360분", {"ramp": 360}),
+    ])
+    # 이음매 두 손잡이. 마크 폭은 마지막 판독을 어느 마크로 내릴지, 창 폭은 그
+    # 마크에서 몇 분을 평균낼지다 — 창이 마크 반폭보다 넓어야 이웃 마크가 판독을
+    # 나눠 갖는다. "생판독"이 seam() 이전의 동작이다.
+    sweep(data, starts, "⑥ 이음매 마크 폭", [
+        ("생판독", {"seam_bucket": 0}),
+    ] + [(f"{m}분", {"seam_bucket": m}) for m in (5, 10, 20, 30)])
+    sweep(data, starts, "⑦ 이음매 창 폭", [
+        (f"{m}분", {"seam_window": m}) for m in (5, 10, 15, 20, 30)
     ])
 
 
