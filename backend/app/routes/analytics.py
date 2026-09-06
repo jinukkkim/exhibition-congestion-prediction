@@ -12,13 +12,15 @@ current window — weeks, not months, and shorter the busier the site gets. A
 nightly rollup into a table is the upgrade if a year-long trend ever matters.
 """
 
+import bisect
 import gzip
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, NamedTuple
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -43,11 +45,28 @@ _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 _PAGE_PATHS = ("/", "/logs", "/visitors")
 _PAGE_PREFIXES = ("/venues/",)
 
-# Deliberately broad. A missed bot inflates the visitor count, which is the
-# number this page exists to answer; a browser wrongly called a bot only moves
-# one view into the column next to it, which is still on screen. UptimeRobot
-# alone accounts for most of what this catches — it polls /health every five
-# minutes, but follows redirects and warms the root as well.
+# Requests only the running app makes. Every page mounts a component that
+# fetches one of these immediately, so a page request followed by one of these
+# from the same address is a browser that actually started the app — and one
+# without is something that took the HTML and left.
+#
+# It is the asset requests (/assets/index-*.js) that look like the obvious
+# signal and are the worse one, measured on the first week of production log:
+#
+#             confirmed   what it got wrong
+#   assets      8 of 13   caching and in-app navigation leave no asset request,
+#                         and headless crawlers fetch assets anyway (3 of them)
+#   API        13 of 13   exactly the real visits, nothing else
+#
+# An API response is never cached and never fetched by something that only
+# parses HTML, which is what makes it the sharper line.
+_CONFIRM_PREFIXES = ("/congestion/", "/mmca/", "/analytics/")
+
+# How long after the page the call may arrive. Measured: 5s and 60s classify
+# the same 4,968-line log identically — the call lands within a second of the
+# page or not at all, so this only needs to be past the noise.
+_CONFIRM_WINDOW_SECONDS = 10
+
 _BOT_UA = re.compile(
     r"bot|crawl|spider|slurp|monitor|uptimerobot|curl|wget|python-|headless|scan|"
     r"preview|probe|lighthouse|scrapy|netcraft|survey|"
@@ -62,6 +81,21 @@ _BOT_UA = re.compile(
 _MOBILE_UA = re.compile(r"Mobile|Android|iPhone|iPad|iPod", re.I)
 
 _NO_REFERRER = "직접 방문"
+
+# How many recent page requests the visit list carries. At the traffic this
+# site has (26 visits in a week) the list is the answer to "has anyone but me
+# been here" — a number can't tell you that, a list can. The cap is what keeps
+# the response bounded once that stops being true.
+_VISIT_LIMIT = 200
+
+
+class _Page(NamedTuple):
+    at: float
+    address: str
+    path: str
+    agent: str
+    referer: str
+    host: str
 
 
 def _is_page_view(uri: str) -> bool:
@@ -83,6 +117,18 @@ def _referrer_source(referer: str, host: str) -> str | None:
     if netloc.split(":")[0] == host.split(":")[0]:
         return None
     return netloc
+
+
+def _visitor_label(address: str) -> str:
+    """A short stable name for an address, so two visits can be told apart.
+
+    The address itself never leaves this module — /visitors has no lock on it
+    (it is only unlinked), and a page anyone can open should not be a list of
+    who was here. Six hex digits over the whole IPv4 space leaves a couple of
+    hundred addresses per label, which is enough to recognise "the same one
+    came back" and not enough to read off an address.
+    """
+    return hashlib.sha256(address.encode()).hexdigest()[:6]
 
 
 def _log_files(since: date) -> Iterator[Path]:
@@ -122,43 +168,97 @@ def _entries(since: date) -> Iterator[dict]:
             continue
 
 
+def _collect(since: date) -> tuple[list[_Page], dict[str, list[float]]]:
+    """One pass over the log: the page requests, and the calls that confirm them."""
+    pages: list[_Page] = []
+    calls: defaultdict[str, list[float]] = defaultdict(list)
+
+    for entry in _entries(since):
+        request = entry.get("request")
+        at = entry.get("ts")
+        if not isinstance(request, dict) or not isinstance(at, (int, float)):
+            continue
+        if entry.get("status", 200) >= 400:
+            continue
+        address = request.get("client_ip") or request.get("remote_ip") or ""
+        uri = request.get("uri", "")
+        if _is_page_view(uri):
+            headers = request.get("headers") or {}
+            pages.append(
+                _Page(
+                    at=at,
+                    address=address,
+                    path=urlsplit(uri).path.rstrip("/") or "/",
+                    agent=(headers.get("User-Agent") or [""])[0],
+                    referer=(headers.get("Referer") or [""])[0],
+                    host=request.get("host", ""),
+                )
+            )
+        elif urlsplit(uri).path.startswith(_CONFIRM_PREFIXES):
+            calls[address].append(at)
+
+    # Caddy writes a line when the request finishes, so a slow one lands after a
+    # faster one that started later. Close to sorted, not sorted.
+    for series in calls.values():
+        series.sort()
+    return pages, calls
+
+
+def _app_started(calls: dict[str, list[float]], page: _Page) -> bool:
+    series = calls.get(page.address)
+    if not series:
+        return False
+    index = bisect.bisect_left(series, page.at)
+    return index < len(series) and series[index] <= page.at + _CONFIRM_WINDOW_SECONDS
+
+
 def _aggregate(days: int, now: datetime) -> dict:
     since = (now - timedelta(days=days - 1)).date()
+    pages, calls = _collect(since)
+
     views: defaultdict[date, int] = defaultdict(int)
     bots: defaultdict[date, int] = defaultdict(int)
+    unconfirmed: defaultdict[date, int] = defaultdict(int)
     # Addresses are counted and dropped — the set never leaves this function
     # and no address reaches the response.
     seen: defaultdict[date, set[str]] = defaultdict(set)
     referrers: Counter[str] = Counter()
     devices: Counter[str] = Counter()
+    visits: list[dict] = []
 
-    for entry in _entries(since):
-        request = entry.get("request")
-        if not isinstance(request, dict) or entry.get("status", 200) >= 400:
-            continue
-        if not _is_page_view(request.get("uri", "")):
-            continue
-        try:
-            day = datetime.fromtimestamp(entry["ts"], _SEOUL_TZ).date()
-        except (KeyError, TypeError, ValueError, OSError):
-            continue
+    for page in sorted(pages):
+        day = datetime.fromtimestamp(page.at, _SEOUL_TZ).date()
         if day < since:
             continue
 
-        headers = request.get("headers") or {}
-        agent = (headers.get("User-Agent") or [""])[0]
-        if _BOT_UA.search(agent):
+        source = _referrer_source(page.referer, page.host)
+        if _BOT_UA.search(page.agent):
+            kind = "bot"
             bots[day] += 1
-            continue
+        elif not _app_started(calls, page):
+            # HTML 만 받아 가고 앱은 뜨지 않았다. 대개 스캐너지만 봇 이름을 달지
+            # 않으므로 봇과 한 칸에 넣지 않는다 — 백엔드가 죽어 있던 동안의 진짜
+            # 방문도 여기로 떨어지고, 그때는 그 사실이 보이는 편이 낫다.
+            kind = "unconfirmed"
+            unconfirmed[day] += 1
+        else:
+            kind = "human"
+            views[day] += 1
+            seen[day].add(page.address)
+            devices["mobile" if _MOBILE_UA.search(page.agent) else "desktop"] += 1
+            if source:
+                referrers[source] += 1
 
-        views[day] += 1
-        seen[day].add(request.get("client_ip") or request.get("remote_ip") or "")
-        devices["mobile" if _MOBILE_UA.search(agent) else "desktop"] += 1
-        source = _referrer_source(
-            (headers.get("Referer") or [""])[0], request.get("host", "")
+        visits.append(
+            {
+                "at": datetime.fromtimestamp(page.at, _SEOUL_TZ).replace(microsecond=0).isoformat(),
+                "path": page.path,
+                "kind": kind,
+                "visitor": _visitor_label(page.address),
+                "device": "mobile" if _MOBILE_UA.search(page.agent) else "desktop",
+                "referrer": source,
+            }
         )
-        if source:
-            referrers[source] += 1
 
     window = [since + timedelta(days=n) for n in range(days)]
     return {
@@ -169,6 +269,7 @@ def _aggregate(days: int, now: datetime) -> dict:
                 "date": day.isoformat(),
                 "views": views[day],
                 "visitors": len(seen[day]),
+                "unconfirmed": unconfirmed[day],
                 "bots": bots[day],
             }
             for day in window
@@ -177,6 +278,8 @@ def _aggregate(days: int, now: datetime) -> dict:
             {"source": source, "views": count} for source, count in referrers.most_common(20)
         ],
         "devices": {"mobile": devices["mobile"], "desktop": devices["desktop"]},
+        # 최근 것부터. 잘리는 쪽은 오래된 끝이다.
+        "visits": visits[-_VISIT_LIMIT:][::-1],
     }
 
 
