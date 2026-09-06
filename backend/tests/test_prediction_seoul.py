@@ -6,12 +6,15 @@ from types import SimpleNamespace
 import pytest
 
 from app.prediction.seoul import (
+    SEAM_BUCKET_MINUTES,
+    SEAM_WINDOW_MINUTES,
     Anchor,
     build_profile,
     close_minutes,
     curve,
     in_business_hours,
     predict_value,
+    seam,
     today_anchor,
 )
 
@@ -127,3 +130,74 @@ def test_curve_keeps_the_unanchored_value_in_baseline():
 
     assert point["baseline"] == pytest.approx(2000.0)
     assert point["model"] == pytest.approx(1000.0)
+
+
+def test_seam_averages_the_readings_in_the_last_mark():
+    """램프 출발점은 마지막 판독 하나가 아니라 그 마크의 평균이다.
+
+    프론트가 같은 마크 평균을 실선으로 그리고 점선을 그 끝에 잇는다
+    (CongestionCard 의 resample 과 predPoints). 여기서 생판독을 쓰면 이음매 좌표는
+    프론트가 맞춰 주지만 램프 기울기가 다른 값에서 계산돼 방향이 어긋난다.
+    """
+    rows = [
+        reading(datetime(2026, 8, 24, 14, 55), 1750.0),  # 마크 15:00 의 창 안
+        reading(datetime(2026, 8, 24, 15, 0), 2250.0),
+    ]
+
+    assert seam(rows) == (15 * 60, pytest.approx(2000.0))
+
+
+def test_seam_takes_only_the_last_window_not_the_whole_day():
+    rows = [
+        reading(datetime(2026, 8, 24, 14, 0), 950.0),  # 창 밖 (마크에서 60분 전)
+        reading(datetime(2026, 8, 24, 14, 55), 1750.0),
+        reading(datetime(2026, 8, 24, 15, 0), 2250.0),
+    ]
+
+    assert seam(rows) == (15 * 60, pytest.approx(2000.0))
+
+
+def test_seam_rounds_the_mark_up_at_the_half_like_the_frontend():
+    """서울시 수집은 */5 라 마지막 판독이 마크 사이 정중앙(:25)에 떨어진다.
+
+    프론트의 Math.round 는 .5 를 위로 보내 마크가 15:30 이 된다. 파이썬 round 는
+    짝수로 붙어 15:20 을 내놓고, 그러면 반개구간 [15:15, 15:25) 이 그 판독조차
+    놓쳐 두 곡선이 다른 값에서 만난다.
+    """
+    rows = [reading(datetime(2026, 8, 24, 15, 25), 2250.0)]
+
+    assert seam(rows) == (15 * 60 + 30, pytest.approx(2250.0))
+
+
+def test_seam_constants_pair_with_the_frontend():
+    """frontend CongestionCard 의 resample 이 쓰는 BUCKET_MINUTES 와 그 기본
+    창(간격의 절반)과 짝이다.
+
+    두 언어에 흩어져 있어 임포트로 묶을 수 없다. 한쪽만 바꾸면 점선이 실선과
+    다른 값에서 출발하므로, 최소한 리뷰에서 "왜 한쪽만 움직이나"가 보이도록
+    값 자체를 고정한다.
+    """
+    assert SEAM_BUCKET_MINUTES == 10
+    assert SEAM_WINDOW_MINUTES == SEAM_BUCKET_MINUTES / 2
+
+
+def test_seam_with_a_zero_bucket_is_the_single_last_reading():
+    """백테스트가 옛 동작(생판독)과 비교할 수 있어야 한다."""
+    rows = [
+        reading(datetime(2026, 8, 24, 14, 55), 1750.0),
+        reading(datetime(2026, 8, 24, 15, 0), 2250.0),
+    ]
+
+    assert seam(rows, bucket_minutes=0) == (15 * 60, 2250.0)
+
+
+def test_seam_falls_back_to_the_last_reading_when_the_window_catches_nothing():
+    """창이 마크 반폭보다 좁으면 마지막 판독조차 창 밖이다 — 백테스트가 창을
+    스윕(⑦)하는 이상 도달 가능한 경로라 나눗셈이 터지면 안 된다."""
+    rows = [reading(datetime(2026, 8, 24, 15, 5), 2250.0)]  # 마크는 15:10
+
+    assert seam(rows, window_minutes=3) == (15 * 60 + 10, 2250.0)
+
+
+def test_seam_without_readings_is_none():
+    assert seam([]) is None
