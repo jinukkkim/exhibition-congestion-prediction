@@ -440,6 +440,16 @@ def test_seam_with_a_zero_bucket_is_the_single_last_reading():
     assert seam(rows, bucket_minutes=0) == {"A": (15 * 60 + 2, 3.0)}
 
 
+def test_seam_falls_back_to_the_last_reading_when_the_window_catches_nothing():
+    """창이 마크 반폭보다 좁으면 마지막 판독조차 창 밖이다 — 백테스트가 창을
+    스윕(⑥)하는 이상 도달 가능한 경로라 나눗셈이 터지면 안 된다."""
+    rows = [
+        Row("A", "2026-08-01T15:05:00", "붐빔"),  # 마크는 15:00, 5분 떨어져 있다
+    ]
+
+    assert seam(rows, window_minutes=3) == {"A": (15 * 60, 3.0)}
+
+
 def test_seam_ignores_rooms_with_no_usable_reading():
     rows = [
         Row("A", "2026-08-01T15:00:00", None),
