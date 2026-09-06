@@ -415,6 +415,18 @@ def test_seam_window_reaches_past_its_own_mark():
     assert seam(rows) == {"A": (15 * 60 + 20, 1.5)}
 
 
+def test_seam_rounds_the_mark_up_at_the_half_like_the_frontend():
+    """마지막 판독이 마크 사이 정중앙에 떨어지면 프론트의 Math.round 처럼 위로.
+
+    지금 수집 격자(*/2)에서는 :25 가 나오지 않아 도달하지 않는 경로지만, 격자는
+    지금까지 여러 번 바뀌었다 — 짝수로 붙는 파이썬 round 는 그때 프론트와 다른
+    마크를 골라 이음매를 조용히 어긋나게 한다.
+    """
+    rows = [Row("A", "2026-08-01T15:25:00", "붐빔")]
+
+    assert seam(rows) == {"A": (15 * 60 + 30, 3.0)}
+
+
 def test_seam_constants_pair_with_the_frontend():
     """frontend/src/lib/resample.ts 의 BUCKET_MINUTES / MMCA_WINDOW_MINUTES 와 짝이다.
 
@@ -444,10 +456,10 @@ def test_seam_falls_back_to_the_last_reading_when_the_window_catches_nothing():
     """창이 마크 반폭보다 좁으면 마지막 판독조차 창 밖이다 — 백테스트가 창을
     스윕(⑥)하는 이상 도달 가능한 경로라 나눗셈이 터지면 안 된다."""
     rows = [
-        Row("A", "2026-08-01T15:05:00", "붐빔"),  # 마크는 15:00, 5분 떨어져 있다
+        Row("A", "2026-08-01T15:05:00", "붐빔"),  # 마크는 15:10, 5분 떨어져 있다
     ]
 
-    assert seam(rows, window_minutes=3) == {"A": (15 * 60, 3.0)}
+    assert seam(rows, window_minutes=3) == {"A": (15 * 60 + 10, 3.0)}
 
 
 def test_seam_ignores_rooms_with_no_usable_reading():
