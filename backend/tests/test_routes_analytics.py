@@ -114,6 +114,45 @@ def test_api_and_asset_requests_are_not_visits(write_log):
     assert _aggregate(1, NOW)["daily"][-1]["views"] == 1
 
 
+def test_addresses_the_spa_does_not_serve_are_not_visits(write_log):
+    # 전부 프로덕션 로그에서 그대로 가져온 것이다. Caddy 폴백이 index.html 로
+    # 200 을 답하므로, 셈에서 떼려면 주소가 우리 라우트인지 봐야 한다.
+    write_log(
+        [
+            line(NOW, uri="/venues/mmca-seoul"),
+            line(NOW, uri="/.git/config"),
+            line(NOW, uri="/.aws/credentials"),
+            line(NOW, uri="/_profiler/open"),
+            line(NOW, uri="/wp-json/gravitysmtp/v1/tests/mock-data"),
+            line(NOW, uri="/_rNd9xZ7kL3"),
+        ]
+    )
+
+    assert _aggregate(1, NOW)["daily"][-1]["views"] == 1
+
+
+def test_a_trailing_slash_is_the_same_page(write_log):
+    write_log([line(NOW, uri="/logs"), line(NOW, uri="/logs/")])
+
+    assert _aggregate(1, NOW)["daily"][-1]["views"] == 2
+
+
+def test_a_crawler_that_advertises_its_url_is_a_bot(write_log):
+    # 이름을 몰라도 잡히는 쪽. 브라우저 UA 에는 주소가 들어가지 않는다.
+    write_log(
+        [
+            line(NOW),
+            line(NOW, ua="Scrapy/2.17.0 (+https://scrapy.org)"),
+            line(NOW, ua="Mozilla/5.0 (compatible; ForestEngine/1.0; +https://forest.example)"),
+        ]
+    )
+
+    today = _aggregate(1, NOW)["daily"][-1]
+
+    assert today["views"] == 1
+    assert today["bots"] == 2
+
+
 def test_visitors_counts_each_address_once_a_day(write_log):
     write_log(
         [

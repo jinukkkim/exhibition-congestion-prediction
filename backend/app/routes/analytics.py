@@ -31,10 +31,17 @@ router = APIRouter(prefix="/analytics")
 
 _SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
-# Everything Caddy routes to the backend. The SPA is the catch-all underneath,
-# so "not one of these, and not a file" is what a page request looks like from
-# the log's side. Keep in step with deploy/Caddyfile's handle blocks.
-_BACKEND_PREFIXES = ("/congestion", "/mmca", "/health", "/analytics")
+# The SPA's own routes, from frontend/src/App.tsx. A whitelist rather than
+# "not an API path and not a file", because Caddy's catch-all answers 200 with
+# index.html for *any* address — so that rule counted /.git/config,
+# /_profiler/open, /.aws/credentials and /wp-json/... as visits. In the first
+# week of production log that was 16 of 44, all of it vulnerability scanning.
+#
+# A route added to App.tsx and not here goes uncounted. That is the side to be
+# wrong on: a missing page is visible (its line reads zero), a page invented by
+# a scanner is not.
+_PAGE_PATHS = ("/", "/logs", "/visitors")
+_PAGE_PREFIXES = ("/venues/",)
 
 # Deliberately broad. A missed bot inflates the visitor count, which is the
 # number this page exists to answer; a browser wrongly called a bot only moves
@@ -43,7 +50,12 @@ _BACKEND_PREFIXES = ("/congestion", "/mmca", "/health", "/analytics")
 # minutes, but follows redirects and warms the root as well.
 _BOT_UA = re.compile(
     r"bot|crawl|spider|slurp|monitor|uptimerobot|curl|wget|python-|headless|scan|"
-    r"preview|probe|lighthouse",
+    r"preview|probe|lighthouse|scrapy|netcraft|survey|"
+    # A crawler puts its own address in its user agent — "(+https://scrapy.org)",
+    # "(compatible; InternetMeasurement/1.0; +https://internet-measurement.com)".
+    # A browser never does, so this one clause catches the ones nobody has
+    # thought to name yet.
+    r"\+https?://",
     re.I,
 )
 
@@ -53,13 +65,10 @@ _NO_REFERRER = "직접 방문"
 
 
 def _is_page_view(uri: str) -> bool:
-    path = urlsplit(uri).path
-    if path.startswith(_BACKEND_PREFIXES):
-        return False
-    # /assets/index-a1b2c3.js, /favicon.ico: things a page pulls in after it
-    # loads, not a page someone opened. A dot in the last segment is the only
-    # thing separating them, since every real route here is dotless.
-    return "." not in path.rsplit("/", 1)[-1]
+    # 끝 슬래시는 라우터가 같은 화면으로 친다 — /logs/ 와 /logs 가 다른 줄이 되면
+    # 안 된다. 이 정규화로 API 경로와 /assets/*, /favicon.ico 도 함께 떨어진다.
+    path = urlsplit(uri).path.rstrip("/") or "/"
+    return path in _PAGE_PATHS or path.startswith(_PAGE_PREFIXES)
 
 
 def _referrer_source(referer: str, host: str) -> str | None:
