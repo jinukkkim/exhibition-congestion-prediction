@@ -12,6 +12,18 @@ on:
     #   - "frontend/src/**/*.ts"
     #   - "frontend/src/**/*.tsx"
 
+# 이 파일을 고치는 PR 에는 리뷰가 달리지 않는다. claude-code-action 은 워크플로
+# 파일이 기본 브랜치(main)의 것과 한 글자라도 다르면 스스로 스킵한다 — PR 이
+# 워크플로를 고쳐 시크릿을 빼돌리는 것을 막는 장치다. 스킵하면서 exit 0 이라
+# job 은 success, 코멘트는 아예 생기지 않는다. 로그에서만 보인다:
+#
+#   ##[warning]Skipping action due to workflow validation: Workflow validation
+#   failed. The workflow file must exist and have identical content to the
+#   version on the repository's default branch.
+#
+# 즉 여기 손댄 변경은 main 에 도달한 뒤 그 다음 PR 에서야 효과가 확인된다.
+# PR #92 에서 리뷰가 안 달린 것을 이것 때문인 줄 모르고 한 번 헤맸다.
+
 jobs:
   claude-review:
     # Optional: Filter by PR author
