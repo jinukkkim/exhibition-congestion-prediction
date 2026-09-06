@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES } from "../src/lib/resample";
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
 import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../src/api/mmca";
 
@@ -194,60 +195,35 @@ describe("MmcaRoomChartCard", () => {
       />
     );
 
-    // 2 valid points (null dropped) → exactly one Bezier "C" segment; a
-    // spurious 3rd point would produce two.
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d.match(/C/g)).toHaveLength(1);
+    // null 은 raw 에 들어가지 않으므로 평균에 섞이지 않는다. 10:15 마크의 값이
+    // 이웃 두 판독(여유 0, 보통 1)의 평균 0.5 여야 하고, null 을 0 으로 세면
+    // 0.33 이 되어 등급명이 여유로 떨어진다.
+    //
+    // 세그먼트 수로 재던 단정을 버렸다 — 그 수는 이제 null 이 아니라 창 폭이
+    // 정한다(±20분이면 10:00~10:30 사이 마크가 전부 값을 갖는다).
+    const svg = screen.getByTestId("mmca-room-chart");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    fireEvent.mouseMove(svg.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX: (15 / (CLOSE - OPEN)) * 480,
+      clientY: 0,
+    });
+
+    const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
+    expect(tooltip.getByText("10:20")).toBeInTheDocument();
+    expect(tooltip.getByText(/^보통$/)).toBeInTheDocument();
   });
 
-  it("extends the line back to a synthetic 여유 point at open when the :10 reading exists", () => {
+  it("averages the readings inside one mark into a fractional tier", () => {
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
         daily={[
-          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
-        ]}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday
-      />
-    );
-
-    // 2 real readings + 1 synthetic opening point → 2 Bezier segments.
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d.match(/C/g)).toHaveLength(2);
-  });
-
-  it("skips the synthetic opening point when the :10 reading is missing", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        daily={[
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:30:00", { "MMCA-SPACE-2001": "보통" }),
-        ]}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday
-      />
-    );
-
-    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
-    expect(d.match(/C/g)).toHaveLength(1);
-  });
-
-  it("never surfaces a hover tooltip for the synthetic opening point", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        daily={[
-          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:20:00", { "MMCA-SPACE-2001": "보통" }),
+          // 10:00 마크의 창(±20분)에 드는 두 판독이 여유(0)와 붐빔(3) — 평균 1.5.
+          // 10:40 은 창 밖이라 섞이지 않는다.
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:02:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-15T10:40:00", { "MMCA-SPACE-2001": "보통" }),
         ]}
         open={OPEN}
         close={CLOSE}
@@ -260,20 +236,42 @@ describe("MmcaRoomChartCard", () => {
     const svg = screen.getByTestId("mmca-room-chart");
     svg.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 480, height: 200, right: 480, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
-    const hoverTarget = svg.querySelector('rect[fill="transparent"]') as SVGRectElement;
+    fireEvent.mouseMove(svg.querySelector('rect[fill="transparent"]') as SVGRectElement, {
+      clientX: 0,
+      clientY: 0,
+    });
 
-    // Mouse all the way at the left edge, right over the synthetic 10:00 point.
-    fireEvent.mouseMove(hoverTarget, { clientX: 0, clientY: 0 });
-
-    // The decorative 10:00 여유 point isn't in the hover-eligible set, and no
-    // other series reaches 10:00 — so there is nothing to report there.
-    expect(screen.queryByTestId("mmca-room-chart-tooltip")).not.toBeInTheDocument();
-
-    // The real 10:10 reading one grid step over is still hoverable.
-    fireEvent.mouseMove(hoverTarget, { clientX: 10, clientY: 0 });
+    // 어느 판독도 "약간 붐빔"이 아니었다 — 평균 1.5 를 반올림한 이름이라야만
+    // 나온다. 생판독을 그대로 그리던 시절에는 여유나 붐빔 중 하나가 나왔다.
     const tooltip = within(screen.getByTestId("mmca-room-chart-tooltip"));
-    expect(tooltip.getByText("10:10")).toBeInTheDocument();
-    expect(tooltip.getByText(/^여유$/)).toBeInTheDocument();
+    expect(tooltip.getByText("10:00")).toBeInTheDocument();
+    expect(tooltip.getByText(/^약간 붐빔$/)).toBeInTheDocument();
+  });
+
+  it("draws one point per mark, not one per reading", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:02:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T10:04:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:10:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:12:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:14:00", { "MMCA-SPACE-2001": "여유" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 판독 6개가 마크 2개(10:00, 10:10)로 모여 베지어 구간은 하나다. 생판독을
+    // 그리면 5개였고, 그 계단 위를 지나는 곡선이 곧 요동이었다.
+    const d = screen.getByTestId("mmca-room-chart-line").getAttribute("d") ?? "";
+    expect(d.match(/C/g)).toHaveLength(1);
   });
 
   it("shows the live glow marker only when open", () => {
@@ -413,15 +411,18 @@ describe("MmcaRoomChartCard", () => {
       <MmcaRoomChartCard
         room={makeRoom()}
         daily={[
+          // 두 판독을 같은 등급으로 둔다 — 이 테스트의 축은 오늘 값이 아니라
+          // "지난주가 없을 때 괄호가 비는가"라서, 평균이 어느 등급으로
+          // 반올림되는지에 단정이 걸리지 않아야 한다.
           dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
-          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-15T10:15:00", { "MMCA-SPACE-2001": "여유" }),
         ]}
-        // Gap at the exact hovered minute (10:00) — nearest last-week
-        // readings are one grid step (10 minutes) away in each direction.
-        // A same-time match must not fall back to either of these.
+        // 지난주 계열에 10:00 을 덮는 판독이 없다. 창(±20분)보다 넓게 비워야
+        // 그 마크가 값을 못 갖는다 — 창이 좁던 시절에는 한 그리드 스텝(10분)만
+        // 띄워도 충분했지만, 이제 그만큼은 창이 메운다.
         lastWeekDaily={[
-          dailyPoint("2026-07-08T09:50:00", { "MMCA-SPACE-2001": "붐빔" }),
-          dailyPoint("2026-07-08T10:10:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
+          dailyPoint("2026-07-08T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+          dailyPoint("2026-07-08T11:20:00", { "MMCA-SPACE-2001": "약간 붐빔" }),
         ]}
         open={OPEN}
         close={CLOSE}
@@ -1186,5 +1187,67 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     const markers = Array.from(container.querySelectorAll('circle[r="4"]'));
     expect(markers).toHaveLength(2);
     expect(new Set(markers.map((c) => c.getAttribute("cy"))).size).toBe(2);
+  });
+});
+
+describe("mark grid", () => {
+  it("keeps the window wider than the mark spacing", () => {
+    // backend/app/prediction/mmca.py 의 SEAM_BUCKET_MINUTES / SEAM_WINDOW_MINUTES
+    // 와 짝이다. 예측 점선이 실선의 마지막 점에서 출발하므로 두 쪽이 같은 창으로
+    // 평균내야 이음매의 기울기가 맞는다. 두 언어에 흩어져 임포트로 묶을 수 없어
+    // 값 자체를 고정한다 — freshness.ts 와 health.py 를 다루는 방식과 같다.
+    //
+    // 창이 간격의 절반 이하이면 창끼리 맞물려 겹침이 0 이라 분리 버킷이 되고,
+    // 계단의 벽이 그대로 남는다. 넓어야 이웃이 판독을 나눠 갖는다.
+    expect(BUCKET_MINUTES).toBe(10);
+    expect(MMCA_WINDOW_MINUTES).toBe(20);
+    expect(MMCA_WINDOW_MINUTES).toBeGreaterThan(BUCKET_MINUTES / 2);
+  });
+});
+
+describe("tier gridlines", () => {
+  it("draws one line per congestion level, at the level's own height", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 곡선이 마크 평균이라 값이 소수다 — 등급 위에 앉지 않는 높이가 무슨 뜻인지
+    // 읽으려면 눈금이 있어야 한다. 네 줄이 등간격이라는 것이 "4단계"를 말한다.
+    const lines = screen.getAllByTestId("mmca-room-chart-tier-line");
+    expect(lines).toHaveLength(4);
+
+    const ys = lines.map((l) => Number(l.getAttribute("y1")));
+    // yOf 는 tier 가 클수록 위(작은 y)로 간다.
+    expect(ys[0]).toBeGreaterThan(ys[3]);
+    const gaps = ys.slice(0, -1).map((y, i) => y - ys[i + 1]);
+    for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0], 6);
+  });
+
+  it("does not draw them on a card with nothing to plot", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[]}
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+        isOpenToday
+      />
+    );
+
+    // 빈 차트에 눈금만 남으면 값이 있는 것처럼 보인다.
+    expect(screen.queryAllByTestId("mmca-room-chart-tier-line")).toHaveLength(0);
   });
 });

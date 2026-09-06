@@ -173,6 +173,94 @@ def sample_days(rows) -> dict[str, int]:
     return {code: len(dates) for code, dates in days.items()}
 
 
+# 램프의 출발점을 만드는 마크 격자와 평균 창(분). 프론트 lib/resample.ts 의
+# BUCKET_MINUTES / MMCA_WINDOW_MINUTES 와 같은 값이어야 한다 — 실선의 마지막
+# 점이 그 마크에서 그 창으로 낸 평균이고, 점선은 같은 값에서 출발해야 이음매의
+# 좌표뿐 아니라 기울기까지 맞는다. 한쪽만 바꾸면 점선이 이어 붙은 자리에서
+# 엉뚱한 방향으로 떠난다.
+SEAM_BUCKET_MINUTES = 10
+SEAM_WINDOW_MINUTES = 20
+
+
+def seam(
+    rows,
+    bucket_minutes: int = SEAM_BUCKET_MINUTES,
+    window_minutes: int | None = None,
+) -> dict[str, tuple[int, float]]:
+    """방별 (마크 시각, 그 마크의 평균 등급). 램프가 여기서 출발한다.
+
+    마지막 판독 하나가 아니라 마크 평균인 이유는 둘이다.
+
+    하나는 잡음이다. 판독 하나는 관측 하나가 아니라 순간 하나다 — 2026-09-03
+    실측에서 전이의 34% 가 2분 이하만 유지되고 37% 가 3분 안에 되돌아갔다. 그런
+    순간에서 출발하면 90분 램프 **전체**가 그 잡음을 물고 간다.
+
+    다른 하나는 프론트와의 이음매다. 차트는 마크 평균을 그리고 점선을 실선의
+    마지막 점에 다시 잇는다(MmcaRoomChartCard 의 predPoints). 여기서 생판독을
+    쓰면 이음매의 좌표는 프론트가 맞춰 주지만 램프의 기울기는 다른 값에서
+    계산돼, 점선이 이은 자리에서 어긋난 방향으로 출발한다.
+
+    `bucket_minutes` 는 마지막 판독을 어느 마크로 내릴지, `window_minutes` 는
+    그 마크에서 몇 분을 평균낼지다. 창을 주지 않으면 SEAM_WINDOW_MINUTES 를
+    쓴다. 둘 다 백테스트가 스윕하기 위해 인자로 열려 있고(⑤⑥) — 스크립트가
+    로직을 재구현하면 근거가 프로덕션 코드와 갈라진다 — 프로덕션은 기본값을 쓴다.
+    `bucket_minutes=0` 은 마지막 판독 하나(옛 동작)다.
+
+    스윕 결과(프로덕션 설정 14일/120분/90분/보정, n=33,797. 백테스트 ⑤⑥):
+
+        마크 폭(창 20분 고정)        창 폭(마크 10분 고정)
+        생판독(0)  59.3%  MAE 0.49
+        5분        57.2%  MAE 0.52   10분  58.0%  MAE 0.51
+        10분       57.2%  MAE 0.52   15분  58.0%  MAE 0.51
+        20분       57.2%  MAE 0.52   20분  57.2%  MAE 0.52
+        30분       57.2%  MAE 0.52   30분  56.6%  MAE 0.53
+                                     45분  56.0%  MAE 0.54
+
+    마크 폭은 창이 그것보다 넓은 한 아무것도 바꾸지 않는다 — 어느 마크로 내리든
+    창 20분이 같은 판독들을 물어오기 때문이다. 실제 손잡이는 창 폭이고, 넓힐수록
+    단조 감소한다. 백테스트 창(2026-08-09~08-25)이 10분 격자 한 마크당 판독
+    1개라, 창을 넓히는 것은 이 스냅샷에서 **잡음 평균이 아니라 이웃 마크 흡수**로
+    작동한다 — 미래 판독은 아직 없으니 창 20분이 무는 것은 M−20/M−10/M 세 개,
+    즉 직전 20분의 평균이 램프의 출발점이 된다. 그래서 여기서는 생판독이 5창
+    전부에서 이긴다(−2.1%p).
+
+    이 설정을 그래도 쓰는 근거는 정확도가 아니라 위의 두 가지(잡음 지속시간
+    실측, 프론트 이음매 정합)다. 마크에 판독이 여럿인 격자(*/2 는 5개)에서만
+    평균이 이득으로 바뀌고, 그건 아직 스냅샷에 없다. 2주 뒤 다시 돌릴 것 —
+    build_profile 의 날짜별 가중과 같은 사정이다.
+    """
+    by_room: dict[str, list] = defaultdict(list)
+    for row in rows:
+        if row.congestion_nm is None:
+            continue
+        if CONGESTION_RANKS.get(row.congestion_nm) is None:
+            continue
+        by_room[row.space_code].append(row)
+
+    out: dict[str, tuple[int, float]] = {}
+    for code, room_rows in by_room.items():
+        last = max(room_rows, key=lambda r: r.observed_at)
+        last_minutes = last.observed_at.hour * 60 + last.observed_at.minute
+        if bucket_minutes <= 0:
+            out[code] = (last_minutes, float(CONGESTION_RANKS[last.congestion_nm]))
+            continue
+        window = SEAM_WINDOW_MINUTES if window_minutes is None else window_minutes
+        mark = round(last_minutes / bucket_minutes) * bucket_minutes
+        # 프론트 resample 과 같은 반개구간 [mark - w, mark + w) — 마크 사이
+        # 정중앙에 떨어지는 판독이 두 마크에 겹쳐 들어가지 않게 한다.
+        ranks = [
+            CONGESTION_RANKS[r.congestion_nm]
+            for r in room_rows
+            if -window <= (r.observed_at.hour * 60 + r.observed_at.minute) - mark < window
+        ]
+        # 창이 마크 반폭보다 좁으면 마지막 판독조차 창 밖으로 떨어진다. 백테스트가
+        # 창을 스윕하는 이상 도달 가능한 경로다 — 그때는 생판독으로 돌아간다.
+        if not ranks:
+            ranks = [CONGESTION_RANKS[last.congestion_nm]]
+        out[code] = (mark, sum(ranks) / len(ranks))
+    return out
+
+
 class CurvePoint(NamedTuple):
     minutes: int   # 자정부터의 분 — 프론트 minutesOfDay 와 같은 단위
     tier: float    # 0.0~3.0, 곡선을 그리는 값
@@ -186,7 +274,7 @@ def _clamp_tier(value: float) -> float:
 def predict_tier(
     cell: float,
     shift: float,
-    current: int | None,
+    current: float | None,
     minutes_ahead: int,
     ramp_minutes: int = RAMP_MINUTES,
 ) -> float:
@@ -211,7 +299,7 @@ def curve(
     day: date,
     hours: Sequence[int],
     shift: float = 0.0,
-    last: tuple[int, int] | None = None,
+    last: tuple[int, float] | None = None,
     ramp_minutes: int = RAMP_MINUTES,
 ) -> list[CurvePoint]:
     """예측 곡선. `last` 가 있으면 그 점에서 출발해 90분에 걸쳐 프로파일로 전이한다.
@@ -232,7 +320,7 @@ def curve(
     if last is not None:
         last_minutes, last_rank = last
         # 실선의 끝점을 그대로 첫 점으로 둔다 — 이음매를 없앤다.
-        points.append(point(last_minutes, float(last_rank)))
+        points.append(point(last_minutes, last_rank))
 
     for hour in hours:
         minutes = hour * 60
