@@ -96,3 +96,17 @@ def revive[T: BaseModel](cached: dict | list[dict] | None, model: type[T]) -> T 
         return model(**cached)
     except ValidationError:
         return None
+
+
+# 방문 집계는 로그 창 전체를 다시 훑는 일이라 열 때마다 하면 수십 초가 된다.
+# 개발자 한 사람이 보는 화면이고, 10분 전 숫자로 답해도 판단은 같다.
+ANALYTICS_TTL_SECONDS = 600
+
+
+def set_analytics(days: int, payload: dict) -> None:
+    r.set(f"analytics:visits:{days}", json.dumps(payload), ex=ANALYTICS_TTL_SECONDS)
+
+
+def get_analytics(days: int) -> dict | None:
+    raw = r.get(f"analytics:visits:{days}")
+    return json.loads(raw) if raw else None
