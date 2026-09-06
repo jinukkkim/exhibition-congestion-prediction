@@ -34,8 +34,10 @@ from app.prediction.mmca import (  # noqa: E402
     CONGESTION_RANKS,
     PROFILE_WINDOW_DAYS,
     RAMP_MINUTES,
+    SEAM_BUCKET_MINUTES,
     build_profile,
     predict_tier,
+    seam,
     today_shift,
 )
 
@@ -94,6 +96,7 @@ def evaluate(
     anchor: int = ANCHOR_WINDOW_MINUTES,
     ramp: int = RAMP_MINUTES,
     use_shift: bool = True,
+    seam_bucket: int = SEAM_BUCKET_MINUTES,
 ) -> tuple[int, int, float] | None:
     """한 테스트 창의 (n, 적중, 절대오차합). 데이터가 모자라면 None."""
     train = [r for r in data if test_start - timedelta(days=train_days) <= r.observed_at.date() < test_start]
@@ -122,7 +125,12 @@ def evaluate(
                 # 근거가 아니라 인상이 된다.
                 continue
             shift = shifts[code] if use_shift else 0.0
-            current = ranks[now]
+            # 램프의 출발점은 프로덕션과 같은 함수로 만든다 — 여기서 ranks[now]
+            # 를 그대로 쓰면 seam() 을 바꿔도 근거가 따라오지 않는다.
+            seams = seam(readings[: i + 1], bucket_minutes=seam_bucket)
+            if code not in seams:
+                continue
+            current = seams[code][1]
             for horizon in HORIZONS:
                 target = now + timedelta(minutes=horizon)
                 cell = profile.get((code, day.weekday(), target.hour))
