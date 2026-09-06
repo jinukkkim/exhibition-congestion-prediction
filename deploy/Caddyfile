@@ -12,11 +12,23 @@ exhibition-traffic.duckdns.org {
 	#
 	# JSON to a rolling file rather than the journal: the journal is already
 	# carrying the backend's own logs, and access lines are the volume here.
-	# 20MiB x 5 caps this at 100MB on a 45GB disk.
+	#
+	# 20MiB x 20 caps this at 400MB on a 45GB disk. It was x5, sized when the
+	# only reader was a person answering "did that request arrive". /analytics
+	# reads the same file as the visitor history, and there the roll window IS
+	# the retention: once the oldest file is deleted those days are gone from
+	# the trend. Quadrupling the window is the whole defence, and it costs
+	# 300MB of a disk that has 40GB free.
+	#
+	# mode: the backend runs as `ubuntu` (deploy/exhibition-backend.service)
+	# and Caddy creates this file 0600 as its own user, so without it
+	# /analytics/visits reads an empty window on production and nowhere else.
+	# Nothing secret is in an access line that isn't already in the request.
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 20MiB
-			roll_keep 5
+			roll_keep 20
+			mode 0644
 		}
 	}
 
@@ -36,6 +48,13 @@ exhibition-traffic.duckdns.org {
 	# 도착 간격(0.3s)이 압축 없을 때와 같았기 때문이다. 실시간 갱신이 밀리는
 	# 증상이 보이면 여기서 match 로 text/event-stream 을 빼는 것이 그 손잡이다.
 	encode gzip
+
+	# 방문 집계(/visitors 가 읽는다). 위 log 블록이 쓰는 그 파일을 백엔드가
+	# 되읽는 것이라, 이 줄이 빠지면 SPA 폴백이 index.html 로 200 을 답해
+	# 프론트가 JSON 파싱에서 실패한다.
+	handle /analytics/* {
+		reverse_proxy localhost:8000
+	}
 
 	handle /congestion/* {
 		reverse_proxy localhost:8000
