@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import init_db
+from app.routes.analytics import router as analytics_router
 from app.routes.congestion import router as congestion_router
 from app.routes.health import router as health_router
 from app.routes.mmca import router as mmca_router
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Exhibition Congestion Prediction", lifespan=lifespan)
+app.include_router(analytics_router)
 app.include_router(congestion_router)
 app.include_router(health_router)
 app.include_router(mmca_router)

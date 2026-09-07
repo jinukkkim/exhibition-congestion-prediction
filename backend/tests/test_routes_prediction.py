@@ -146,23 +146,34 @@ def test_prediction_scales_today_to_what_actually_happened(monkeypatch):
     assert by_hour[15]["baseline"] == pytest.approx(2000.0)
 
 
-def test_prediction_ramps_out_of_the_last_reading(monkeypatch):
-    """직전 값에서 곧바로 프로파일로 점프하면 이음매가 계단이 된다."""
+def test_prediction_ramps_out_of_the_seam_not_the_last_reading(monkeypatch):
+    """직전 값에서 곧바로 프로파일로 점프하면 이음매가 계단이 된다.
+
+    출발점은 마지막 판독 하나가 아니라 그 판독이 속한 마크의 평균이다 —
+    실선이 그 마크에 찍는 값이 그것이고, 점선은 거기서 기울기를 잡아야 한다
+    (prediction/seoul.py 의 seam). 라우트가 그 배선을 잃어도 이 파일의 다른
+    테스트는 전부 통과하므로, 값을 여기서 못박는다.
+    """
     profile = {hour: 2000.0 for hour in range(10, 18)}
     readings = [(datetime(2026, 8, 24, 12, minute), 2000.0) for minute in range(0, 60, 5)]
     # 마지막 한 판독만 크게 튄다 — 보정은 창 평균이라 거의 안 움직이고,
-    # 램프만 이 값에서 출발한다.
+    # 램프만 이 근처에서 출발한다.
     readings += [(datetime(2026, 8, 24, 13, 0), 4000.0)]
 
     body = _anchor_fixture(monkeypatch, readings, profile)
     by_hour = {p["hour"]: p for p in body["days"][0]["curve"]}
 
     # 13:00 이 마지막 실측이므로 곡선은 14시부터 — 그 자리는 아직 램프 중이라
-    # 마지막 실측과 프로파일 사이에 있다.
+    # 이음매와 프로파일 사이에 있다.
     assert min(by_hour) == 14
-    assert 2000.0 < by_hour[14]["model"] < 4000.0
+    # 이음매 = 13:00 마크의 평균. 반개구간 [12:55, 13:05) 이 12:55(2000)와
+    # 13:00(4000)을 물어 3000 이다 — 마지막 판독 4000 이 아니다.
+    # 14시는 그 이음매에서 60분 뒤라 램프 가중치가 60/90:
+    #   1/3 x 3000 + 2/3 x 2153.85(비율 보정된 프로파일) = 2435.9
+    # 생판독에서 출발하면 같은 자리가 2769.2 라 이 단언이 걸린다.
+    assert by_hour[14]["model"] == pytest.approx(2435.9, abs=0.1)
     # 90분 뒤(14:30)를 지난 15시는 램프가 끝나 보정된 프로파일이다.
-    assert by_hour[15]["model"] < by_hour[14]["model"]
+    assert by_hour[15]["model"] == pytest.approx(2153.85, abs=0.1)
 
 
 def test_prediction_leaves_future_days_unanchored(monkeypatch):

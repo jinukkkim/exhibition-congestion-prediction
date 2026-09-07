@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      "/analytics": apiTarget,
       "/congestion": apiTarget,
       "/mmca": apiTarget,
     },

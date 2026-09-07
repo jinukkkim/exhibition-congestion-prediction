@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # freshness figure /health/collection reports — nothing writes it.
     # Absent on dev machines, which is why that figure is nullable.
     backup_dir: str = "/home/ubuntu/backups"
+    # Caddy 가 쓰는 접근 로그. /analytics/visits 가 방문 집계를 여기서 읽는다
+    # (deploy/Caddyfile 의 log 블록과 같은 경로여야 한다). 개발 머신에는 없고,
+    # 없으면 트래픽 0 으로 읽힌다.
+    caddy_access_log: str = "/var/log/caddy/access.log"
 
     model_config = SettingsConfigDict(env_file=".env")
 

@@ -1,7 +1,8 @@
 """MMCA 예측의 롤링 오리진 백테스트.
 
-app/prediction/mmca.py 의 네 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTES
-/ RAMP_MINUTES / 클램프 없음)의 근거를 만드는 스크립트다. 상수를 바꾸려면
+app/prediction/mmca.py 의 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTES
+/ RAMP_MINUTES / 클램프 없음 / SEAM_BUCKET_MINUTES / SEAM_WINDOW_MINUTES)의
+근거를 만드는 스크립트다. 상수를 바꾸려면
 먼저 이걸 돌려서 새 근거를 만들 것.
 
 프로덕션 함수를 그대로 호출한다 — 로직을 재구현하면 근거가 갈라진다.
@@ -34,8 +35,11 @@ from app.prediction.mmca import (  # noqa: E402
     CONGESTION_RANKS,
     PROFILE_WINDOW_DAYS,
     RAMP_MINUTES,
+    SEAM_BUCKET_MINUTES,
+    SEAM_WINDOW_MINUTES,
     build_profile,
     predict_tier,
+    seam,
     today_shift,
 )
 
@@ -94,6 +98,8 @@ def evaluate(
     anchor: int = ANCHOR_WINDOW_MINUTES,
     ramp: int = RAMP_MINUTES,
     use_shift: bool = True,
+    seam_bucket: int = SEAM_BUCKET_MINUTES,
+    seam_window: int = SEAM_WINDOW_MINUTES,
 ) -> tuple[int, int, float] | None:
     """한 테스트 창의 (n, 적중, 절대오차합). 데이터가 모자라면 None."""
     train = [r for r in data if test_start - timedelta(days=train_days) <= r.observed_at.date() < test_start]
@@ -122,7 +128,12 @@ def evaluate(
                 # 근거가 아니라 인상이 된다.
                 continue
             shift = shifts[code] if use_shift else 0.0
-            current = ranks[now]
+            # 램프의 출발점은 프로덕션과 같은 함수로 만든다 — 여기서 ranks[now]
+            # 를 그대로 쓰면 seam() 을 바꿔도 근거가 따라오지 않는다.
+            seams = seam(readings[: i + 1], bucket_minutes=seam_bucket, window_minutes=seam_window)
+            if code not in seams:
+                continue
+            current = seams[code][1]
             for horizon in HORIZONS:
                 target = now + timedelta(minutes=horizon)
                 cell = profile.get((code, day.weekday(), target.hour))
@@ -195,6 +206,12 @@ def main() -> None:
     sweep(data, days, starts, "④ 오늘 편차", [
         ("보정 없음", {"use_shift": False}),
         ("보정 있음", {"use_shift": True}),
+    ])
+    sweep(data, days, starts, "⑤ 이음매 마크 폭", [
+        ("생판독", {"seam_bucket": 0}),
+    ] + [(f"{m}분", {"seam_bucket": m}) for m in (5, 10, 20, 30)])
+    sweep(data, days, starts, "⑥ 이음매 창 폭", [
+        (f"{m}분", {"seam_window": m}) for m in (10, 15, 20, 30, 45)
     ])
 
 
