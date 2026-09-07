@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  App.tsx 의 라우트 중 사람이 검색으로 찾아올 만한 것만 싣는다. /visitors 는
+  robots.txt 가 막고, /logs 는 수집 로그라 홈에서 링크는 되지만 검색어로
+  도달할 페이지가 아니라서 뺐다.
+
+  lastmod / changefreq / priority 는 넣지 않는다. 구글은 뒤의 둘을 무시한다고
+  밝혔고, lastmod 는 손으로 적는 순간 배포마다 같이 고쳐야 하는 값이 된다.
+  고치지 않으면 남는 것은 거짓 날짜뿐이고, 그것은 없느니만 못하다.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://exhibition-traffic.duckdns.org/</loc></url>
+  <url><loc>https://exhibition-traffic.duckdns.org/venues/national-museum</loc></url>
+  <url><loc>https://exhibition-traffic.duckdns.org/venues/mmca-seoul</loc></url>
+  <url><loc>https://exhibition-traffic.duckdns.org/venues/mmca-gwacheon</loc></url>
+  <url><loc>https://exhibition-traffic.duckdns.org/venues/mmca-deoksugung</loc></url>
+</urlset>

@@ -1,0 +1,15 @@
+# frontend/public/ 에 두는 이유: Caddy 의 catch-all 이 `try_files {path}
+# /index.html` 이라, 디스크에 이 파일이 없으면 /robots.txt 요청이 index.html 로
+# 200 을 받는다. 크롤러는 HTML 로 온 robots 를 "규칙 없음 = 전부 허용"으로 읽고
+# 넘어가므로 차단되지는 않지만, 아래 Sitemap 줄을 전할 방법이 사라진다.
+# Vite 가 public/ 을 dist/ 로 그대로 복사하고 deploy.sh 가 그 dist/ 를 웹루트로
+# rsync 하므로(deploy/deploy.sh:77), 배포만 하면 실제 파일로 응답한다.
+
+User-agent: *
+Allow: /
+
+# App.tsx 가 "개발자용. UI 어디에서도 링크하지 않는다" 라고 적어둔 그 경로다.
+# 비밀은 아니지만 검색 결과에 나올 이유도 없다.
+Disallow: /visitors
+
+Sitemap: https://exhibition-traffic.duckdns.org/sitemap.xml
