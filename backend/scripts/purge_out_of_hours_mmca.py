@@ -31,6 +31,14 @@ along.
 
 Not in deploy.sh — a data cleanup, not a schema migration. Idempotent by
 nature: a second run finds nothing left to delete. Pass --dry-run to preview.
+
+Hold the first production run until after 2026-10-05. collector.py's
+_is_closed_day names that date (Monday, 개천절 대체) as the next chance to
+re-verify the holiday-Monday-open rule (rule 2) — non-empty Gwacheon readings
+that day confirm it. This deletion is irreversible and this file is the only
+place that acts on rule 2/3 as settled fact rather than as inferred, so run it
+after that date has had its chance to confirm or contradict the rule, not
+before.
 """
 
 import argparse
