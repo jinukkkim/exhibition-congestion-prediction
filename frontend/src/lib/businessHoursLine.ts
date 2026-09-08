@@ -16,12 +16,14 @@ function dayHours(venue: Venue, weekday: number) {
   // 휴무)" 로 접는 요약이라 특정 날짜의 달력 휴관이 섞이면 안 된다 —
   // REFERENCE_SUNDAY 주간에 휴관일이 하나라도 들어오면 헤더가 조용히
   // 틀려진다.
+  // 국중박은 요일 휴관이 없어 이 주(REFERENCE_SUNDAY 기준)에는 늘 개관이다.
+  // 그 주에 달력 휴관일이 들어오면 이 줄도 isWeeklyClosed 로 바꿔야 한다.
   return venue.mmcaVenue
     ? {
         ...mmcaBusinessHours(venue.mmcaVenue, date),
         isOpenToday: !isWeeklyClosed(venue.mmcaVenue, date),
       }
-    : { ...nationalMuseumBusinessHours(date), isOpenToday: true };
+    : nationalMuseumBusinessHours(date);
 }
 
 function joinWeekdays(weekdays: number[]): string {

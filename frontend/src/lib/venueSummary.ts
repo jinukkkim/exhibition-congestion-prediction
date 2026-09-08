@@ -33,7 +33,8 @@ export function nationalMuseumSummary(
   // 시계만으로 확정되는 답을 데이터 도착보다 먼저 낸다. 순서를 뒤집으면
   // 페이지를 다시 열 때마다 이미 아는 답 대신 "불러오는 중"이 한 번 스쳐
   // 지나간다 (홈 카드는 마운트마다 fetch 를 다시 시작한다).
-  const { open, close } = nationalMuseumBusinessHours(now);
+  const { open, close, isOpenToday } = nationalMuseumBusinessHours(now);
+  if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };
 

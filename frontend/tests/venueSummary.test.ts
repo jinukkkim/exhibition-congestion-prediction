@@ -70,6 +70,14 @@ describe("nationalMuseumSummary", () => {
     // 2026-08-19 수요일 → 21:00 폐관
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-19T19:00:00")).kind).toBe("level");
   });
+
+  it("says 휴관일 for the National Museum on a calendar closing day", () => {
+    // 시계 판정과 같은 자리 — 데이터 도착 전에 확정된다.
+    expect(nationalMuseumSummary(null, new Date("2026-09-25T12:00:00"))).toEqual({
+      kind: "inactive",
+      label: "휴관일",
+    });
+  });
 });
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
