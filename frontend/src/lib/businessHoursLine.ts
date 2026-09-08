@@ -12,16 +12,13 @@ const REFERENCE_SUNDAY = "2026-01-04";
 function dayHours(venue: Venue, weekday: number) {
   const date = new Date(`${REFERENCE_SUNDAY}T12:00:00`);
   date.setDate(date.getDate() + weekday);
-  // 달력이 아니라 요일 규칙만 본다. 이 줄은 한 주를 "10:00~18:00 (월요일
-  // 휴무)" 로 접는 요약이라 특정 날짜의 달력 휴관이 섞이면 안 된다 —
-  // REFERENCE_SUNDAY 주간에 휴관일이 하나라도 들어오면 헤더가 조용히
-  // 틀려진다.
-  // 국중박은 요일 휴관이 없어 이 주(REFERENCE_SUNDAY 기준)에는 늘 개관이다.
-  // 그 주에 달력 휴관일이 들어오면 이 줄도 isWeeklyClosed 로 바꿔야 한다.
-  // 같은 이유로 국중박 쪽도 isOpenToday 를 true 로 고정한다 —
-  // nationalMuseumBusinessHours(date) 를 그대로 쓰면 달력을 참조해 특정
-  // 날짜의 임시 휴관이 이 요일 요약에 섞여든다. 국중박은 요일 휴관이
-  // 없으므로 요일만 볼 때의 정답은 늘 "개관"이다.
+  // 두 갈래 모두 달력이 아니라 요일 규칙만 본다. 이 줄은 한 주를
+  // "10:00~18:00 (월요일 휴무)" 로 접는 요약이라 특정 날짜의 달력 휴관이
+  // 섞이면 안 된다 — REFERENCE_SUNDAY 주간에 휴관일이 하나라도 들어오면
+  // 헤더가 조용히 틀려진다. MMCA 는 isWeeklyClosed 로 덮고, 국중박은 요일
+  // 휴관이 아예 없어 요일만 볼 때의 답이 늘 "개관"이라 true 로 고정한다.
+  // 어느 쪽도 mmcaBusinessHours/nationalMuseumBusinessHours 가 돌려주는
+  // isOpenToday 를 그대로 쓰지 않는다 — 그 값은 달력을 보기 때문이다.
   return venue.mmcaVenue
     ? {
         ...mmcaBusinessHours(venue.mmcaVenue, date),
