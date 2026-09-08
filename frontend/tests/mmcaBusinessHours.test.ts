@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mmcaBusinessHours } from "../src/lib/mmcaBusinessHours";
+import { mmcaBusinessHours, nextOpenDay } from "../src/lib/mmcaBusinessHours";
 
 describe("mmcaBusinessHours", () => {
   it("returns 10:00-18:00 on a normal day", () => {
@@ -36,5 +36,28 @@ describe("mmcaBusinessHours", () => {
 
   it("does not mark Seoul closed on Monday", () => {
     expect(mmcaBusinessHours("seoul", new Date("2026-07-27T12:00:00")).isOpenToday).toBe(true);
+  });
+});
+
+describe("nextOpenDay", () => {
+  it("points a closed Monday at the next day", () => {
+    // 2026-07-27 is a Monday
+    expect(nextOpenDay("gwacheon", new Date("2026-07-27T12:00:00"))).toEqual({
+      weekday: 2, // 화
+      open: 10 * 60,
+    });
+  });
+
+  it("skips over the closed Monday when asked from the Sunday before it", () => {
+    // 휴관일 안내는 "고른 날짜 다음" 을 말하므로, 일요일에서 부르면 월요일이
+    // 아니라 화요일이 나와야 한다.
+    // 2026-08-02 is a Sunday
+    expect(nextOpenDay("deoksugung", new Date("2026-08-02T12:00:00"))?.weekday).toBe(2);
+  });
+
+  it("never returns the day it was given", () => {
+    // 화요일에서 불러도 그 화요일이 아니라 수요일이다 — 부르는 자리가 이미
+    // "그날은 휴관일" 인 곳이다.
+    expect(nextOpenDay("seoul", new Date("2026-07-28T12:00:00"))?.weekday).toBe(3);
   });
 });

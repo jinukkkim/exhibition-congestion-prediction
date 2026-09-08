@@ -60,7 +60,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -77,34 +76,11 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={20 * 60}
         now={AFTER_CLOSE_NOW}
-        isOpenToday
       />
     );
 
     expect(screen.getByText("영업 시간이 아닙니다")).toBeInTheDocument();
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
-  });
-
-  it("shows a distinct closed-day state instead of business hours when isOpenToday is false", () => {
-    render(
-      <MmcaRoomChartCard
-        room={makeRoom()}
-        daily={[]}
-        open={OPEN}
-        close={CLOSE}
-        nowMinutes={WITHIN_HOURS}
-        now={NOW}
-        isOpenToday={false}
-      />
-    );
-
-    // A closed weekly day (e.g. Deoksugung on Monday) is not the same thing
-    // as "outside hours today" — it must not claim hours it doesn't have.
-    // (관 단위 휴관 안내 한 줄은 페이지 헤더가 맡는다 — MmcaPage.test.tsx.)
-    expect(screen.getByText("휴관일입니다")).toBeInTheDocument();
-    expect(screen.getByText("휴관일")).toBeInTheDocument();
-    expect(screen.queryByText(/영업시간/)).not.toBeInTheDocument();
-    expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
   });
 
   it("leaves the business-hours line to the page header instead of repeating it per room", () => {
@@ -117,7 +93,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -133,7 +108,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -149,7 +123,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -168,7 +141,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -191,7 +163,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -229,7 +200,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -264,7 +234,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -287,11 +256,15 @@ describe("MmcaRoomChartCard", () => {
       now: NOW,
     };
 
-    const { container, rerender } = render(<MmcaRoomChartCard {...props} isOpenToday />);
+    const { container, rerender } = render(<MmcaRoomChartCard {...props} />);
     // Glow renders as two circles (soft glow + white ring dot).
     expect(container.querySelectorAll("circle")).toHaveLength(2);
 
-    rerender(<MmcaRoomChartCard {...props} isOpenToday={false} />);
+    // 요일 휴관은 더 이상 이 카드의 입력이 아니다 — 휴관일에는 MmcaPage 가
+    // 방 목록 자체를 안내 하나로 바꾼다. 남은 "닫힘"은 시계뿐이다.
+    rerender(
+      <MmcaRoomChartCard {...props} nowMinutes={20 * 60} now={AFTER_CLOSE_NOW} />
+    );
     expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
 
@@ -311,7 +284,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -333,7 +305,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
     expect(screen.getByTestId("mmca-room-chart-line")).toBeInTheDocument();
@@ -348,7 +319,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
     expect(screen.queryByTestId("mmca-room-chart-last-week-line")).not.toBeInTheDocument();
@@ -367,7 +337,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -388,7 +357,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -428,7 +396,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -458,7 +425,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -492,7 +458,6 @@ describe("MmcaRoomChartCard", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -523,7 +488,6 @@ describe("MmcaRoomChartCard freshness badge", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
   }
@@ -563,7 +527,6 @@ describe("MmcaRoomChartCard past-day view", () => {
         nowMinutes={WITHIN_HOURS}
         now={NOW}
         viewDate="2026-07-11"
-        isOpenToday
       />
     );
   }
@@ -609,7 +572,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -632,7 +594,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -655,7 +616,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -675,7 +635,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -698,7 +657,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -725,7 +683,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -755,7 +712,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -793,7 +749,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -826,7 +781,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -847,7 +801,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -879,7 +832,6 @@ describe("MmcaRoomChartCard 예측 점선", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -926,7 +878,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     close: CLOSE,
     nowMinutes: WITHIN_HOURS,
     now: NOW,
-    isOpenToday: true,
   };
 
   it("실측이 있는 x 에서는 실측과 지난주만 말한다 — 예측은 끼지 않는다", () => {
@@ -989,7 +940,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     close: CLOSE,
     nowMinutes: WITHIN_HOURS,
     now: NOW,
-    isOpenToday: true,
   };
 
   it("미래 탭에서는 D−7 대리 기록이 예측을 가리지 않는다", () => {
@@ -1029,7 +979,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -1060,7 +1009,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -1087,7 +1035,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -1112,7 +1059,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -1150,7 +1096,6 @@ describe("MmcaRoomChartCard hover (x 기준)", () => {
     close: CLOSE,
     nowMinutes: WITHIN_HOURS,
     now: NOW,
-    isOpenToday: true,
   };
 
   it("두 슬롯 사이를 짚으면 가까운 쪽 10분 슬롯으로 스냅한다", () => {
@@ -1218,7 +1163,6 @@ describe("tier gridlines", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 
@@ -1243,7 +1187,6 @@ describe("tier gridlines", () => {
         close={CLOSE}
         nowMinutes={WITHIN_HOURS}
         now={NOW}
-        isOpenToday
       />
     );
 

@@ -17,8 +17,8 @@ import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
-import { shiftDate, todayString, upcomingDates } from "../lib/date";
-import { mmcaBusinessHours } from "../lib/mmcaBusinessHours";
+import { formatMinutes, shiftDate, todayString, upcomingDates, WEEKDAY_KO } from "../lib/date";
+import { mmcaBusinessHours, nextOpenDay } from "../lib/mmcaBusinessHours";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -124,6 +124,12 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
     venue,
     isTodayTab ? now : new Date(`${chartDate}T00:00:00`)
   );
+  // 안내는 고른 날짜 기준이다 — 미래 탭의 월요일을 골랐으면 "다음 개관"도 그
+  // 월요일 다음이어야 한다. 위의 영업시간은 chartDate(D-7)로 재지만 요일이
+  // 같아 결과가 같고, 여기서는 요일이 아니라 날짜가 뜻을 가지므로 갈라 둔다.
+  const nextOpen = isOpenToday
+    ? null
+    : nextOpenDay(venue, isTodayTab ? now : new Date(`${selectedDate}T00:00:00`));
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   // A room only earns a full-size chart card if it has a curve worth showing.
   // Until today's first reading exists, last week's same-weekday curve is the
@@ -133,7 +139,9 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // that goes by last week is that one minute — plus all day on a closed day.
   // `<=` not `<`: the poll takes a few seconds to land, and this page only
   // re-renders once a minute.
-  const beforeFirstPoll = isTodayTab && (!isOpenToday || nowMinutes <= open);
+  // 휴관일은 아래에서 통째로 가로채므로 여기 닿지 않는다 — 남은 창은 개관
+  // 분 자체뿐이다.
+  const beforeFirstPoll = isTodayTab && nowMinutes <= open;
 
   // `null` means the fetch hasn't landed yet: don't shrink a card on the
   // strength of data we haven't received.
@@ -149,8 +157,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
       : room.congestion_nm == null && loadedWithNoReading(daily, room.space_code);
   };
 
-  const inactiveReason = () =>
-    !isOpenToday ? "휴관일" : isTodayTab ? "오늘 정보 없음" : "정보 없음";
+  const inactiveReason = () => (isTodayTab ? "오늘 정보 없음" : "정보 없음");
 
   const activeRooms = rooms?.filter((room) => !isRoomInactiveToday(room)) ?? [];
   const inactiveRooms = rooms?.filter(isRoomInactiveToday) ?? [];
@@ -203,48 +210,74 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           </div>
         </header>
 
-        {rooms === null && !error && <p className="text-sm text-ink-soft">불러오는 중...</p>}
-        {error && rooms === null && (
+        {/* 로딩·실패 줄은 방 목록에 대한 것이라 휴관일에는 말할 대상이 없다.
+            남겨 두면 아래 안내 박스 위로 "불러오는 중"이 스쳐, 이 화면이
+            없애려는 중복이 그대로 돌아온다. */}
+        {isOpenToday && rooms === null && !error && (
+          <p className="text-sm text-ink-soft">불러오는 중...</p>
+        )}
+        {isOpenToday && error && rooms === null && (
           <p className="text-sm text-ink-soft">불러오지 못했습니다.</p>
         )}
         <div className="mb-6">
           <DateTabs dates={tabDates} selected={selectedDate} onSelect={setSelectedDate} />
         </div>
 
-        {trendError && rooms !== null && (
-          <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
-        )}
-        {activeRooms.length > 0 && (
-          <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
-            {activeRooms.map((room) => (
-              <MmcaRoomChartCard
-                key={room.space_code}
-                room={room}
-                exhibitionTitle={exhibitionTitle(room.space_code)}
-                daily={daily}
-                lastWeekDaily={lastWeekDaily}
-                prediction={predictionByCode.get(room.space_code) ?? null}
-                open={open}
-                close={close}
-                nowMinutes={nowMinutes}
-                now={now}
-                viewDate={chartDate}
-                isOpenToday={isOpenToday}
-              />
-            ))}
+        {/* 휴관일에는 전시실 목록 자체를 내리고 안내 하나만 남긴다. 방마다
+            "휴관일" 배지를 단 작은 카드 8개를 깔면 한 가지 사실을 여덟 번
+            말하게 된다 — 관 단위로 확정된 사실이므로 관 단위로 한 번만 쓴다.
+            날짜 탭 위(제목·관 정보·현재 전시·탭)는 그대로 둔다: 휴관일에도
+            읽을 값이고, 다른 날짜로 옮겨갈 통로다.
+
+            폴링은 멈추지 않는다. 휴관일 응답은 전부 빈 값이라 크기가 없고,
+            멈추려면 usePolledFetch(공용 훅)에 스위치를 달아야 한다.
+            ponytail: 실제로 부담이 확인되면 그때 단다. */}
+        {!isOpenToday ? (
+          <section className="rounded-apple border border-hairline/60 bg-white/70 px-6 py-20 text-center shadow-apple backdrop-blur-xl">
+            <p className="text-2xl font-semibold text-ink-soft">휴관일입니다</p>
+            {nextOpen && (
+              <p className="mt-2 text-sm text-ink-soft/80">
+                다음 개관 — {WEEKDAY_KO[nextOpen.weekday]}요일 {formatMinutes(nextOpen.open)}
+              </p>
+            )}
           </section>
-        )}
-        {inactiveRooms.length > 0 && (
-          <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {inactiveRooms.map((room) => (
-              <MmcaRoomInactiveCard
-                key={room.space_code}
-                room={room}
-                exhibitionTitle={exhibitionTitle(room.space_code)}
-                reason={inactiveReason()}
-              />
-            ))}
-          </section>
+        ) : (
+          <>
+            {trendError && rooms !== null && (
+              <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
+            )}
+            {activeRooms.length > 0 && (
+              <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
+                {activeRooms.map((room) => (
+                  <MmcaRoomChartCard
+                    key={room.space_code}
+                    room={room}
+                    exhibitionTitle={exhibitionTitle(room.space_code)}
+                    daily={daily}
+                    lastWeekDaily={lastWeekDaily}
+                    prediction={predictionByCode.get(room.space_code) ?? null}
+                    open={open}
+                    close={close}
+                    nowMinutes={nowMinutes}
+                    now={now}
+                    viewDate={chartDate}
+                  />
+                ))}
+              </section>
+            )}
+            {inactiveRooms.length > 0 && (
+              <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                {inactiveRooms.map((room) => (
+                  <MmcaRoomInactiveCard
+                    key={room.space_code}
+                    room={room}
+                    exhibitionTitle={exhibitionTitle(room.space_code)}
+                    reason={inactiveReason()}
+                  />
+                ))}
+              </section>
+            )}
+          </>
         )}
       </main>
     </div>
