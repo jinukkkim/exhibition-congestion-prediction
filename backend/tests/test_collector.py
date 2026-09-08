@@ -296,6 +296,27 @@ def test_is_closed_day_honours_an_ad_hoc_closure():
     assert _is_closed_day("gwacheon", date(2026, 1, 1)) is True
 
 
+def test_is_closed_day_does_not_close_the_day_after_a_lunar_new_year_monday():
+    """설·추석 연휴 월요일은 publicHolidays 에 넣지 않는다.
+
+    2026-02-16(월)은 설 연휴 전날이고 2026-02-17 은 설날이다. 그 월요일을
+    공휴일로 실으면 셋째 갈래가 설날을 대체 휴관으로 닫는데, 과천·덕수궁의
+    공표 휴관일은 "1월1일, 매주 월요일" 뿐이라 그날 문을 연다. 셋째 갈래의
+    근거는 대체공휴일 한 사례(2026-08-17)뿐이라 연휴 월요일까지 늘리지
+    않는다.
+    """
+    from app.collector import _is_closed_day
+
+    for venue in ("gwacheon", "deoksugung"):
+        # 월요일 자체는 여전히 요일 휴관이다 — 공휴일 예외를 주지 않았다.
+        assert _is_closed_day(venue, date(2026, 2, 16)) is True
+        # 설날은 열려 있다.
+        assert _is_closed_day(venue, date(2026, 2, 17)) is False
+        # 2027 년의 같은 충돌.
+        assert _is_closed_day(venue, date(2027, 2, 8)) is True
+        assert _is_closed_day(venue, date(2027, 2, 9)) is False
+
+
 def test_collect_mmca_once_polls_gwacheon_on_a_holiday_monday(monkeypatch, session_factory):
     import app.collector as collector_module
 
