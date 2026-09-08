@@ -122,7 +122,12 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 월요일이 그 예다. chartDate(D-7)로 재면 다른 날의 답을 내놓으므로, 두
   // 판정 모두 고른 날짜(selectedDate) 자체로 재고 nextOpenDay 와 같은 값을
   // 쓴다.
-  const viewedDate = isTodayTab ? now : new Date(`${selectedDate}T00:00:00`);
+  //
+  // 오늘 탭도 `now` 를 그대로 넘기지 않는다 — 날짜는 KST 질문이고(today 는
+  // todayString() 으로 이미 KST), 분(nowMinutes, 아래)은 로컬 벽시계 질문이다.
+  // KST 보다 느린(서쪽) 타임존 브라우저가 자정 근처에서 이 둘을 섞으면 하루 어긋난 날짜로
+  // isClosedDay 를 물어 달력 휴관을 놓친다.
+  const viewedDate = isTodayTab ? new Date(`${today}T00:00:00`) : new Date(`${selectedDate}T00:00:00`);
   const { open, close, isOpenToday } = mmcaBusinessHours(venue, viewedDate);
   const nextOpen = isOpenToday ? null : nextOpenDay(venue, viewedDate);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();

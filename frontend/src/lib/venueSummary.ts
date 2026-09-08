@@ -1,5 +1,6 @@
 import type { CurrentCongestion } from "../api/congestion";
 import type { MmcaRoomStatus, MmcaVenue } from "../api/mmca";
+import { todayString } from "./date";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
 import { STATUS_LEVELS } from "./status";
@@ -33,7 +34,15 @@ export function nationalMuseumSummary(
   // 시계만으로 확정되는 답을 데이터 도착보다 먼저 낸다. 순서를 뒤집으면
   // 페이지를 다시 열 때마다 이미 아는 답 대신 "불러오는 중"이 한 번 스쳐
   // 지나간다 (홈 카드는 마운트마다 fetch 를 다시 시작한다).
-  const { open, close, isOpenToday } = nationalMuseumBusinessHours(now);
+  //
+  // 휴관 판정(isOpenToday)에 넣는 날짜는 KST 질문이라 todayString() 으로
+  // 고정한 날짜를 쓴다 — `now` 를 그대로 넣으면 브라우저 로컬 Y/M/D 가 되어,
+  // KST 보다 느린(서쪽) 타임존 브라우저가 자정 근처에서 물으면 하루 어긋난 날짜로 달력을 찾아
+  // 휴관을 놓친다. 분 단위 판정(closedLabel 의 nowMinutes)은 반대로 로컬
+  // 벽시계 질문이라 `now` 그대로 넘긴다.
+  const { open, close, isOpenToday } = nationalMuseumBusinessHours(
+    new Date(`${todayString()}T00:00:00`)
+  );
   if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };
@@ -55,7 +64,11 @@ export function mmcaSummary(
 ): VenueSummary {
   // 시계 판정은 데이터 없이도 확정된다 — nationalMuseumSummary 와 같은
   // 이유로 데이터 검사보다 위에 둔다.
-  const { open, close, isOpenToday } = mmcaBusinessHours(venue, now);
+  //
+  // 휴관 판정에 넣는 날짜는 KST 질문이라 todayString() 으로 고정한다 —
+  // nationalMuseumSummary 와 같은 이유(위 주석 참고). 분 단위 판정은 `now`
+  // 그대로 쓴다.
+  const { open, close, isOpenToday } = mmcaBusinessHours(venue, new Date(`${todayString()}T00:00:00`));
   if (!isOpenToday) return { kind: "inactive", label: "휴관일" };
   const closed = closedLabel(now, open, close);
   if (closed) return { kind: "inactive", label: closed };

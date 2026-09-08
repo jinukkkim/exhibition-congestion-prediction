@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CurrentCongestion } from "../src/api/congestion";
 import type { MmcaRoomStatus } from "../src/api/mmca";
@@ -14,6 +14,18 @@ const CURRENT: CurrentCongestion = {
 // 2026-08-20은 목요일 → 09:30-17:30
 const THURSDAY_MIDDAY = new Date("2026-08-20T14:20:00");
 
+// venueSummary.ts 가 휴관 판정에 todayString()(실제 시계)을 쓰므로, "now" 로
+// 지어낸 날짜가 실제로 오늘인 것처럼 보이게 시계를 고정한다 — 그래야 이
+// 파일의 고정 날짜 픽스처들이 여전히 그날의 답을 낸다. 분 단위 판정
+// (closedLabel)은 여전히 각 호출에 넘긴 Date 그대로를 읽는다.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("STATUS_LEVELS", () => {
   it("lists levels from least to most crowded", () => {
     expect(STATUS_LEVELS).toEqual(["여유", "보통", "약간 붐빔", "붐빔"]);
@@ -22,6 +34,7 @@ describe("STATUS_LEVELS", () => {
 
 describe("nationalMuseumSummary", () => {
   it("shows the level and population during business hours", () => {
+    vi.setSystemTime(THURSDAY_MIDDAY);
     expect(nationalMuseumSummary(CURRENT, THURSDAY_MIDDAY)).toEqual({
       kind: "level",
       level: "보통",
@@ -31,6 +44,7 @@ describe("nationalMuseumSummary", () => {
   });
 
   it("reports loading while there is no data yet", () => {
+    vi.setSystemTime(THURSDAY_MIDDAY);
     expect(nationalMuseumSummary(null, THURSDAY_MIDDAY)).toEqual({
       kind: "inactive",
       label: "불러오는 중",
@@ -40,10 +54,12 @@ describe("nationalMuseumSummary", () => {
   it("answers from the clock before the data arrives when it can", () => {
     // 영업시간 밖은 시계만으로 확정되는 답이다. 데이터를 기다렸다가 답하면
     // 이미 아는 답 대신 로딩 문구를 먼저 보여주게 된다.
+    vi.setSystemTime(new Date("2026-08-20T07:00:00"));
     expect(nationalMuseumSummary(null, new Date("2026-08-20T07:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 전",
     });
+    vi.setSystemTime(new Date("2026-08-20T22:00:00"));
     expect(nationalMuseumSummary(null, new Date("2026-08-20T22:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 종료",
@@ -51,10 +67,12 @@ describe("nationalMuseumSummary", () => {
   });
 
   it("reports before-open and after-close instead of a stale level", () => {
+    vi.setSystemTime(new Date("2026-08-20T09:00:00"));
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 전",
     });
+    vi.setSystemTime(new Date("2026-08-20T18:00:00"));
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T18:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 종료",
@@ -62,17 +80,21 @@ describe("nationalMuseumSummary", () => {
   });
 
   it("still shows the level at the exact open and close minute", () => {
+    vi.setSystemTime(new Date("2026-08-20T09:30:00"));
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T09:30:00")).kind).toBe("level");
+    vi.setSystemTime(new Date("2026-08-20T17:30:00"));
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-20T17:30:00")).kind).toBe("level");
   });
 
   it("keeps the long Wednesday hours open past 17:30", () => {
     // 2026-08-19 수요일 → 21:00 폐관
+    vi.setSystemTime(new Date("2026-08-19T19:00:00"));
     expect(nationalMuseumSummary(CURRENT, new Date("2026-08-19T19:00:00")).kind).toBe("level");
   });
 
   it("says 휴관일 for the National Museum on a calendar closing day", () => {
     // 시계 판정과 같은 자리 — 데이터 도착 전에 확정된다.
+    vi.setSystemTime(new Date("2026-09-25T12:00:00"));
     expect(nationalMuseumSummary(null, new Date("2026-09-25T12:00:00"))).toEqual({
       kind: "inactive",
       label: "휴관일",
@@ -94,6 +116,10 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 const MMCA_MIDDAY = new Date("2026-08-20T14:20:00");
 
 describe("mmcaSummary", () => {
+  beforeEach(() => {
+    vi.setSystemTime(MMCA_MIDDAY);
+  });
+
   it("counts rooms per level, least crowded first", () => {
     const rooms = [
       makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "붐빔" }),
@@ -166,15 +192,18 @@ describe("mmcaSummary", () => {
   });
 
   it("answers from the clock before the rooms arrive when it can", () => {
+    vi.setSystemTime(new Date("2026-08-20T07:00:00"));
     expect(mmcaSummary("seoul", null, new Date("2026-08-20T07:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 전",
     });
+    vi.setSystemTime(new Date("2026-08-20T19:00:00"));
     expect(mmcaSummary("seoul", null, new Date("2026-08-20T19:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 종료",
     });
     // 휴관일도 방 목록 없이 확정된다 — 요일 휴관은 덕수궁·과천관에만 있다.
+    vi.setSystemTime(new Date("2026-08-24T14:00:00"));
     expect(mmcaSummary("deoksugung", null, new Date("2026-08-24T14:00:00"))).toEqual({
       kind: "inactive",
       label: "휴관일",
@@ -183,6 +212,7 @@ describe("mmcaSummary", () => {
 
   it("reports the Monday closure for Deoksugung", () => {
     // 2026-08-24는 월요일.
+    vi.setSystemTime(new Date("2026-08-24T14:00:00"));
     const rooms = [makeRoom({ space_code: "MMCA-SPACE-4001" })];
 
     expect(mmcaSummary("deoksugung", rooms, new Date("2026-08-24T14:00:00"))).toEqual({
@@ -195,6 +225,7 @@ describe("mmcaSummary", () => {
     // 2026-08-17은 광복절 대체공휴일 월요일이다. 요일 휴관일이지만 그날은
     // 문을 연다 — 홈 카드도 관 페이지와 같은 달력을 따라야 한다.
     // (실측 근거는 backend/app/collector.py 의 _is_closed_day 주석에 있다.)
+    vi.setSystemTime(new Date("2026-08-17T14:00:00"));
     expect(mmcaSummary("deoksugung", null, new Date("2026-08-17T14:00:00"))).toEqual({
       kind: "inactive",
       label: "불러오는 중",
@@ -204,10 +235,12 @@ describe("mmcaSummary", () => {
   it("reports before-open and after-close", () => {
     const rooms = [makeRoom()];
 
+    vi.setSystemTime(new Date("2026-08-20T09:00:00"));
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T09:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 전",
     });
+    vi.setSystemTime(new Date("2026-08-20T19:00:00"));
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T19:00:00"))).toEqual({
       kind: "inactive",
       label: "영업 종료",
@@ -215,6 +248,7 @@ describe("mmcaSummary", () => {
   });
 
   it("reports tallying while open but before the first poll of the day", () => {
+    vi.setSystemTime(new Date("2026-08-20T10:05:00"));
     const rooms = [makeRoom({ congestion_nm: null, observed_at: null })];
 
     expect(mmcaSummary("seoul", rooms, new Date("2026-08-20T10:05:00"))).toEqual({
