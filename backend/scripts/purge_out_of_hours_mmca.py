@@ -30,7 +30,8 @@ after closing on the Saturday 2026-08-15. They were out-of-hours rows all
 along.
 
 Not in deploy.sh — a data cleanup, not a schema migration. Idempotent by
-nature: a second run finds nothing left to delete. Pass --dry-run to preview.
+nature: a second run finds nothing left to delete. Previewing is the default;
+deletion happens only with --delete.
 
 Hold the first production run until after 2026-10-05. collector.py's
 _is_closed_day names that date (Monday, 개천절 대체) as the next chance to
@@ -81,7 +82,14 @@ def out_of_hours(rows: Sequence[Row]) -> list[Row]:
 
 def main(session_factory=SessionLocal) -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true")
+    # 미리보기가 기본값이고 삭제는 --delete 로만 일어난다. 뒤집혀 있었을 때는
+    # 플래그를 잊는 것이 곧 프로덕션 행 삭제였고, 이 스크립트가 지우는 근거
+    # 일부(대체 휴관)는 실측 한 쌍에서 나온 추론이라 되돌릴 수도 없다. 위
+    # docstring 이 "10-05 재검증 전에는 돌리지 말라" 고 적고 있지만, 문단을
+    # 놓친 사람을 막아 주는 것은 문단이 아니라 기본값이다.
+    parser.add_argument(
+        "--delete", action="store_true", help="actually delete; without it this only previews"
+    )
     args = parser.parse_args()
 
     with session_factory() as session:
@@ -104,8 +112,8 @@ def main(session_factory=SessionLocal) -> None:
         for venue, count in sorted(Counter(VENUE_OF[space_code] for _, _, space_code in doomed).items()):
             print(f"  {venue}: {count}")
 
-        if args.dry_run:
-            print("dry run — nothing deleted")
+        if not args.delete:
+            print("preview only — nothing deleted. Pass --delete to apply.")
             return
 
         for start in range(0, len(doomed), BATCH):
