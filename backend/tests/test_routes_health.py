@@ -107,6 +107,62 @@ def test_reports_ok_while_both_sources_are_current(client):
     assert body["mmca"]["calls_today"] == 3
 
 
+def test_reports_how_many_rooms_the_last_round_should_have_polled(client):
+    """부른 방 수만으로는 방을 잃은 라운드와 원래 작은 라운드를 구별할 수 없다.
+
+    상시 0002 인 방은 probe 라운드에만 끼므로(collector 의 _PROBE_MINUTES)
+    라운드마다 대상 수 자체가 달라진다.
+    """
+    test_client, session_factory, monkeypatch = client
+    _freeze(monkeypatch, OPEN_HOURS)
+    last_round = OPEN_HOURS - timedelta(minutes=8)  # 14:52 — probe 라운드가 아니다
+
+    with session_factory() as session:
+        session.add(
+            RawCongestion(
+                observed_at=OPEN_HOURS - timedelta(minutes=4),
+                congest_level="보통",
+                population_min=1000,
+                population_max=2000,
+            )
+        )
+        # 1001·1006 은 전시 중이라 매 라운드 대상이고, 1002 는 직전 probe 에서
+        # 빈 응답만 받아 이번 라운드에서 빠졌다.
+        for observed_at in (last_round - timedelta(minutes=2), last_round):
+            for space_code in ("MMCA-SPACE-1001", "MMCA-SPACE-1006"):
+                session.add(
+                    RawMmcaCongestion(
+                        observed_at=observed_at, space_code=space_code, congestion_nm="보통"
+                    )
+                )
+        session.add(
+            RawMmcaCongestion(
+                observed_at=last_round - timedelta(minutes=22),
+                space_code="MMCA-SPACE-1002",
+                congestion_nm=None,
+            )
+        )
+        session.commit()
+
+    body = test_client.get("/health/collection").json()
+
+    assert body["mmca"]["rooms_in_last_round"] == 2
+    assert body["mmca"]["rooms_expected_in_last_round"] == 2
+
+    # 같은 상태에서 1006 만 잃으면 두 숫자가 갈린다 — 그게 이 필드의 요점이다.
+    with session_factory() as session:
+        session.query(RawMmcaCongestion).filter(
+            RawMmcaCongestion.observed_at == last_round,
+            RawMmcaCongestion.space_code == "MMCA-SPACE-1006",
+        ).delete()
+        session.commit()
+
+    body = test_client.get("/health/collection").json()
+
+    assert body["mmca"]["rooms_in_last_round"] == 1
+    assert body["mmca"]["rooms_expected_in_last_round"] == 2
+
+
 def test_upstream_publication_lag_is_not_treated_as_stale(client):
     """국중박 observed_at 은 서울 API 가 준 PPLTN_TIME, 즉 우리가 폴링한 시각이
     아니라 상류가 발행한 측정 시각이다. 발행이 약 30분 지연되므로(2026-08-22

@@ -31,7 +31,8 @@ export const SEOUL_STALE_MINUTES = 75;
 //
 // 전시가 없는 방(resultCode 0002)은 이 측정에서 뺐다. 그런 방은 몇 주씩
 // 응답이 비어 판독 간격이 매일 120분씩 벌어지지만, MmcaPage 가 비활성 카드로
-// 내려 배지 자체를 그리지 않는다.
+// 내려 배지 자체를 그리지 않는다. 백엔드도 같은 이유로 그런 방을 30분에 한 번만
+// 부르므로(collector 의 _PROBE_MINUTES) 이제 그 간격은 설계값이다.
 //
 // 근거표 전체와 헬스체크 쪽 논거는 backend/app/routes/health.py 의 짝에 있다.
 export const MMCA_STALE_MINUTES = 12;
