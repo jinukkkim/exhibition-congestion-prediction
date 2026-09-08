@@ -19,6 +19,19 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 }
 
 describe("HomePage", () => {
+  it("carries the site footer", async () => {
+    // 푸터는 다섯 페이지가 같은 컴포넌트 한 줄로 붙인다 — 링크 자체는
+    // SiteFooter.test.tsx 가 고정하므로, 여기서는 페이지가 실제로 그것을
+    // 렌더한다는 것만 본다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("link", { name: "GitHub" })).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면

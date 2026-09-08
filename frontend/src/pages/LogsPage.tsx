@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { DailyLogTable } from "../components/DailyLogTable";
 import { MmcaDailyLogTable } from "../components/MmcaDailyLogTable";
+import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { VENUES } from "../venues";
 
@@ -59,6 +60,7 @@ export function LogsPage() {
         ) : (
           <DailyLogTable key={selected.id} />
         )}
+        <SiteFooter />
       </main>
     </div>
   );

@@ -14,6 +14,7 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
+import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
@@ -279,6 +280,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
             )}
           </>
         )}
+        <SiteFooter />
       </main>
     </div>
   );
