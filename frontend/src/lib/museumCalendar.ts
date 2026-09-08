@@ -13,7 +13,7 @@ const WEEKLY_CLOSED: Record<string, number> = {
 const PUBLIC_HOLIDAYS = new Set<string>(calendar.publicHolidays);
 const CLOSED: Record<string, string[]> = calendar.closed;
 
-type Venue = keyof typeof calendar.closed;
+export type Venue = keyof typeof calendar.closed;
 
 export function isWeeklyClosed(venue: Venue, date: Date): boolean {
   return WEEKLY_CLOSED[venue] === date.getDay();

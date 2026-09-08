@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { isClosedDay, isWeeklyClosed } from "../src/lib/museumCalendar";
+import testCases from "../../shared/museum-holidays.test-cases.json";
+import { isClosedDay, isWeeklyClosed, type Venue } from "../src/lib/museumCalendar";
 
 describe("isClosedDay", () => {
   it("opens Gwacheon on a public-holiday Monday", () => {
@@ -42,6 +43,18 @@ describe("isClosedDay", () => {
       // 2027 년의 같은 충돌.
       expect(isClosedDay(venue, new Date("2027-02-08T12:00:00"))).toBe(true);
       expect(isClosedDay(venue, new Date("2027-02-09T12:00:00"))).toBe(false);
+    }
+  });
+
+  it("matches the shared fixture", () => {
+    // shared/museum-holidays.test-cases.json 은 두 언어 구현이 같은 답을
+    // 내는지 확인하는 유일한 장치다 — 백엔드의 같은 이름 테스트가 같은
+    // 파일을 읽는다. 한쪽 규칙만 바뀌면 이 테스트나 그쪽이 실패한다.
+    expect(testCases.length).toBeGreaterThan(0);
+    for (const { venue, date, closed, why } of testCases) {
+      expect(isClosedDay(venue as Venue, new Date(`${date}T12:00:00`)), `${venue} ${date}: ${why}`).toBe(
+        closed
+      );
     }
   });
 });
