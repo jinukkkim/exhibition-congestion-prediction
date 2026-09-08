@@ -1,4 +1,7 @@
-function formatDate(d: Date): string {
+// Date -> "YYYY-MM-DD" (브라우저 로컬 기준). todayString() 과 달리 KST 로
+// 고정하지 않는다 — 영업시간 판정 전체가 이미 로컬 시계를 쓰고(now.getHours()),
+// 이 함수는 그 판정에 쓰이는 날짜 키라 같은 시계를 봐야 한다.
+export function dateString(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -16,14 +19,23 @@ const SEOUL_DAY = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
+// 주어진 순간의 KST 달력 날짜. 휴관 판정처럼 "그 순간이 KST 로 며칠인가" 를
+// 묻는 자리가 쓴다 — dateString() 은 브라우저 로컬 Y/M/D 라 자정 근처에서 하루
+// 어긋난다. 살아 있는 시계를 넘기는 호출부만 이것을 쓰고, 이미 날짜 문자열에서
+// 만든 Date 를 넘기는 곳은 dateString() 쪽이 맞다(KST 로 다시 접으면 KST 동쪽
+// 브라우저에서 하루 밀린다).
+export function seoulDateString(d: Date): string {
+  return SEOUL_DAY.format(d);
+}
+
 export function todayString(): string {
-  return SEOUL_DAY.format(new Date());
+  return seoulDateString(new Date());
 }
 
 export function shiftDate(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return formatDate(d);
+  return dateString(d);
 }
 
 // Date.getDay() 순서(일=0). 날짜 문자열이 아니라 요일 번호로 이름을 찾는

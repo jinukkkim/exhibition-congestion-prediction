@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from time import monotonic, sleep
 from zoneinfo import ZoneInfo
 
@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.cache import set_latest
-from app.config import settings
+from app.config import MUSEUM_CLOSED_DAYS, MUSEUM_PUBLIC_HOLIDAYS, settings
 from app.db import SessionLocal
 from app.mmca_api import MmcaCongestionReading, fetch_congestion as fetch_mmca_congestion
 from app.models import ForecastCongestion, ForecastWeather, RawCongestion, RawMmcaCongestion
@@ -308,19 +308,45 @@ _PROBE_MINUTES = 30
 # 게이트는 쿼터 장치가 아니라 데이터 품질 장치다: 없으면 "닫혀서 빈 것"이
 # "열려 있는데 한산함"으로 히스토리에 쌓이고, build_profile 이 (방, 요일, 시각)
 # 평균을 내므로 예측 프로파일을 그대로 끌어내린다. 과천 월요일 895 건이 전부
-# 여유인 것이 그 증거다.
-#
-# ponytail: 요일만 본다. 대체공휴일 월요일에는 실제로 문을 열지만(2026-08-17
-# 과천관에 정상 혼잡 기록이 있다) 그날은 수집하지 않는다. 프론트의
-# mmcaBusinessHours 도 같은 한계를 안고 있어, 공휴일 달력이 들어오면 함께 고친다.
+# 여유인 것이 그 증거다(공휴일 월요일은 이 895 건에서 빠진다 — 그날은 문을 열어
+# non-여유가 섞이고, 아래 _is_closed_day 문서의 185건이 그 표본이다).
 _VENUE_CLOSED_DAYS: dict[str, set[int]] = {
     "gwacheon": {0},  # 월요일 휴무
     "deoksugung": {0},  # 월요일 휴무
 }
 
 
+def _is_closed_day(venue: str, day: date) -> bool:
+    """그날 그 관이 문을 닫는가.
+
+    프론트 src/lib/museumCalendar.ts 의 isClosedDay 와 같은 규칙이다. 목록은
+    shared/museum-holidays.json 하나뿐이고 규칙만 양쪽에 있다 — 값이 아니라
+    목록을 중복하는 쪽이 위험해서 그것만 공유한다.
+
+    공휴일 월요일에 문을 열고 다음 날 쉬는 규칙(아래 둘째·셋째 갈래)의 출처는
+    **공식 문서가 아니라 실측**이다. 과천·덕수궁 관람정보와 MMCA FAQ 모두
+    "1월1일, 매주 월요일" 만 적는다. 근거는 2026-08-17(월, 광복절 대체)에
+    과천관 non-여유 185건, 이튿날 219 판독 전부 여유 하나뿐이다 — 신호는
+    모호하지 않지만 표본이 하나다. 2026-10-05(월, 공휴일)는 둘째 갈래를 다시
+    검증할 다음 기회다 — 그날 과천관이 non-빈 값을 수집하면 확인된다. 하지만
+    셋째 갈래(대체휴무일)는 이 배포 이후로는 우리 데이터로 재검증할 수 없다:
+    _is_venue_open 이 10/06 을 닫힘으로 판정해 _open_space_codes 가 그날
+    과천관을 아예 빼 버리기 때문이다. 10/06 이 실제로 휴관인지는 이제 관측이
+    아니라 관 공지나 방문으로만 확인할 수 있다.
+    """
+    if day.isoformat() in MUSEUM_CLOSED_DAYS.get(venue, frozenset()):
+        return True
+
+    weekly_closed = _VENUE_CLOSED_DAYS.get(venue, set())
+    if day.weekday() in weekly_closed:
+        return day.isoformat() not in MUSEUM_PUBLIC_HOLIDAYS
+
+    previous = day - timedelta(days=1)
+    return previous.weekday() in weekly_closed and previous.isoformat() in MUSEUM_PUBLIC_HOLIDAYS
+
+
 def _is_venue_open(venue: str, now: datetime) -> bool:
-    if now.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
+    if _is_closed_day(venue, now.date()):
         return False
     close = _LONG_CLOSE if now.weekday() in _LONG_DAYS.get(venue, set()) else _NORMAL_CLOSE
     # Truncate to the minute before comparing. The scheduler only ever fires

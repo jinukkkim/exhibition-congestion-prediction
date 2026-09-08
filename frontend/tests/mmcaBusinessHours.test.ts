@@ -60,4 +60,15 @@ describe("nextOpenDay", () => {
     // "그날은 휴관일" 인 곳이다.
     expect(nextOpenDay("seoul", new Date("2026-07-28T12:00:00"))?.weekday).toBe(3);
   });
+
+  it("counts a public-holiday Monday as the next open day", () => {
+    // 2026-08-16 은 일요일, 다음 날 8/17 은 광복절 대체공휴일 월요일이다.
+    // 요일 규칙만 보면 월요일을 건너뛰어 8/18 이 나오지만, 그날 과천관은
+    // 문을 연다 — 달력이 mmcaBusinessHours 를 거쳐 여기까지 닿는지를
+    // 고정하는 유일한 테스트다.
+    expect(nextOpenDay("gwacheon", new Date("2026-08-16T12:00:00"))).toEqual({
+      weekday: 1,
+      open: 10 * 60,
+    });
+  });
 });

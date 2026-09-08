@@ -1,6 +1,7 @@
 import type { Venue } from "../venues";
 import { formatMinutes, WEEKDAY_KO } from "./date";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
+import { isWeeklyClosed } from "./museumCalendar";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
 
 // 요일별 영업시간을 모으려면 요일마다 Date 가 하나씩 필요하다. 영업시간 함수는
@@ -11,9 +12,18 @@ const REFERENCE_SUNDAY = "2026-01-04";
 function dayHours(venue: Venue, weekday: number) {
   const date = new Date(`${REFERENCE_SUNDAY}T12:00:00`);
   date.setDate(date.getDate() + weekday);
-  // 국중박은 요일 휴관이 없어 isOpenToday 를 돌려주지 않는다.
+  // 두 갈래 모두 달력이 아니라 요일 규칙만 본다. 이 줄은 한 주를
+  // "10:00~18:00 (월요일 휴무)" 로 접는 요약이라 특정 날짜의 달력 휴관이
+  // 섞이면 안 된다 — REFERENCE_SUNDAY 주간에 휴관일이 하나라도 들어오면
+  // 헤더가 조용히 틀려진다. MMCA 는 isWeeklyClosed 로 덮고, 국중박은 요일
+  // 휴관이 아예 없어 요일만 볼 때의 답이 늘 "개관"이라 true 로 고정한다.
+  // 어느 쪽도 mmcaBusinessHours/nationalMuseumBusinessHours 가 돌려주는
+  // isOpenToday 를 그대로 쓰지 않는다 — 그 값은 달력을 보기 때문이다.
   return venue.mmcaVenue
-    ? mmcaBusinessHours(venue.mmcaVenue, date)
+    ? {
+        ...mmcaBusinessHours(venue.mmcaVenue, date),
+        isOpenToday: !isWeeklyClosed(venue.mmcaVenue, date),
+      }
     : { ...nationalMuseumBusinessHours(date), isOpenToday: true };
 }
 
