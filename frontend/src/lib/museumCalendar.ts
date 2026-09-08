@@ -1,5 +1,5 @@
 import calendar from "../../../shared/museum-holidays.json";
-import { dateString } from "./date";
+import { dateString, shiftDate } from "./date";
 
 // 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주
 // 월요일 문을 여는 것은 서울관뿐이다. JS Date.getDay(): 일=0, 월=1
@@ -45,7 +45,11 @@ export function isClosedDay(venue: Venue, date: Date): boolean {
 
   if (isWeeklyClosed(venue, date)) return !PUBLIC_HOLIDAYS.has(day);
 
-  const previous = new Date(date);
-  previous.setDate(previous.getDate() - 1);
-  return isWeeklyClosed(venue, previous) && PUBLIC_HOLIDAYS.has(dateString(previous));
+  // 전날이 그 관의 요일 휴관일이었는지는 두 번째 Date 를 만들지 않고 셈으로
+  // 구한다 — shiftDate 가 이미 문자열 날짜 하나로 요일 이동을 계산해 준다.
+  // isWeeklyClosed 는 Date 를 받는 형태라 여기서는 요일 번호를 직접 인라인한다
+  // (JS Date.getDay(): 일=0 이므로 하루 전 요일은 (오늘 요일 + 6) % 7).
+  const previousWeekday = (date.getDay() + 6) % 7;
+  const previousDay = shiftDate(day, -1);
+  return WEEKLY_CLOSED[venue] === previousWeekday && PUBLIC_HOLIDAYS.has(previousDay);
 }
