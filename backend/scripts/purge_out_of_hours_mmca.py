@@ -16,7 +16,11 @@ reads shared/museum-holidays.json, so it knows the three things a weekday-only
 gate could not: MMCA opens on a holiday that lands on its weekly closing day
 (2026-08-17, non-여유 185), closes the day after (2026-08-18, all 219 readings
 여유), and closes on the ad-hoc days each venue announces (Seoul 2026-09-08,
-1,928 readings with non-여유 0).
+1,928 readings with non-여유 0). The ad-hoc dates are the venue's own published
+notice; the holiday-Monday open/close pair is inferred from that single
+measured pair of days, not from any published policy — and this is the only
+file on the branch that deletes rows on the strength of it, so treat that
+distinction as load-bearing here.
 
 Public holidays used to be skipped outright for exactly that reason — a
 calendar this script could not check was not a calendar it should delete
