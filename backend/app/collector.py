@@ -2,12 +2,13 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from time import monotonic, sleep
 from zoneinfo import ZoneInfo
 
 import httpx
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.cache import set_latest
@@ -268,6 +269,38 @@ _COLLECTION_START = time(10, 0)
 # 조용히 따라 움직였다. 지금은 날짜별 선평균이라 간격과 예측이 분리돼 있다.
 MMCA_POLL_MINUTES = 2
 
+# 진행 중인 전시가 없는 방(resultCode 0002)을 다시 확인하는 주기(분). 그 사이
+# 라운드에서는 그런 방을 아예 부르지 않는다.
+#
+# 이 스킵은 한 번 있었다가 지워진 적이 있다. 옛 1,000콜/일 상한 때문에 11시부터
+# 2시간 주기로 떨어뜨렸는데, 낮에 새로 여는 전시를 최대 2시간 뒤에야 잡아서
+# 상한이 풀리자마자 걷어냈다. 지금 다시 넣는 근거는 쿼터가 아니다 — 쿼터는
+# 100,000/일 대비 4.9% 라 어느 쪽도 제약하지 않는다(MMCA_POLL_MINUTES 참조).
+#
+# 근거는 두 가지다:
+#
+#   행 노이즈. 2026-08-25~09-06 실측으로 17방 중 7방(1002·1004·1008·2002·
+#   2004·2006·4001)이 판독 100% 가 빈 응답이었다. 매 라운드 담으면 하루
+#   2,300여 행이 정보 0으로 쌓이고, 콜의 41% 가 그 행을 만드는 데 쓰인다.
+#
+#   라운드 길이. 방을 순차로 부르므로 라운드 시간이 `방 수 × 방당 timeout` 이고,
+#   그 값이 격자를 넘으면 다음 라운드가 통째로 버려진다(2026-09-03 에 407라운드
+#   중 55개). 30라운드 중 29개가 10방 30초로 줄어, 상류가 느려졌을 때 걸려 있는
+#   방이 절반이 된다.
+#
+# 다만 두 번째 근거는 **최악 시간을 줄이지 않는다** — probe 라운드는 여전히
+# 17방이라 최악은 51초 그대로다. mmca_api.py 의 FETCH_TIMEOUT_SECONDS 산식을
+# 묶고 있는 것은 계속 그 라운드이고, 방이 늘면 여기가 아니라 그쪽을 봐야 한다.
+# (2026-09-08 실측으로 51초는 120초 격자 안에 들어간다: 그날 4,097콜 전부 성공,
+# 손실 0.)
+#
+# 30분인 이유는 되살아나는 방이 실재하기 때문이다. 1003·1005 는 7/26 부터 37일
+# 내리 0002 였다가 **9/1 15:00 에** 살아났다 — 개장 시각이 아니라 장중이었다.
+# 하루 한 번 확인이었다면 그날을 통째로 놓쳤다. 30분이면 늦어도 그 안에 잡고,
+# 옛 스킵이 지워진 이유였던 "최대 2시간"의 1/4 이다. 지연을 더 줄이고 싶으면
+# 이 값만 내리면 된다 — 비용은 probe 라운드 하나당 7콜뿐이다.
+_PROBE_MINUTES = 30
+
 # 요일 휴관. 덕수궁관은 궁 안에 있고 과천관도 화~일 주간을 지킨다 — 매주 월요일
 # 문을 여는 것은 서울관뿐이다.
 #
@@ -299,6 +332,44 @@ def _is_venue_open(venue: str, now: datetime) -> bool:
     return _COLLECTION_START <= now_minute <= close
 
 
+def _open_space_codes(now: datetime) -> list[str]:
+    """지금 개관 중인 관의 전시실 코드 전부."""
+    return [
+        space_code
+        for venue, codes in settings.mmca_venue_space_codes.items()
+        if _is_venue_open(venue, now)
+        for space_code in codes
+    ]
+
+
+def _rooms_to_poll(session: Session, space_codes: list[str], round_time: datetime) -> list[str]:
+    """이번 라운드에 실제로 부를 방 — 상시 0002 인 방은 probe 라운드에만 낀다.
+
+    "상시 0002" 를 별도 상태로 들고 있지 않고 직전 _PROBE_MINUTES 창의 판독으로
+    매번 다시 판정한다. 재시작이 상태를 지울 수 없고, 방이 살아나면 그 판독
+    자체가 다음 라운드의 판정을 바꿔 놓는다 — 되돌릴 자리가 따로 없다.
+    """
+    if round_time.minute % _PROBE_MINUTES == 0:
+        return space_codes
+
+    since = round_time - timedelta(minutes=_PROBE_MINUTES)
+    # max() 는 NULL 을 무시하므로, 창 안에 산 판독이 하나라도 있던 방만 값이
+    # non-NULL 로 나온다.
+    rows = session.execute(
+        select(RawMmcaCongestion.space_code, func.max(RawMmcaCongestion.congestion_nm))
+        .where(RawMmcaCongestion.observed_at >= since)
+        .group_by(RawMmcaCongestion.space_code)
+    ).all()
+    # 창이 통째로 비어 있으면 "전부 0002" 가 아니라 "판정할 근거가 없다" 는
+    # 뜻이다 — 개관 직후이거나 재시작 직후다. 빈 결과를 스킵으로 읽으면 다음
+    # probe 까지 최대 _PROBE_MINUTES 를 통째로 잃는다.
+    if not rows:
+        return space_codes
+
+    live = {space_code for space_code, congestion_nm in rows if congestion_nm is not None}
+    return [space_code for space_code in space_codes if space_code in live]
+
+
 def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None) -> list[MmcaCongestionReading]:
     # Server local time isn't guaranteed to be KST (e.g. a UTC container), so
     # pin explicitly to Asia/Seoul instead of a naive datetime.now().
@@ -312,12 +383,12 @@ def collect_mmca_once(session_factory=SessionLocal, now: datetime | None = None)
         minute=(now.minute // MMCA_POLL_MINUTES) * MMCA_POLL_MINUTES, second=0, microsecond=0
     )
 
-    space_codes = [
-        space_code
-        for venue, codes in settings.mmca_venue_space_codes.items()
-        if _is_venue_open(venue, now)
-        for space_code in codes
-    ]
+    space_codes = _open_space_codes(now)
+    if not space_codes:
+        return []
+
+    with session_factory() as session:
+        space_codes = _rooms_to_poll(session, space_codes, round_time)
     if not space_codes:
         return []
 
