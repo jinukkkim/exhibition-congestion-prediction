@@ -34,6 +34,10 @@ export function isWeeklyClosed(venue: Venue, date: Date): boolean {
  * 규칙은 이 배포 이후로는 우리 데이터로 재검증할 수 없다: 백엔드가 10/06 을
  * 닫힘으로 판정해 그날 과천관 수집 자체를 건너뛰기 때문이다 — 10/06 이
  * 실제로 휴관인지는 이제 관 공지나 방문으로만 확인할 수 있다.
+ *
+ * 그 근거를 설·추석 연휴 월요일까지 늘리지 않는다 — publicHolidays 는 그런
+ * 날짜(2026-02-16, 2027-02-08)를 일부러 뺀다. shared/museum-holidays.json
+ * 의 _comment 참고.
  */
 export function isClosedDay(venue: Venue, date: Date): boolean {
   const day = dateString(date);

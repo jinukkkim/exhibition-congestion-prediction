@@ -25,6 +25,25 @@ describe("isClosedDay", () => {
     expect(isClosedDay("seoul", new Date("2026-09-08T12:00:00"))).toBe(true);
     expect(isClosedDay("gwacheon", new Date("2026-09-08T12:00:00"))).toBe(false);
   });
+
+  it("does not close the day after a lunar new year Monday", () => {
+    // 설·추석 연휴 월요일은 publicHolidays 에 넣지 않는다.
+    //
+    // 2026-02-16(월)은 설 연휴 전날이고 2026-02-17 은 설날이다. 그 월요일을
+    // 공휴일로 실으면 셋째 갈래가 설날을 대체 휴관으로 닫는데, 과천·덕수궁의
+    // 공표 휴관일은 "1월1일, 매주 월요일" 뿐이라 그날 문을 연다. 셋째 갈래의
+    // 근거는 대체공휴일 한 사례(2026-08-17)뿐이라 연휴 월요일까지 늘리지
+    // 않는다.
+    for (const venue of ["gwacheon", "deoksugung"] as const) {
+      // 월요일 자체는 여전히 요일 휴관이다 — 공휴일 예외를 주지 않았다.
+      expect(isClosedDay(venue, new Date("2026-02-16T12:00:00"))).toBe(true);
+      // 설날은 열려 있다.
+      expect(isClosedDay(venue, new Date("2026-02-17T12:00:00"))).toBe(false);
+      // 2027 년의 같은 충돌.
+      expect(isClosedDay(venue, new Date("2027-02-08T12:00:00"))).toBe(true);
+      expect(isClosedDay(venue, new Date("2027-02-09T12:00:00"))).toBe(false);
+    }
+  });
 });
 
 describe("isWeeklyClosed", () => {
