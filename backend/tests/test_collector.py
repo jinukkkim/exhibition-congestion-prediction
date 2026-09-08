@@ -291,6 +291,9 @@ def test_is_closed_day_honours_an_ad_hoc_closure():
     from app.collector import _is_closed_day
 
     assert _is_closed_day("seoul", date(2026, 9, 8)) is True
+    # 2026-01-01 은 목요일이다 — 과천관의 요일 휴관과 무관하므로 오직 첫째
+    # 갈래(closed[venue])로만 닫힐 수 있다.
+    assert _is_closed_day("gwacheon", date(2026, 1, 1)) is True
 
 
 def test_collect_mmca_once_polls_gwacheon_on_a_holiday_monday(monkeypatch, session_factory):
