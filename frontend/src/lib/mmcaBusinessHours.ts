@@ -26,19 +26,23 @@ export function mmcaBusinessHours(
 
 /**
  * `from` **다음**으로 이 관이 문을 여는 날. 휴관일 안내가 "언제 다시 오면
- * 되는지"까지 말하려면 필요한 값이라 요일 휴관 규칙 바로 옆에 둔다 — 다른
- * 파일에 두면 VENUE_CLOSED_DAYS 를 고칠 때 한쪽만 고치게 된다.
+ * 되는지"까지 말하려면 필요한 값이라 mmcaBusinessHours 바로 옆에 둔다 — 다른
+ * 파일에 두면 museumCalendar.ts 의 `isClosedDay`(요일 규칙은 `WEEKLY_CLOSED`)
+ * 를 고칠 때 한쪽만 고치게 된다.
  *
  * `from` 자신은 세지 않는다. 부르는 자리가 이미 "그날은 휴관일" 인 곳이다.
  *
- * `from` 의 시:분은 결과에 닿지 않는다 — 요일만 읽으므로 호출부가 현재 시각이
- * 담긴 Date(오늘 탭)를 주든 자정으로 만든 Date(미래 탭)를 주든 답이 같다.
- * 한국은 서머타임이 없어 날짜를 하루씩 미는 것도 요일을 어긋나게 하지 않는다.
+ * `from` 의 시:분은 결과에 닿지 않는다 — `mmcaBusinessHours` 를 거쳐 읽는
+ * `isClosedDay` 는 요일이 아니라 날짜(연-월-일)를 보므로, 호출부가 현재
+ * 시각이 담긴 Date(오늘 탭)를 주든 자정으로 만든 Date(미래 탭)를 주든 같은
+ * 날짜로 취급되어 답이 같다. 한국은 서머타임이 없어 날짜를 하루씩 미는 것도
+ * 날짜 경계를 어긋나게 하지 않는다.
  *
  * 7일을 넘겨 찾지 않고 `null` 을 돌려준다. 어느 관도 이틀을 잇달아 쉬지
- * 않지만, VENUE_CLOSED_DAYS 에 일곱 요일을 다 적으면 무한 루프가 되는 형태라
- * 상한을 둔다 — businessHoursLine 이 같은 상황에서 "상시 휴관" 을 돌려주는
- * 것과 같은 방어이고, 호출부는 안내 줄을 생략하면 된다.
+ * 않지만, museumCalendar.ts 의 `WEEKLY_CLOSED` 에 일곱 요일을 다 적으면
+ * 무한 루프가 되는 형태라 상한을 둔다 — businessHoursLine 이 같은 상황에서
+ * "상시 휴관" 을 돌려주는 것과 같은 방어이고, 호출부는 안내 줄을 생략하면
+ * 된다.
  */
 export function nextOpenDay(
   venue: MmcaVenue,

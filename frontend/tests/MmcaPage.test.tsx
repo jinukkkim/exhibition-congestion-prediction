@@ -291,6 +291,31 @@ describe("MmcaPage", () => {
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
   });
 
+  it("judges a future tab by its own date, not the week before it", async () => {
+    // 2026-08-12(수) 기준 탭은 8/12~8/18 이다. 8/17 은 광복절 대체공휴일
+    // 월요일이라 과천관이 열고, 8/18 은 그 대체 휴관일이다. D-7 로 재면
+    // 두 답이 정확히 뒤집힌다 — 8/10 은 평범한 월요일, 8/11 은 평범한 화요일.
+    vi.setSystemTime(new Date("2026-08-12T14:00:00"));
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+
+    fireEvent.click(screen.getByRole("tab", { name: "월 8/17" }));
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "월 8/17" })).toHaveAttribute("aria-selected", "true")
+    );
+    expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "화 8/18" }));
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+  });
+
   it("shows the closed-day notice on an ad-hoc closure", async () => {
     // 서울관 2026-09-08 임시 휴관. 요일로는 알 수 없어 달력에서만 나온다.
     vi.setSystemTime(new Date("2026-09-08T14:00:00"));

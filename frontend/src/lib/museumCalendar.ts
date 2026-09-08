@@ -13,7 +13,9 @@ const WEEKLY_CLOSED: Record<string, number> = {
 const PUBLIC_HOLIDAYS = new Set<string>(calendar.publicHolidays);
 const CLOSED: Record<string, string[]> = calendar.closed;
 
-export function isWeeklyClosed(venue: string, date: Date): boolean {
+type Venue = keyof typeof calendar.closed;
+
+export function isWeeklyClosed(venue: Venue, date: Date): boolean {
   return WEEKLY_CLOSED[venue] === date.getDay();
 }
 
@@ -29,7 +31,7 @@ export function isWeeklyClosed(venue: string, date: Date): boolean {
  * 만 적는다. 근거는 2026-08-17 과천 non-여유 185건과 이튿날 219판독 전부
  * 여유 하나뿐이다. 다음 검증 기회는 2026-10-05 → 10/06.
  */
-export function isClosedDay(venue: string, date: Date): boolean {
+export function isClosedDay(venue: Venue, date: Date): boolean {
   const day = dateString(date);
   if (CLOSED[venue]?.includes(day)) return true;
 

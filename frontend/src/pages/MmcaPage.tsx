@@ -117,19 +117,14 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   );
 
   const now = new Date();
-  // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00 폐관이라 요일에 따라
-  // 축의 오른쪽 끝이 달라진다. (D 와 D-7 은 같은 요일이라 결과는 같지만,
-  // 그리는 날짜를 기준으로 두는 편이 읽기에 분명하다.)
-  const { open, close, isOpenToday } = mmcaBusinessHours(
-    venue,
-    isTodayTab ? now : new Date(`${chartDate}T00:00:00`)
-  );
-  // 안내는 고른 날짜 기준이다 — 미래 탭의 월요일을 골랐으면 "다음 개관"도 그
-  // 월요일 다음이어야 한다. 위의 영업시간은 chartDate(D-7)로 재지만 요일이
-  // 같아 결과가 같고, 여기서는 요일이 아니라 날짜가 뜻을 가지므로 갈라 둔다.
-  const nextOpen = isOpenToday
-    ? null
-    : nextOpenDay(venue, isTodayTab ? now : new Date(`${selectedDate}T00:00:00`));
+  // 폐관 시각(수·토 21:00)은 요일만 보므로 D 와 D-7 이 항상 같은 답을 준다.
+  // 하지만 휴관 판정(isOpenToday)은 날짜를 읽는다 — 임시 휴관과 대체공휴일
+  // 월요일이 그 예다. chartDate(D-7)로 재면 다른 날의 답을 내놓으므로, 두
+  // 판정 모두 고른 날짜(selectedDate) 자체로 재고 nextOpenDay 와 같은 값을
+  // 쓴다.
+  const viewedDate = isTodayTab ? now : new Date(`${selectedDate}T00:00:00`);
+  const { open, close, isOpenToday } = mmcaBusinessHours(venue, viewedDate);
+  const nextOpen = isOpenToday ? null : nextOpenDay(venue, viewedDate);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   // A room only earns a full-size chart card if it has a curve worth showing.
   // Until today's first reading exists, last week's same-weekday curve is the
