@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 import fakeredis
 import httpx
@@ -253,6 +253,96 @@ def test_is_venue_open_deoksugung_closed_on_monday():
     assert _is_venue_open("deoksugung", datetime(2026, 7, 27, 14, 0)) is False
     # 2026-07-28 is a Tuesday — same hours as Seoul, open.
     assert _is_venue_open("deoksugung", datetime(2026, 7, 28, 14, 0)) is True
+
+
+def test_is_closed_day_opens_a_holiday_monday():
+    """2026-08-17(광복절 대체) 과천관은 열었다 — non-여유 판독 185건.
+    출처는 공식 문서가 아니라 실측이다(관람정보 페이지는 '매주 월요일'만
+    적는다). 스펙의 '알려진 한계' 참고."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("gwacheon", date(2026, 8, 17)) is False
+    assert _is_closed_day("deoksugung", date(2026, 8, 17)) is False
+
+
+def test_is_closed_day_closes_the_day_after_a_holiday_monday():
+    """2026-08-18 과천관은 219 판독이 전부 여유였다(빈 건물). 다른 모든
+    화요일은 non-여유가 59~157."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("gwacheon", date(2026, 8, 18)) is True
+    # 서울관은 요일 휴관이 없어 대체 휴관도 없다 — 같은 날 non-여유 65.
+    assert _is_closed_day("seoul", date(2026, 8, 18)) is False
+
+
+def test_is_closed_day_still_closes_a_plain_monday():
+    from app.collector import _is_closed_day
+
+    # 2026-09-07 은 공휴일이 아닌 월요일이다.
+    assert _is_closed_day("gwacheon", date(2026, 9, 7)) is True
+    assert _is_closed_day("seoul", date(2026, 9, 7)) is False
+    # 그 다음 화요일은 대체 휴관이 아니다 — 앞날이 공휴일이 아니었다.
+    assert _is_closed_day("gwacheon", date(2026, 9, 8)) is False
+
+
+def test_is_closed_day_honours_an_ad_hoc_closure():
+    """서울관 2026-09-08 임시 휴관 — 관람정보 페이지가 명시하고, 그날 판독
+    1,928건의 non-여유가 0이었다."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("seoul", date(2026, 9, 8)) is True
+
+
+def test_collect_mmca_once_polls_gwacheon_on_a_holiday_monday(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 8, 17, 14, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001"]},
+    )
+
+    # 14:00 은 probe 라운드가 아니지만 창이 비어 있어 전부 부른다.
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 8, 17, 14, 0)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-2001"]
+    assert len(result) == 1
+
+
+def test_collect_mmca_once_skips_gwacheon_the_day_after(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    def fake_fetch(client, space_code, api_key):
+        raise AssertionError("대체 휴관일에는 부르지 않는다")
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001"]},
+    )
+
+    assert (
+        collector_module.collect_mmca_once(
+            session_factory=session_factory, now=datetime(2026, 8, 18, 14, 0)
+        )
+        == []
+    )
 
 
 def test_collect_mmca_once_skips_api_call_when_closed(monkeypatch, session_factory):
