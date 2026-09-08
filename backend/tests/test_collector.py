@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date, datetime
+from pathlib import Path
 
 import fakeredis
 import httpx
@@ -315,6 +316,25 @@ def test_is_closed_day_does_not_close_the_day_after_a_lunar_new_year_monday():
         # 2027 년의 같은 충돌.
         assert _is_closed_day(venue, date(2027, 2, 8)) is True
         assert _is_closed_day(venue, date(2027, 2, 9)) is False
+
+
+def test_is_closed_day_matches_the_shared_fixture():
+    """shared/museum-holidays.test-cases.json 은 두 언어 구현이 같은 답을
+    내는지 확인하는 유일한 장치다 — 이 테스트가 프론트의 같은 이름 테스트와
+    같은 파일을 읽는다. 한쪽 규칙만 바뀌면 이 테스트나 그쪽이 실패한다."""
+    from app.collector import _is_closed_day
+
+    fixture_path = (
+        Path(__file__).resolve().parents[2] / "shared" / "museum-holidays.test-cases.json"
+    )
+    cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert len(cases) > 0
+
+    for case in cases:
+        target = date.fromisoformat(case["date"])
+        assert _is_closed_day(case["venue"], target) is case["closed"], (
+            f"{case['venue']} {case['date']}: {case['why']}"
+        )
 
 
 def test_collect_mmca_once_polls_gwacheon_on_a_holiday_monday(monkeypatch, session_factory):

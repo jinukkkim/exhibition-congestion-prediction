@@ -1,0 +1,20 @@
+[
+  { "venue": "gwacheon", "date": "2026-08-17", "closed": false, "why": "광복절 대체공휴일 월요일 — 과천관 개관 (실측 non-여유 185)" },
+  { "venue": "gwacheon", "date": "2026-08-18", "closed": true, "why": "대체 휴관 화요일 — 실측 219판독 전부 여유(빈 건물)" },
+  { "venue": "gwacheon", "date": "2026-09-07", "closed": true, "why": "평범한 월요일 — 요일 휴관" },
+  { "venue": "gwacheon", "date": "2026-09-08", "closed": false, "why": "화요일, 앞날(9/7)이 공휴일이 아니었다" },
+  { "venue": "seoul", "date": "2026-09-08", "closed": true, "why": "서울관 임시 휴관일(관람정보 명시, 실측 1,928판독 non-여유 0)" },
+  { "venue": "seoul", "date": "2026-08-18", "closed": false, "why": "서울관은 요일 휴관이 없어 대체 휴관도 없다" },
+  { "venue": "deoksugung", "date": "2026-08-18", "closed": true, "why": "덕수궁관도 과천관과 같은 요일 휴관 — 대체 휴관 화요일" },
+  { "venue": "gwacheon", "date": "2026-01-01", "closed": true, "why": "신정 — closed[venue] 목록에 있는 날짜" },
+  { "venue": "national-museum", "date": "2026-09-25", "closed": true, "why": "추석 당일 — closed[venue] 목록에 있는 날짜" },
+  { "venue": "national-museum", "date": "2026-09-07", "closed": false, "why": "국립중앙박물관은 요일 휴관이 없어 평범한 월요일에도 연다" },
+  { "venue": "gwacheon", "date": "2026-02-16", "closed": true, "why": "설 연휴 전날 월요일 — publicHolidays 에 없어 요일 휴관 그대로" },
+  { "venue": "gwacheon", "date": "2026-02-17", "closed": false, "why": "설날 화요일 — 앞날(2/16)이 publicHolidays 에 없어 대체 휴관 아님" },
+  { "venue": "deoksugung", "date": "2026-02-16", "closed": true, "why": "설 연휴 전날 월요일 — publicHolidays 에 없어 요일 휴관 그대로" },
+  { "venue": "deoksugung", "date": "2026-02-17", "closed": false, "why": "설날 화요일 — 앞날(2/16)이 publicHolidays 에 없어 대체 휴관 아님" },
+  { "venue": "gwacheon", "date": "2027-02-08", "closed": true, "why": "설날 둘째날 월요일 — publicHolidays 에 없어 요일 휴관 그대로" },
+  { "venue": "gwacheon", "date": "2027-02-09", "closed": false, "why": "화요일 — 앞날(2027-02-08)이 publicHolidays 에 없어 대체 휴관 아님" },
+  { "venue": "deoksugung", "date": "2027-02-08", "closed": true, "why": "설날 둘째날 월요일 — publicHolidays 에 없어 요일 휴관 그대로" },
+  { "venue": "deoksugung", "date": "2027-02-09", "closed": false, "why": "화요일 — 앞날(2027-02-08)이 publicHolidays 에 없어 대체 휴관 아님" }
+]
