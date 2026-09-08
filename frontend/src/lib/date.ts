@@ -1,4 +1,7 @@
-function formatDate(d: Date): string {
+// Date -> "YYYY-MM-DD" (브라우저 로컬 기준). todayString() 과 달리 KST 로
+// 고정하지 않는다 — 영업시간 판정 전체가 이미 로컬 시계를 쓰고(now.getHours()),
+// 이 함수는 그 판정에 쓰이는 날짜 키라 같은 시계를 봐야 한다.
+export function dateString(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -23,7 +26,7 @@ export function todayString(): string {
 export function shiftDate(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return formatDate(d);
+  return dateString(d);
 }
 
 // Date.getDay() 순서(일=0). 날짜 문자열이 아니라 요일 번호로 이름을 찾는

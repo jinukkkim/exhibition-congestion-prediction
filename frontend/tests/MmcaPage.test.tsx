@@ -291,6 +291,21 @@ describe("MmcaPage", () => {
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
   });
 
+  it("shows the closed-day notice on an ad-hoc closure", async () => {
+    // 서울관 2026-09-08 임시 휴관. 요일로는 알 수 없어 달력에서만 나온다.
+    vi.setSystemTime(new Date("2026-09-08T14:00:00"));
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+    expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
+  });
+
   it("groups open rooms with no data collected today into small inactive cards", async () => {
     vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([

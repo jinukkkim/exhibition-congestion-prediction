@@ -1,4 +1,5 @@
 import type { MmcaVenue } from "../api/mmca";
+import { isClosedDay } from "./museumCalendar";
 
 const OPEN_MINUTES = 10 * 60; // 10:00, every day
 const NORMAL_CLOSE_MINUTES = 18 * 60;
@@ -13,26 +14,6 @@ const LONG_CLOSE_DAYS: Partial<Record<MmcaVenue, Set<number>>> = {
   deoksugung: new Set([3, 6]),
 };
 
-// Same rule as the backend's collector.py _VENUE_CLOSED_DAYS — Deoksugung is
-// inside the palace grounds and Gwacheon keeps the same Tuesday–Sunday week;
-// only Seoul opens every day. JS Date.getDay(): Sun=0, Mon=1 (the backend's
-// Python datetime.weekday() is Mon=0, a different convention — this is the
-// same real-world rule translated to JS's convention, not a copy of the
-// value).
-//
-// ponytail: 요일만 본다. 대체공휴일 월요일에는 실제로 문을 열지만(2026-08-17
-// 과천관에 정상 혼잡 기록이 있다) 그날은 휴관일로 그려진다. 공휴일 달력이
-// 들어오면 그때 함께 고친다.
-//
-// MmcaPage 가 그날 방 목록을 통째로 안내 하나로 바꾸게 됐지만 잃는 것은 없다 —
-// 백엔드의 _VENUE_CLOSED_DAYS 가 같은 요일 규칙으로 수집을 막고 있어 그날은
-// 보여줄 판독이 애초에 없다(8/17 의 그 기록은 게이트가 생기기 전 것이다).
-// 뒤집으면 고칠 때도 한쪽만 고쳐서는 안 된다는 뜻이다.
-const VENUE_CLOSED_DAYS: Partial<Record<MmcaVenue, Set<number>>> = {
-  gwacheon: new Set([1]),
-  deoksugung: new Set([1]),
-};
-
 export function mmcaBusinessHours(
   venue: MmcaVenue,
   date: Date
@@ -40,8 +21,7 @@ export function mmcaBusinessHours(
   const close = LONG_CLOSE_DAYS[venue]?.has(date.getDay())
     ? LONG_CLOSE_MINUTES
     : NORMAL_CLOSE_MINUTES;
-  const isOpenToday = !VENUE_CLOSED_DAYS[venue]?.has(date.getDay());
-  return { open: OPEN_MINUTES, close, isOpenToday };
+  return { open: OPEN_MINUTES, close, isOpenToday: !isClosedDay(venue, date) };
 }
 
 /**
