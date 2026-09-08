@@ -295,7 +295,7 @@ export function CongestionCard({
     // 영업시간 밖이라는 사실은 판독 없이도 확정된다 — 데이터를 기다렸다가
     // 답하면 페이지를 열 때마다 "불러오는 중"이 한 번 스쳐 지나간다.
     const placeholderNow = new Date();
-    const { open: placeholderOpen, close: placeholderClose } =
+    const { open: placeholderOpen, close: placeholderClose, isOpenToday: placeholderIsOpenToday } =
       nationalMuseumBusinessHours(placeholderNow);
     const placeholderMinutes = placeholderNow.getHours() * 60 + placeholderNow.getMinutes();
     const outsideHours =
@@ -303,7 +303,9 @@ export function CongestionCard({
 
     return (
       <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
-        {outsideHours ? (
+        {!placeholderIsOpenToday ? (
+          <span className="text-2xl font-semibold text-ink-soft">휴관일입니다</span>
+        ) : outsideHours ? (
           <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
         ) : error ? (
           <>
@@ -321,22 +323,26 @@ export function CongestionCard({
   const now = new Date();
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00, 그 외는 17:30 폐관이라
   // 요일에 따라 축의 오른쪽 끝이 달라진다.
-  const { open, close } = nationalMuseumBusinessHours(
+  const { open, close, isOpenToday } = nationalMuseumBusinessHours(
     isTodayView ? now : new Date(`${chartDate}T00:00:00`)
   );
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = isTodayView && nowMinutes >= open && nowMinutes <= close;
+  // 달력 휴관일(1월1일·설날·추석 등)에는 시각과 무관하게 닫혀 있다 —
+  // isOpenToday 가 false 면 영업시간 안에 있어도 열 수 없다.
+  const isOpen = isTodayView && isOpenToday && nowMinutes >= open && nowMinutes <= close;
   // 영업시간만 보고 "실시간"이라 적으면 수집기나 상류가 죽어도 초록 점이
   // 계속 뛴다. 표시 중인 판독 자체의 나이로 판정한다.
   const stale = isStale(data?.observed_at ?? null, now, SEOUL_STALE_MINUTES);
   const isLive = isOpen && !stale;
-  const openBadge = isOpen
-    ? stale
-      ? "갱신 지연"
-      : "실시간"
-    : nowMinutes < open
-      ? "영업 전"
-      : "영업 종료";
+  const openBadge = !isOpenToday
+    ? "휴관일"
+    : isOpen
+      ? stale
+        ? "갱신 지연"
+        : "실시간"
+      : nowMinutes < open
+        ? "영업 전"
+        : "영업 종료";
   const rawPoints: Point[] = (daily ?? [])
     .map((row) => ({
       minutes: minutesOfDay(row.observed_at),

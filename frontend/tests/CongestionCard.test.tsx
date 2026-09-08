@@ -194,6 +194,28 @@ describe("CongestionCard", () => {
     expect(screen.queryByText(/불러오는 중/)).not.toBeInTheDocument();
   });
 
+  it("says the museum is closed on a calendar closed day, not just outside business hours", () => {
+    // 2026-09-25(금)는 추석 당일 — closed["national-museum"] 목록에 있는
+    // 날짜다. 시각은 금요일 영업시간 안(폐관 17:30 전)으로 고정해, 이 안내가
+    // 시각이 아니라 달력에서 왔음을 분명히 한다.
+    vi.setSystemTime(new Date("2026-09-25T14:00:00"));
+
+    const { rerender } = render(<CongestionCard data={null} daily={null} />);
+    expect(screen.getByText("휴관일입니다")).toBeInTheDocument();
+    expect(screen.queryByText("영업 시간이 아닙니다")).not.toBeInTheDocument();
+
+    // 판독이 도착해도(원래는 없어야 하지만) 실시간 배지가 대신 나오면 안 된다
+    // — /venues/national-museum 이 홈 카드와 다른 사실을 말하는 버그였다.
+    rerender(
+      <CongestionCard
+        data={{ observed_at: "2026-09-25T13:56:00", congest_level: "여유", population_avg: 100 }}
+        daily={null}
+      />
+    );
+    expect(screen.getByText("휴관일")).toBeInTheDocument();
+    expect(screen.queryByText("실시간")).not.toBeInTheDocument();
+  });
+
   it("drops the live headline when it is not today", () => {
     // 미래 탭에서는 지난주 같은 요일의 실제 곡선을 대리로 그린다. 지나간 날의
     // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
