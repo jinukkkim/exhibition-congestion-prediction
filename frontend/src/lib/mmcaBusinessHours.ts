@@ -39,10 +39,10 @@ export function mmcaBusinessHours(
  * 날짜 경계를 어긋나게 하지 않는다.
  *
  * 7일을 넘겨 찾지 않고 `null` 을 돌려준다. 어느 관도 이틀을 잇달아 쉬지
- * 않지만, museumCalendar.ts 의 `WEEKLY_CLOSED` 에 일곱 요일을 다 적으면
- * 무한 루프가 되는 형태라 상한을 둔다 — businessHoursLine 이 같은 상황에서
- * "상시 휴관" 을 돌려주는 것과 같은 방어이고, 호출부는 안내 줄을 생략하면
- * 된다.
+ * 않지만, museumCalendar.ts 의 `closed[venue]`(임시 휴관일 날짜 목록)에
+ * 이레 연속을 다 적으면 무한 루프가 되는 형태라 상한을 둔다 —
+ * businessHoursLine 이 같은 상황에서 "상시 휴관" 을 돌려주는 것과 같은
+ * 방어이고, 호출부는 안내 줄을 생략하면 된다.
  */
 export function nextOpenDay(
   venue: MmcaVenue,

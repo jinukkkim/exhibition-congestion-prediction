@@ -18,12 +18,16 @@ function dayHours(venue: Venue, weekday: number) {
   // 틀려진다.
   // 국중박은 요일 휴관이 없어 이 주(REFERENCE_SUNDAY 기준)에는 늘 개관이다.
   // 그 주에 달력 휴관일이 들어오면 이 줄도 isWeeklyClosed 로 바꿔야 한다.
+  // 같은 이유로 국중박 쪽도 isOpenToday 를 true 로 고정한다 —
+  // nationalMuseumBusinessHours(date) 를 그대로 쓰면 달력을 참조해 특정
+  // 날짜의 임시 휴관이 이 요일 요약에 섞여든다. 국중박은 요일 휴관이
+  // 없으므로 요일만 볼 때의 정답은 늘 "개관"이다.
   return venue.mmcaVenue
     ? {
         ...mmcaBusinessHours(venue.mmcaVenue, date),
         isOpenToday: !isWeeklyClosed(venue.mmcaVenue, date),
       }
-    : nationalMuseumBusinessHours(date);
+    : { ...nationalMuseumBusinessHours(date), isOpenToday: true };
 }
 
 function joinWeekdays(weekdays: number[]): string {

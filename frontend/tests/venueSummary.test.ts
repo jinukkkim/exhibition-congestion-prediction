@@ -194,8 +194,7 @@ describe("mmcaSummary", () => {
   it("opens Deoksugung on a public-holiday Monday", () => {
     // 2026-08-17은 광복절 대체공휴일 월요일이다. 요일 휴관일이지만 그날은
     // 문을 연다 — 홈 카드도 관 페이지와 같은 달력을 따라야 한다.
-    // (실측 근거는 shared/museum-holidays.json 과 collector.py 의
-    // _is_closed_day 주석에 있다.)
+    // (실측 근거는 backend/app/collector.py 의 _is_closed_day 주석에 있다.)
     expect(mmcaSummary("deoksugung", null, new Date("2026-08-17T14:00:00"))).toEqual({
       kind: "inactive",
       label: "불러오는 중",
