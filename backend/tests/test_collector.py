@@ -651,6 +651,39 @@ def test_collect_mmca_once_polls_everything_when_the_probe_window_is_empty(
     assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
 
 
+def test_probe_rounds_survive_a_grid_that_does_not_divide_the_probe_interval(
+    monkeypatch, session_factory
+):
+    """격자가 30 을 나누지 않아도 30분 창마다 probe 라운드가 하나 있다.
+
+    MMCA_POLL_MINUTES 는 이미 세 번(10→1→2) 바뀐 값이다. 4 가 되면 라운드의
+    분이 0,4,…,28,32,… 라 30 이 아예 나오지 않으므로, `% 30 == 0` 으로
+    판정하면 probe 가 정각 하나로 줄고 그만큼 되살아난 방을 늦게 잡는다.
+    """
+    import app.collector as collector_module
+
+    monkeypatch.setattr(collector_module, "MMCA_POLL_MINUTES", 4)
+    _seed(session_factory, "MMCA-SPACE-1001", [(11, 40), (11, 44)], "보통")
+    _seed(session_factory, "MMCA-SPACE-1002", [(11, 40), (11, 44)], None)
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
+    # 11:47 → 라운드 마크 11:44. 30분 창 안쪽이라 probe 가 아니다.
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 47)
+    )
+    assert seen_codes == ["MMCA-SPACE-1001"]
+
+    # 11:35 → 라운드 마크 11:32. 30 은 격자에 없지만 이것이 그 창의 첫
+    # 라운드라 probe 다.
+    seen_codes.clear()
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 35)
+    )
+    assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+
+
 def test_collect_mmca_once_polls_every_configured_room(monkeypatch, session_factory):
     import app.collector as collector_module
 

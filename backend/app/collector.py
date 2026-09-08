@@ -349,7 +349,13 @@ def _rooms_to_poll(session: Session, space_codes: list[str], round_time: datetim
     매번 다시 판정한다. 재시작이 상태를 지울 수 없고, 방이 살아나면 그 판독
     자체가 다음 라운드의 판정을 바꿔 놓는다 — 되돌릴 자리가 따로 없다.
     """
-    if round_time.minute % _PROBE_MINUTES == 0:
+    # `== 0` 이 아니라 `< MMCA_POLL_MINUTES` 인 이유: 격자가 30 을 나누지 않는
+    # 값이 되면 30분 자리에 라운드가 아예 없다. 4분이면 분이 0,4,…,28,32,… 라
+    # 30 을 건너뛰어 probe 가 시간당 한 번으로 줄어든다(정각은 어느 격자에서도
+    # 나오므로 멈추지는 않는다). 30분 창의 **첫 라운드**를 잡으면 격자가
+    # 무엇이든 창마다 정확히 하나가 probe 다 — 라운드 간격이 곧
+    # MMCA_POLL_MINUTES 라 폭 안에 마크가 둘 들어올 수 없다.
+    if round_time.minute % _PROBE_MINUTES < MMCA_POLL_MINUTES:
         return space_codes
 
     since = round_time - timedelta(minutes=_PROBE_MINUTES)
