@@ -10,6 +10,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-08-museum-holiday-calendar-design.md`
 
+**실행 후 갱신(2026-09-09):** 아래 Task 1 의 JSON 스니펫은 계획 당시의 값이다.
+코드 리뷰에서 설·추석 연휴 월요일(`2026-02-16`, `2027-02-08`)이 규칙 3 을
+오작동시키는 것이 발견돼 두 날짜를 뺐다 — 그 월요일을 공휴일로 실으면 다음
+날인 설날을 대체 휴관으로 닫는데, 과천·덕수궁의 공표 휴관일은 "1월1일, 매주
+월요일" 뿐이다. **실제 값은 `shared/museum-holidays.json` 이 authoritative
+하고**, 근거는 스펙의 알려진 한계에 있다. Task 6 의 실행 명령도 갱신했다
+(purge 스크립트는 이제 미리보기가 기본값이고 `--delete` 로만 지운다).
+
 ## Global Constraints
 
 - 커밋: Conventional Commits `type(scope): subject`. 영어, 소문자 시작, 명령형, 마침표 없음, 100자 미만.
@@ -472,12 +480,13 @@ along.
 Run: `cd backend && .venv/bin/python -m pytest tests/test_purge_out_of_hours_mmca.py -q`
 Expected: PASS
 
-- [ ] **Step 6: 로컬 DB 에 dry-run 을 돌려 숫자를 확인한다**
+- [ ] **Step 6: 로컬 DB 에 미리보기를 돌려 숫자를 확인한다**
 
-Run: `cd backend && .venv/bin/python -m scripts.purge_out_of_hours_mmca --dry-run`
+Run: `cd backend && .venv/bin/python -m scripts.purge_out_of_hours_mmca`
+(미리보기가 기본값이다 — 삭제는 `--delete` 로만 일어난다.)
 Expected: 과천 8/18 의 219행과 서울 9/8 의 1,928행이 포함된 합계가 나온다.
 숫자를 커밋 메시지에 적을 수 있게 기록해 둔다. **로컬 DB 는 프로덕션 사본이므로
-`--dry-run` 없이 돌리지 않는다** — 실제 정리는 Task 6 이다.
+`--delete` 를 붙이지 않는다** — 실제 정리는 Task 6 이다.
 
 - [ ] **Step 7: 커밋**
 
@@ -837,11 +846,11 @@ Run: `curl -s https://exhibition-traffic.duckdns.org/health/collection | python3
 Expected: 200. 배포일이 휴관일이면 `mmca.calls_today` 가 0 이고 `stale` 이
 `false` 여야 한다(`_mmca_is_stale` 이 같은 게이트를 쓰므로 503 으로 새지 않는다).
 
-- [ ] **Step 2: 프로덕션 DB 사본을 받아 dry-run 을 돌린다**
+- [ ] **Step 2: 프로덕션 DB 사본을 받아 미리보기를 돌린다**
 
 ```bash
 cd backend && ./scripts/pull_prod_db.sh
-.venv/bin/python -m scripts.purge_out_of_hours_mmca --dry-run
+.venv/bin/python -m scripts.purge_out_of_hours_mmca
 ```
 
 Expected: 과천 2026-08-18 219행, 서울 2026-09-08 1,928행, 과천 2026-08-15
@@ -850,8 +859,8 @@ Expected: 과천 2026-08-18 219행, 서울 2026-09-08 1,928행, 과천 2026-08-1
 
 - [ ] **Step 3: 프로덕션에서 실행한다**
 
-서버에 접속해 같은 스크립트를 `--dry-run` 으로 먼저, 숫자를 확인한 뒤
-플래그 없이 실행한다. 스크립트는 멱등이라 두 번째 실행은 아무것도 지우지
+서버에 접속해 같은 스크립트를 먼저 그냥(미리보기) 돌려 숫자를 확인한 뒤
+`--delete` 를 붙여 실행한다. 스크립트는 멱등이라 두 번째 실행은 아무것도 지우지
 않는다.
 
 - [ ] **Step 4: 결과를 기록한다**
