@@ -236,7 +236,9 @@ describe("MmcaPage", () => {
     expect(container.querySelector("section")?.className).toMatch(/lg:grid-cols-2/);
   });
 
-  it("collapses Deoksugung's rooms on a Monday, but not other venues'", async () => {
+  it("replaces the room list with one closed-day notice on a Monday", async () => {
+    // 방 17개(과천)·1개(덕수궁)에 "휴관일" 배지를 단 작은 카드를 깔면 관 단위로
+    // 확정된 사실 하나를 방 수만큼 되풀이하게 된다. 관 단위로 한 번만 쓴다.
     vi.setSystemTime(new Date("2026-07-27T11:00:00")); // Monday, within 10:00-18:00
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
@@ -246,14 +248,15 @@ describe("MmcaPage", () => {
       </MemoryRouter>
     );
 
-    // A closed day follows the before-opening rule: no last-week curve (the
-    // previous Monday was closed too) → small card, never mind the stale
-    // congestion_nm the rooms endpoint still returns. The label says why.
-    await waitFor(() => expect(screen.getByText("휴관일")).toBeInTheDocument());
-    // 요일 휴관도 관 단위 정보다 — 헤더의 영업시간 줄이 괄호로 알린다.
-    expect(screen.getByText("10:00~18:00 (수·토 21:00까지, 월요일 휴무)")).toBeInTheDocument();
-    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+    expect(screen.getByText("다음 개관 — 화요일 10:00")).toBeInTheDocument();
+    // 방 목록은 큰 카드도 작은 카드도 남지 않는다.
     expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
+    expect(screen.queryByText("1전시실")).not.toBeInTheDocument();
+    expect(screen.queryByText("오늘 정보 없음")).not.toBeInTheDocument();
+    // 날짜 탭 위는 그대로다 — 휴관일에도 읽을 값이고, 다른 날로 옮겨갈 통로다.
+    expect(screen.getByText("10:00~18:00 (수·토 21:00까지, 월요일 휴무)")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(7);
     unmount();
 
     render(
@@ -263,7 +266,29 @@ describe("MmcaPage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("실시간")).toBeInTheDocument());
-    expect(screen.queryByText(/휴무/)).not.toBeInTheDocument();
+    expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+  });
+
+  it("shows the closed-day notice for a future Monday tab too", async () => {
+    // 오늘이 개관일이어도 고른 날짜가 휴관일이면 같은 화면이다 — 규칙이 하나라
+    // MmcaRoomChartCard 쪽 휴관일 분기가 필요 없어졌다.
+    vi.setSystemTime(new Date("2026-07-28T11:00:00")); // Tuesday
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(7));
+    expect(screen.queryByText("휴관일입니다")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "월 8/3" }));
+
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+    expect(screen.getByText("다음 개관 — 화요일 10:00")).toBeInTheDocument();
+    expect(screen.queryByTestId("mmca-room-chart")).not.toBeInTheDocument();
   });
 
   it("groups open rooms with no data collected today into small inactive cards", async () => {
