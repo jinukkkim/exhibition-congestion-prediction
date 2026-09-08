@@ -19,8 +19,17 @@ const SEOUL_DAY = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
+// 주어진 순간의 KST 달력 날짜. 휴관 판정처럼 "그 순간이 KST 로 며칠인가" 를
+// 묻는 자리가 쓴다 — dateString() 은 브라우저 로컬 Y/M/D 라 자정 근처에서 하루
+// 어긋난다. 살아 있는 시계를 넘기는 호출부만 이것을 쓰고, 이미 날짜 문자열에서
+// 만든 Date 를 넘기는 곳은 dateString() 쪽이 맞다(KST 로 다시 접으면 KST 동쪽
+// 브라우저에서 하루 밀린다).
+export function seoulDateString(d: Date): string {
+  return SEOUL_DAY.format(d);
+}
+
 export function todayString(): string {
-  return SEOUL_DAY.format(new Date());
+  return seoulDateString(new Date());
 }
 
 export function shiftDate(date: string, days: number): string {
