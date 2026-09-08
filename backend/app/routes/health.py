@@ -7,7 +7,12 @@ from sqlalchemy import func, select
 
 # Private, but same package: the staleness rule has to agree with the
 # collector's own opening-hours gate or the two drift apart silently.
-from app.collector import _COLLECTION_START, _is_venue_open
+from app.collector import (
+    _COLLECTION_START,
+    _is_venue_open,
+    _open_space_codes,
+    _rooms_to_poll,
+)
 from app.config import settings
 from app.db import SessionLocal
 from app.models import RawCongestion, RawMmcaCongestion
@@ -77,7 +82,11 @@ SEOUL_STALE_MINUTES = 75
 # of the grid in force that day, then read back at */2. Rooms with no active
 # exhibition are excluded: they answer resultCode 0002 for weeks on end (room
 # 1002's gap is 120 minutes nearly every day) and the frontend already demotes
-# them to an inactive card with no freshness badge at all.
+# them to an inactive card with no freshness badge at all. That exclusion is
+# now the collector's too — those rooms are polled once every _PROBE_MINUTES,
+# so their own gap is 30 minutes by design. It does not reach this threshold,
+# which reads max(observed_at) across every room and is therefore set by the
+# rooms that do poll on every round.
 #
 #   threshold   days it would flag
 #      6 min     8 / 37
@@ -184,6 +193,15 @@ def collection_health(response: Response) -> dict:
             if mmca_last is not None
             else 0
         )
+        # 부른 방과 부를 수 있었던 방은 다르다. 상시 0002 인 방은 probe
+        # 라운드에만 끼므로(collector 의 _PROBE_MINUTES) 라운드마다 대상 수가
+        # 10 과 17 사이를 오간다 — 앞의 숫자만으로는 "방을 잃은 라운드" 와
+        # "원래 작은 라운드" 를 구별할 수 없다.
+        mmca_rooms_expected = (
+            len(_rooms_to_poll(session, _open_space_codes(mmca_last), mmca_last))
+            if mmca_last is not None
+            else 0
+        )
 
     seoul_stale = seoul_last is None or now - seoul_last > timedelta(minutes=SEOUL_STALE_MINUTES)
     backup_at, backup_age = _last_offsite_backup(now)
@@ -207,8 +225,12 @@ def collection_health(response: Response) -> dict:
             "stale_after_minutes": MMCA_STALE_MINUTES,
             "stale": mmca_stale,
             "rooms_in_last_round": mmca_rooms_last_round,
+            "rooms_expected_in_last_round": mmca_rooms_expected,
             # Successful calls only — a room that errored isn't recorded, so
-            # this is a floor on quota spent, not the exact figure.
+            # this is a floor on quota spent, not the exact figure. It is also
+            # no longer one call per room per round: rooms with no exhibition
+            # are polled once every _PROBE_MINUTES, which took the measured
+            # 2026-09-08 figure of 4,097 down by about 40%.
             "calls_today": mmca_calls_today or 0,
         },
         # No "stale" key here on purpose — see _last_offsite_backup.
