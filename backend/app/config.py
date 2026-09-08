@@ -1,3 +1,7 @@
+import json
+from datetime import date
+from pathlib import Path
+
 import holidays
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -5,10 +9,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # scripts/purge_out_of_hours_mmca.py 가 공유한다 — 걷어낸 prediction/model.py 에
 # 얹혀 있던 것을 두 소비자 어느 쪽도 아닌 자리로 옮겼다.
 KR_HOLIDAYS = holidays.country_holidays("KR")
-
-import json
-from datetime import date
-from pathlib import Path
 
 # 미술관 휴관일 달력. KR_HOLIDAYS 와 **다른 것**이다 — 저쪽은 예측 배치의
 # is_holiday 피처가 쓰는 관공서 공휴일이고, 이쪽은 관이 실제로 문을 닫는 날이다.

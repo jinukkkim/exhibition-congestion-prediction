@@ -1,4 +1,12 @@
 import os
+from datetime import date, timedelta
+
+from app.config import (
+    MUSEUM_CALENDAR_CHECKED_THROUGH,
+    MUSEUM_CLOSED_DAYS,
+    MUSEUM_PUBLIC_HOLIDAYS,
+)
+
 
 def test_settings_reads_env(monkeypatch):
     monkeypatch.setenv("SEOUL_API_KEY", "test-key")
@@ -47,15 +55,6 @@ def test_settings_reads_mmca_env(monkeypatch):
         ],
         "deoksugung": ["MMCA-SPACE-4001"],
     }
-
-
-from datetime import date, timedelta
-
-from app.config import (
-    MUSEUM_CALENDAR_CHECKED_THROUGH,
-    MUSEUM_CLOSED_DAYS,
-    MUSEUM_PUBLIC_HOLIDAYS,
-)
 
 
 def test_museum_calendar_loads_the_shared_file():
