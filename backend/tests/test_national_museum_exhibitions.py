@@ -88,3 +88,24 @@ def test_returns_nothing_when_the_page_shape_changes():
     # 누리집 개편으로 파싱이 통째로 실패하는 경우. 예외가 아니라 빈 목록이어야
     # 프론트가 섹션만 숨기고 혼잡도는 그대로 읽힌다.
     assert current_exhibitions("<html><body>개편 중입니다</body></html>") == []
+
+
+def test_a_row_missing_its_period_table_does_not_swallow_the_next_row():
+    # 항목 경계를 </ul> 로만 잡으면, 표가 없는 항목이 다음 항목의 </ul> 까지
+    # 삼켜 앞 항목 제목에 뒤 항목의 기간·장소가 붙고 뒤 항목은 사라진다.
+    page = """
+<div class="info">
+    <a href="?x"><strong>표가 없는 항목</strong></a>
+<div class="info">
+    <a href="?y"><strong>우리들의 밥상</strong></a>
+    <ul class="info-list special">
+    <li><strong>기간</strong><p>2026-07-01~2026-10-25</p></li>
+    <li><strong>장소</strong><p>국립중앙박물관 특별전시실 2</p></li>
+    </ul>
+"""
+
+    exhibitions = current_exhibitions(page)
+
+    assert [e.title for e in exhibitions] == ["우리들의 밥상"]
+    assert exhibitions[0].start_date == "2026-07-01"
+    assert exhibitions[0].place == "국립중앙박물관 특별전시실 2"

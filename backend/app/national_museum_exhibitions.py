@@ -28,9 +28,15 @@ URL = "https://www.museum.go.kr/MUSEUM/contents/M0202010000.do"
 # 화면에 다 담아 페이지네이션을 없앤다.
 PARAMS = {"cp": 1, "pageSize": 100, "selectTime": "current", "unitedUse": "MUSEUM"}
 
-# 목록 한 건. <div class="info"> 안에 링크로 감싼 제목과 기간·장소 표가 있고
-# 그 표의 </ul> 로 끝난다.
-_ITEM = re.compile(r'<div class="info">(.*?)</ul>', re.S)
+# 목록 한 건의 시작. <div class="info"> 안에 링크로 감싼 제목과 기간·장소 표가
+# 있고 그 표의 </ul> 로 끝난다.
+#
+# 경계를 </ul> 만 보고 자르지 않는 이유: 어떤 항목에서 그 표가 사라지면 그
+# 항목이 다음 항목의 </ul> 까지 삼켜, 앞 항목의 제목에 뒤 항목의 기간·장소가
+# 붙고 뒤 항목은 통째로 사라진다. 시작 표시로 먼저 쪼개면 그런 항목은 자기
+# 안에 </ul> 이 없어 그냥 빠지고 옆 항목은 온전하다 — 이 파일의 실패 계약
+# (깨지면 조용히 줄이 사라진다)이 부분 오염까지 덮는다.
+_ITEM_START = '<div class="info">'
 # 제목은 상세로 가는 링크 안의 strong 이다. 기간·장소 라벨도 strong 이라
 # 링크를 함께 물어야 구별된다.
 _TITLE = re.compile(r"<a [^>]*>\s*<strong>(.*?)</strong>\s*</a>", re.S)
@@ -68,10 +74,16 @@ def _field(block: str, label: str) -> str:
     return html.unescape(match.group(1)).strip() if match else ""
 
 
+def _items(page: str) -> list[str]:
+    return [
+        chunk.split("</ul>", 1)[0] for chunk in page.split(_ITEM_START)[1:] if "</ul>" in chunk
+    ]
+
+
 def current_exhibitions(page: str) -> list[NationalMuseumExhibition]:
     """진행중인 국중박 전시. 순서는 누리집 목록 그대로."""
     exhibitions = []
-    for block in _ITEM.findall(page):
+    for block in _items(page):
         title = _TITLE.search(block)
         place = _field(block, "장소")
         if title is None or not any(word in place for word in _ON_SITE):
