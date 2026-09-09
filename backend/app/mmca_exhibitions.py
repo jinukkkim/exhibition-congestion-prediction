@@ -47,6 +47,11 @@ class MmcaExhibition:
     title: str
     start_date: str
     end_date: str
+    # 누리집의 장소 문자열 원문("지하1층 3,4,5 전시실 / 2층 MMCA 스튜디오").
+    # space_codes 는 이 문자열에서 뽑은 것이지만, 뽑고 나면 층과 전시실 아닌
+    # 공간이 버려지므로 사람이 읽는 줄에는 원문이 필요하다. 어린이미술관처럼
+    # 비어 있는 행도 있어 빈 문자열이 정상값이다.
+    place: str
     # 이 전시가 쓰는 전시실. 서울박스·교육동·아이공간처럼 혼잡도를 수집하지
     # 않는 공간에서만 열리는 전시는 빈 목록이라 방 카드에는 안 붙고 헤더
     # 목록에만 남는다.
@@ -108,12 +113,14 @@ def current_exhibitions(rows: list[dict]) -> dict[str, list[MmcaExhibition]]:
         title = (row.get("exhTitle") or "").strip()
         if venue_id is None or not title:
             continue
+        place_detail = row.get("exhPlaDtl") or ""
         by_venue[venue_id].append(
             MmcaExhibition(
                 title=title,
                 start_date=(row.get("exhStDt") or "").strip(),
                 end_date=(row.get("exhEdDt") or "").strip(),
-                space_codes=space_codes(venue_id, row.get("exhPlaDtl") or ""),
+                place=place_detail.strip(),
+                space_codes=space_codes(venue_id, place_detail),
             )
         )
     return by_venue

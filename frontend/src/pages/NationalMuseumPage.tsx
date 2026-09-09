@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
+import { fetchCurrent, fetchDaily, fetchExhibitions, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DateTabs } from "../components/DateTabs";
 import { SiteFooter } from "../components/SiteFooter";
@@ -9,10 +9,16 @@ import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
-import { shiftDate, todayString } from "../lib/date";
+import { exhibitionPeriod, shiftDate, todayString } from "../lib/date";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
+
+// 장소 문자열은 "국립중앙박물관 상설전시실 3층 …" 처럼 관 이름부터 시작하는
+// 경우가 섞여 있다. 바로 위 제목이 이미 관 이름이라 지운다.
+function shortPlace(place: string): string {
+  return place.replace(/^국립중앙박물관\s*/, "");
+}
 
 export function NationalMuseumPage() {
   // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
@@ -52,8 +58,15 @@ export function NationalMuseumPage() {
     { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
     [lastWeek]
   );
+  // 전시 목록은 하루 단위로도 거의 안 바뀐다 — 한 번 받고 멈춘다(백엔드도
+  // 6시간 캐시다). 실패하면 그냥 목록이 없는 화면이고, 혼잡도는 그대로 읽힌다.
+  const exhibitions = usePolledFetch(fetchExhibitions, {
+    intervalMs: POLL_INTERVAL_MS,
+    stopWhenLoaded: true,
+  });
 
   const current = useCongestionStream(initial.data);
+  const exhibitionList = exhibitions.data ?? [];
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -71,11 +84,44 @@ export function NationalMuseumPage() {
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
             {name}
           </h1>
-          {/* 관 단위 정보 — 카드마다 반복하지 않는다. MmcaPage 와 달리 전시
-              목록이 없어 헤더가 1열이다. 값이 페이지 폭 전체로 늘어나면 라벨과
-              값이 멀어지므로 표만 좁게 가둔다. */}
-          <div className="mt-6 max-w-md">
+          {/* 관 정보와 전시 목록을 2열로 가른다 — MmcaPage 와 같은 구성이고
+              같은 이유다(세로로 쌓으면 차트에 닿기까지 목록 전체를 지난다).
+              전시가 없으면 열이 하나뿐이라, 표가 페이지 폭 전체로 늘어나 라벨과
+              값이 멀어지지 않게 그때는 좁게 가둔다. */}
+          <div
+            className={
+              exhibitionList.length > 0
+                ? "mt-6 gap-x-16 gap-y-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
+                : "mt-6 max-w-md"
+            }
+          >
+            {/* 관 단위 정보 — 카드마다 반복하지 않는다. */}
             <VenueInfoList venue={venueMeta} />
+            {exhibitionList.length > 0 && (
+              <div className="mt-8 lg:mt-0">
+                {/* 옆 열 첫 줄(영업시간)과 같은 높이에, 같은 모양으로 선다. */}
+                <p className="text-sm text-ink-soft">현재 전시</p>
+                <ul className="mt-3 space-y-3">
+                  {exhibitionList.map((exhibition) => (
+                    <li key={`${exhibition.title}-${exhibition.start_date}`} className="text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-6 text-ink">
+                        <span>{exhibition.title}</span>
+                        {/* 기간은 열 오른쪽 끝에 맞춰 세운다 — 제목 길이가
+                            제각각이라 왼쪽에 붙이면 날짜가 들쭉날쭉해진다. */}
+                        <span className="shrink-0 text-xs tabular-nums text-ink-soft">
+                          {exhibitionPeriod(exhibition.start_date, exhibition.end_date)}
+                        </span>
+                      </div>
+                      {/* 전시실 단위 혼잡도가 없는 관이라 이 줄이 유일한 위치
+                          정보다. MmcaPage 는 방 카드가 그 일을 해서 없다. */}
+                      <p className="mt-0.5 text-xs text-ink-soft">
+                        {shortPlace(exhibition.place)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </header>
 

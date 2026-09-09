@@ -61,22 +61,39 @@ def get_mmca_prediction(venue: str, day: str) -> list[dict] | None:
     return json.loads(raw) if raw else None
 
 
-# 전시 목록은 하루 단위로도 거의 안 바뀐다. 외부 API 를 3페이지씩 부르는
-# 호출이라 방문마다 나가지 않게 넉넉히 잡는다 — 새 전시 개막이 반나절 늦게
-# 보이는 것은 감수할 만하다.
-MMCA_EXHIBITIONS_TTL_SECONDS = 21600
+# 전시 목록은 하루 단위로도 거의 안 바뀐다. 외부 API 를 3페이지씩 부르거나
+# (MMCA) 누리집 HTML 을 한 장 받아 파싱하는(국중박) 호출이라 방문마다 나가지
+# 않게 넉넉히 잡는다 — 새 전시 개막이 반나절 늦게 보이는 것은 감수할 만하다.
+EXHIBITIONS_TTL_SECONDS = 21600
 
 
 def set_mmca_exhibitions(venue: str, payload: list[dict]) -> None:
     r.set(
         f"mmca:exhibitions:{venue}",
         json.dumps(payload),
-        ex=MMCA_EXHIBITIONS_TTL_SECONDS,
+        ex=EXHIBITIONS_TTL_SECONDS,
     )
 
 
 def get_mmca_exhibitions(venue: str) -> list[dict] | None:
     raw = r.get(f"mmca:exhibitions:{venue}")
+    return json.loads(raw) if raw else None
+
+
+# 국중박은 관이 하나라 키에 관 구분이 없다.
+NATIONAL_MUSEUM_EXHIBITIONS_KEY = "national-museum:exhibitions"
+
+
+def set_national_museum_exhibitions(payload: list[dict]) -> None:
+    r.set(
+        NATIONAL_MUSEUM_EXHIBITIONS_KEY,
+        json.dumps(payload),
+        ex=EXHIBITIONS_TTL_SECONDS,
+    )
+
+
+def get_national_museum_exhibitions() -> list[dict] | None:
+    raw = r.get(NATIONAL_MUSEUM_EXHIBITIONS_KEY)
     return json.loads(raw) if raw else None
 
 

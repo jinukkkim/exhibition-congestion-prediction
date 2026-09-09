@@ -10,9 +10,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // 백엔드 경로 접두는 여기와 deploy/Caddyfile 두 곳에 다 적어야 한다.
+      // 빠지면 요청이 SPA 폴백으로 가 index.html 이 200 으로 돌아오고,
+      // 프론트는 JSON 파싱에서 실패한다 — 404 가 아니라 조용한 실패다.
       "/analytics": apiTarget,
       "/congestion": apiTarget,
       "/mmca": apiTarget,
+      "/national-museum": apiTarget,
     },
   },
   test: {

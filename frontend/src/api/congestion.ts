@@ -84,3 +84,21 @@ export async function fetchDailyRaw(date: string): Promise<RawLogPoint[]> {
   }
   return res.json();
 }
+
+export interface NationalMuseumExhibition {
+  title: string;
+  // YYYY-MM-DD
+  start_date: string;
+  end_date: string;
+  // 누리집이 적어 준 장소 문자열 그대로("상설전시관 2층 서화실"). 전시실 단위
+  // 혼잡도가 없는 관이라, MmcaExhibition 의 space_codes 자리에 이것이 온다.
+  place: string;
+}
+
+export async function fetchExhibitions(): Promise<NationalMuseumExhibition[]> {
+  const res = await fetch("/national-museum/exhibitions");
+  if (!res.ok) {
+    throw new Error(`failed to fetch exhibitions: ${res.status}`);
+  }
+  return res.json();
+}

@@ -336,8 +336,12 @@ export function MmcaRoomChartCard({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
               {title}
             </p>
+            {/* 본문 농도(text-ink)가 아니라 옅은 쪽을 쓴다 — 카드의 주인공은
+                곡선이고, 전시명은 그 방이 무엇인지 알려주는 딸림 줄이다.
+                위의 방 이름과 같은 토큰이지만 크기·자간·대문자가 달라 둘의
+                순서는 그대로 읽힌다. */}
             {exhibitionTitle && (
-              <p className="mt-1 truncate text-sm text-ink" title={exhibitionTitle}>
+              <p className="mt-1 truncate text-sm text-ink-soft" title={exhibitionTitle}>
                 {exhibitionTitle}
               </p>
             )}
