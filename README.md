@@ -1,12 +1,25 @@
 # Exhibition Traffic — 실시간 전시 혼잡도 예측 시스템
 
-국립중앙박물관 실시간 혼잡도를 서울시 열린데이터광장 API에서 수집하고, 축적된 데이터로 시간대별 혼잡도를 예측하는 개인 포트폴리오 MVP. 예측은 (요일×시각) 평균 프로파일을 오늘 실측에 맞춰 보정하고 마지막 판독에서 램프로 이어 붙이는 방식이며, 상수의 근거는 `backend/scripts/backtest_*_prediction.py` 의 롤링 오리진 백테스트에 있다.
+국립중앙박물관과 국립현대미술관 세 관(서울·과천·덕수궁)의 혼잡도를 공공 API에서 수집하고,
+축적된 데이터로 시간대별 혼잡도를 예측하는 개인 포트폴리오 MVP.
+
+- **국립중앙박물관** — 서울시 열린데이터광장 `citydata` 의 지역 생활인구(관람객 수가 아니라
+  그 지역의 인구다). 24시간 `*/5` 격자.
+- **국립현대미술관** — data.go.kr 의 전시실별 혼잡도 4단계(여유·보통·약간 붐빔·붐빔).
+  전시실 17개, 개관 시간에만 `*/2` 격자.
+- 진행 중인 전시 목록은 두 관 누리집에서 읽어 관 헤더와 전시실 카드에 붙인다.
+
+예측은 (요일×시각) 평균 프로파일을 오늘 실측에 맞춰 보정하고 마지막 판독에서 램프로 이어
+붙이는 방식이다. 학습 모델은 없다 — 걷어낸 근거는 `backend/app/prediction/seoul.py` 의
+도입부에 있고, 상수의 근거는 `backend/scripts/backtest_*_prediction.py` 의 롤링 오리진
+백테스트에 있다.
 
 ## Prerequisites
 
 - Python 3.12
 - Node 18+ (tested with Node 24 / npm 11)
-- Redis (caches the latest prediction result)
+- Redis (caches the latest reading, both predictions, the exhibition lists and the
+  visit stats, and carries the SSE update channel)
 
 ## Backend setup
 
@@ -14,17 +27,22 @@
 cd backend
 python3.12 -m venv .venv
 .venv/bin/pip install -e . --group dev
-cp .env.example .env   # fill in SEOUL_API_KEY
+cp .env.example .env   # fill in SEOUL_API_KEY and MMCA_API_KEY
 .venv/bin/uvicorn app.main:app --reload
 ```
 
 `.env` variables (see `backend/app/config.py`):
 
 - `SEOUL_API_KEY` — required, no default
+- `MMCA_API_KEY` — required, no default (data.go.kr 전시실 혼잡도)
 - `SEOUL_AREA_NAME` — defaults to `국립중앙박물관·용산가족공원`
 - `DATABASE_URL` — defaults to `sqlite:///./congestion.db`, and **production runs that same SQLite file** — a single `congestion.db` on the server, not a managed database. Postgres was the original design (see `docs/superpowers/specs/2026-07-15-*`) and SQLAlchemy would still take it via the `pg8000` driver (`postgresql+pg8000://user:pass@host/db`), but it has never been deployed. There is no replication and no managed failover; backups are a cron job on
   this same box, described under Backups below.
 - `REDIS_URL` — defaults to `redis://localhost:6379/0`
+- `BACKUP_DIR` / `CADDY_ACCESS_LOG` — production paths, only ever read: the first for
+  the backup freshness figure in `/health/collection`, the second for
+  `/analytics/visits`. Neither exists on a dev machine, which is why one reports
+  `null` and the other reads as zero traffic.
 
 ### Developing against real data
 
@@ -57,9 +75,10 @@ restarting the server.
 
 The snapshot is gzipped on the server and streamed through one ssh
 connection, and archived `/citydata` bodies older than 7 days are dropped
-from it first — production is ~213MB, of which ~172MB is
-`raw_congestion.raw_response` that only the logs page reads, one day at a
-time. That brings the local file to ~14MB and the pull to under 30 seconds.
+from it first — four fifths of production is `raw_congestion.raw_response`
+(~172MB of ~213MB when measured), and only the logs page reads it, one day at
+a time. That brings the local file to ~19MB (2026-09-09) and the pull to under
+30 seconds.
 Days past the cutoff still show every parsed column on `/logs`, just not the
 ~25 extra fields the archived body would have added:
 
@@ -82,9 +101,12 @@ npm run dev
 
 ```bash
 cd backend && .venv/bin/pytest
-cd frontend && npx vitest run
-cd frontend && npx playwright test
+cd frontend && npm run type-check && npm test
+cd frontend && npm run test:e2e      # not in CI — needs a built frontend
 ```
+
+`.github/workflows/ci.yml` runs the first two, and `deploy.yml` runs CI again
+before it deploys, so a red test never reaches production.
 
 ## Monitoring
 
@@ -96,13 +118,20 @@ Two endpoints, deliberately separate:
 | `GET /health/collection` | Is data still arriving? | An external uptime monitor |
 
 `/health/collection` returns 503 once the Seoul poll is more than 75 minutes
-old, or an MMCA round is more than 25 minutes old *while a venue is open* —
+old, or an MMCA round is more than 12 minutes old *while a venue is open* —
 overnight staleness is expected, not a failure. The Seoul threshold is that
 wide because its `observed_at` is the Open API's own publication time, which
 already lags roughly 30 minutes on a perfectly healthy system; tightening it
-is what once pinned this endpoint at a permanent 503. The body also carries
-MMCA's call count for the day, as a floor on quota spent against the
-1,000/day cap.
+is what once pinned this endpoint at a permanent 503. The MMCA threshold is
+the opposite case — it measures nothing but missed rounds, so it has to move
+whenever the collection grid moves; its table is in `MMCA_STALE_MINUTES`'s
+comment.
+
+The body also carries the room count of the last round against how many rooms
+that round was supposed to poll, and MMCA's call count for the day as a floor
+on quota spent against the 100,000/day cap. A floor because a room that
+errored leaves no row, and because rooms with no exhibition are polled once
+every 30 minutes instead of every round.
 
 **This endpoint reports the collector, not the server.** A 503 here means
 data stopped arriving; it does not mean the process is down, and an uptime
@@ -184,7 +213,7 @@ own schedule, and there is no reason to ship 7MB to object storage on every
 deploy.
 
 ```
-backend/congestion.db  (216MB, collector writing every 5 min)
+backend/congestion.db  (216MB, collectors writing every 5 min / 2 min)
   → sqlite3 online backup API → temp snapshot   ← safe mid-write; a plain cp,
                                                   or gzipping the live file
                                                   (~6.5s), can tear
@@ -283,21 +312,28 @@ no backup dir.
 
 ### Capacity, and why not a longer window
 
-Snapshots are full copies of a database that grows ~287 rows/day, so each one is
-bigger than the last (~0.18MB/day compressed) and the bucket total grows with
-the *square* of time, not linearly:
+Snapshots are full copies of a database that grows ~4,700 rows/day — 288 Seoul
+readings, 1,900–4,100 MMCA readings depending on which venues are open that day,
+and a couple hundred forecast revisions — so each one is bigger than the last and
+the bucket total grows with the *square* of time, not linearly:
 
 ```
-total(day T, N-day retention) ≈ 0.18 × N × (T − N/2)  MB
+total(day T, N-day retention) ≈ g × N × (T − N/2)  MB
 ```
+
+`g` is what one day adds to a snapshot after gzip: **~0.085MB**, measured
+2026-09-09 (2026-09-08 alone is 4,661 rows, 1.66MB raw, 0.085MB gzipped). It was
+~0.18 while every archived body still carried `FCST24HOURS`, so figures quoted
+from before that trim are about 2× conservative. MMCA rows barely move it — they
+carry no archived body at all, ~37 bytes of payload each.
 
 Against the 10 GiB free tier, measured from the 2026-07-16 collection start:
 
 | retention | free tier reached |
 | --- | --- |
-| 30 days | ~5.5 years |
-| **90 days** (current) | **~1.9 years** |
-| 346 days or more | ~11 months — *the rule never fires before the limit* |
+| 30 days | ~11 years |
+| **90 days** (current) | **~3.8 years** |
+| 491 days or more | ~16 months — *the rule never fires before the limit* |
 
 A 1000-day rule is therefore identical to no rule at all. When the limit does
 come into view, the next step is a `Move to Infrequent Access` transition at 31
