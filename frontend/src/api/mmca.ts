@@ -69,6 +69,10 @@ export interface MmcaExhibition {
   // YYYY-MM-DD
   start_date: string;
   end_date: string;
+  // 누리집의 장소 문자열 원문("지하1층 3,4,5 전시실 / 2층 MMCA 스튜디오").
+  // space_codes 가 방 카드를 찾는 값이라면 이쪽은 사람이 읽는 값이다.
+  // 어린이미술관처럼 빈 문자열인 행도 있다.
+  place: string;
   // 이 전시가 쓰는 전시실. 서울박스·교육동처럼 혼잡도를 수집하지 않는 공간
   // 에서만 열리는 전시는 비어 있어 헤더 목록에만 실린다.
   space_codes: string[];

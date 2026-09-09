@@ -191,18 +191,29 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                     관 정보 표의 라벨과 나란한 한 쌍이라 서로 다르게 쓸 이유가
                     없다. */}
                 <p className="text-sm text-ink-soft">현재 전시</p>
-                <ul className="mt-3 space-y-1.5">
+                <ul className="mt-3 space-y-3">
                   {exhibitions.map((exhibition) => (
-                    <li
-                      key={`${exhibition.title}-${exhibition.start_date}`}
-                      className="flex flex-wrap items-baseline justify-between gap-x-6 text-sm text-ink"
-                    >
-                      <span>{exhibition.title}</span>
-                      {/* 기간은 열 오른쪽 끝에 맞춰 세운다 — 제목 길이가 제각각
-                          이라 왼쪽에 붙이면 날짜가 들쭉날쭉해진다. */}
-                      <span className="shrink-0 text-xs tabular-nums text-ink-soft">
-                        {exhibitionPeriod(exhibition.start_date, exhibition.end_date)}
-                      </span>
+                    <li key={`${exhibition.title}-${exhibition.start_date}`} className="text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-6 text-ink">
+                        <span>{exhibition.title}</span>
+                        {/* 기간은 열 오른쪽 끝에 맞춰 세운다 — 제목 길이가
+                            제각각이라 왼쪽에 붙이면 날짜가 들쭉날쭉해진다. */}
+                        <span className="shrink-0 text-xs tabular-nums text-ink-soft">
+                          {exhibitionPeriod(exhibition.start_date, exhibition.end_date)}
+                        </span>
+                      </div>
+                      {/* 국중박 헤더와 같은 줄이다. 다만 이쪽 원문은 "2원형전시실,
+                          3층회랑 브릿지, 로비, 조각공원, 대강당 등 …" 처럼 길어질
+                          수 있어 한 줄로 자르고 전체는 title 로 남긴다 — 방
+                          카드의 전시명 줄이 쓰는 것과 같은 처리다. */}
+                      {exhibition.place && (
+                        <p
+                          className="mt-0.5 truncate text-xs text-ink-soft"
+                          title={exhibition.place}
+                        >
+                          {exhibition.place}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
