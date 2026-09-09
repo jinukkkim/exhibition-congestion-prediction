@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { fetchCurrent } from "../api/congestion";
 import { fetchMmcaRooms } from "../api/mmca";
+import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { statusOf } from "../lib/status";
 import { mmcaSummary, nationalMuseumSummary, type VenueSummary } from "../lib/venueSummary";
@@ -145,6 +146,7 @@ export function HomePage() {
           })}
         </section>
       </main>
+      <SiteFooter container="max-w-[1400px] px-6 sm:px-10 lg:px-16" />
     </div>
   );
 }

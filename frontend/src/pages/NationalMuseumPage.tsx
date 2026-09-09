@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchCurrent, fetchDaily, fetchPrediction } from "../api/congestion";
 import { CongestionCard } from "../components/CongestionCard";
 import { DateTabs } from "../components/DateTabs";
+import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -111,6 +112,7 @@ export function NationalMuseumPage() {
           />
         </section>
       </main>
+      <SiteFooter container="max-w-[1280px] px-6 sm:px-10 lg:px-16" />
     </div>
   );
 }

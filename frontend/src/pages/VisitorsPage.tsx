@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 
 import { fetchVisits, type Visit, type VisitDay } from "../api/analytics";
+import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 
@@ -273,6 +274,7 @@ export function VisitorsPage() {
           </>
         )}
       </main>
+      <SiteFooter container="max-w-[900px] px-6 sm:px-10" />
     </div>
   );
 }
