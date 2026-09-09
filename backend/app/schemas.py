@@ -87,3 +87,14 @@ class MmcaExhibition(BaseModel):
     # 이 전시가 쓰는 전시실. 전시실이 없는 공간(서울박스, 교육동 등)에서만
     # 열리는 전시는 비어 있고, 헤더 목록에만 실린다.
     space_codes: list[str]
+
+
+class NationalMuseumExhibition(BaseModel):
+    title: str
+    # YYYY-MM-DD. MmcaExhibition 과 같은 이유로 문자열이다 — 프론트는 점
+    # 표기로만 바꿔 그린다.
+    start_date: str
+    end_date: str
+    # 누리집이 적어 준 장소 문자열 그대로. 전시실 단위 혼잡도가 없는 관이라
+    # MmcaExhibition 의 space_codes 자리에 이것이 온다.
+    place: str
