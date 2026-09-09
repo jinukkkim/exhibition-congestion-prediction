@@ -42,6 +42,7 @@ describe("NationalMuseumPage", () => {
     vi.spyOn(api, "fetchCurrent").mockResolvedValue(CURRENT);
     vi.spyOn(api, "fetchPrediction").mockResolvedValue(READY_PREDICTION);
     vi.spyOn(api, "fetchDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -166,6 +167,35 @@ describe("NationalMuseumPage", () => {
       .mock.calls.filter(([date]) => date === "2026-08-13").length;
     expect(lastWeekCalls).toBe(1);
   });
+
+  it("lists the current exhibitions with their period and place", async () => {
+    vi.spyOn(api, "fetchExhibitions").mockResolvedValue([
+      {
+        title: "우리들의 밥상",
+        start_date: "2026-07-01",
+        end_date: "2026-10-25",
+        place: "국립중앙박물관 특별전시실 2",
+      },
+    ]);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("우리들의 밥상")).toBeInTheDocument());
+    expect(screen.getByText("2026.07.01 – 2026.10.25")).toBeInTheDocument();
+    // 바로 위 제목이 이미 관 이름이라 장소에서 관 이름은 지운다.
+    expect(screen.getByText("특별전시실 2")).toBeInTheDocument();
+  });
+
+  it("shows no exhibition section when the list is empty", async () => {
+    // 누리집이 개편돼 파싱이 깨지거나 호출이 실패한 경우. 혼잡도는 그대로
+    // 읽히고 전시 줄만 사라진다.
+    vi.spyOn(api, "fetchExhibitions").mockRejectedValue(new Error("500"));
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "국립중앙박물관" })).toBeInTheDocument()
+    );
+    expect(screen.queryByText("현재 전시")).not.toBeInTheDocument();
+  });
 });
 
 describe("NationalMuseumPage date tabs", () => {
@@ -182,6 +212,7 @@ describe("NationalMuseumPage date tabs", () => {
     vi.spyOn(api, "fetchCurrent").mockResolvedValue(CURRENT);
     vi.spyOn(api, "fetchPrediction").mockResolvedValue(READY_PREDICTION);
     vi.spyOn(api, "fetchDaily").mockResolvedValue([]);
+    vi.spyOn(api, "fetchExhibitions").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -286,4 +317,5 @@ describe("NationalMuseumPage date tabs", () => {
     await waitFor(() => expect(screen.queryByText("보통")).not.toBeInTheDocument());
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
   });
+
 });

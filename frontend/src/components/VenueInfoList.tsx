@@ -6,9 +6,9 @@ import type { Venue } from "../venues";
 const LINK_CLASS =
   "text-ink-soft underline decoration-hairline underline-offset-4 hover:text-accent";
 
-// 관 이름 아래에 놓이는 관 단위 정보 표. MmcaPage 에서는 이 표가 헤더 왼쪽
+// 관 이름 아래에 놓이는 관 단위 정보 표. 두 상세 페이지 모두 이 표가 헤더 왼쪽
 // 열의 높이를 오른쪽 전시 목록에 맞춘다 — 그전에는 이름과 영업시간 한 줄뿐이라
-// 오른쪽만 길었다. 국중박은 전시 목록이 없어 그냥 아래로 이어진다.
+// 오른쪽만 길었다. 진행중 전시가 없을 때만 국중박 헤더가 1열로 돌아간다.
 //
 // 위쪽 여백은 호출부가 준다 — 이 표의 첫 줄이 옆 열의 첫 줄과 같은 높이에
 // 서야 하므로, 여백이 컴포넌트 안에 있으면 두 열을 함께 맞출 수 없다.

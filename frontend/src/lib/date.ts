@@ -69,3 +69,10 @@ export function formatMinutes(minutes: number): string {
   const mm = String(minutes % 60).padStart(2, "0");
   return `${hh}:${mm}`;
 }
+
+// 전시 기간 한 줄: 2026-08-27, 2027-02-09 → "2026.08.27 – 2027.02.09".
+// 연도를 지우면 안 된다 — 전시 기간은 연도가 걸쳐 있는 경우가 흔하다.
+// MMCA 헤더와 국중박 헤더가 같은 표기를 쓰므로 한 곳에 둔다.
+export function exhibitionPeriod(startDate: string, endDate: string): string {
+  return `${startDate.replaceAll("-", ".")} – ${endDate.replaceAll("-", ".")}`;
+}

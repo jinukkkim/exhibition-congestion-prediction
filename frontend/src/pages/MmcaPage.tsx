@@ -7,7 +7,6 @@ import {
   fetchMmcaPrediction,
   fetchMmcaRooms,
   type MmcaDailyLogPoint,
-  type MmcaExhibition,
   type MmcaRoomStatus,
   type MmcaVenue,
 } from "../api/mmca";
@@ -18,17 +17,18 @@ import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
-import { formatMinutes, shiftDate, todayString, upcomingDates, WEEKDAY_KO } from "../lib/date";
+import {
+  exhibitionPeriod,
+  formatMinutes,
+  shiftDate,
+  todayString,
+  upcomingDates,
+  WEEKDAY_KO,
+} from "../lib/date";
 import { mmcaBusinessHours, nextOpenDay } from "../lib/mmcaBusinessHours";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
-
-// 2026-08-27 → 2026.08.27. 전시 기간은 연도가 걸쳐 있는 경우가 흔해
-// (2026-08-27~2027-02-09) 연도를 지우면 안 된다.
-function formatPeriod({ start_date, end_date }: MmcaExhibition): string {
-  return `${start_date.replaceAll("-", ".")} – ${end_date.replaceAll("-", ".")}`;
-}
 
 export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 관 이름·관 정보는 venues.ts 하나에서만 온다 — 홈 카드·로그 탭과 같은 출처.
@@ -201,7 +201,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                       {/* 기간은 열 오른쪽 끝에 맞춰 세운다 — 제목 길이가 제각각
                           이라 왼쪽에 붙이면 날짜가 들쭉날쭉해진다. */}
                       <span className="shrink-0 text-xs tabular-nums text-ink-soft">
-                        {formatPeriod(exhibition)}
+                        {exhibitionPeriod(exhibition.start_date, exhibition.end_date)}
                       </span>
                     </li>
                   ))}
