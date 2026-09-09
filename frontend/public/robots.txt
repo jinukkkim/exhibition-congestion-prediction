@@ -8,8 +8,17 @@
 User-agent: *
 Allow: /
 
-# App.tsx 가 "개발자용. UI 어디에서도 링크하지 않는다" 라고 적어둔 그 경로다.
-# 비밀은 아니지만 검색 결과에 나올 이유도 없다.
+# App.tsx 가 "개발자용" 이라고 적어둔 두 경로다. 비밀은 아니지만 검색 결과에
+# 나올 이유가 없다 — 수집 원본 로그와 방문자 집계뿐이라 검색으로 찾아올 사람이
+# 없고, 관람객이 홈에서 마주칠 화면도 아니다.
+#
+# /logs 는 한때 홈 헤더에서 링크했다. 링크를 걷어내는 김에 여기도 막는다.
+# 이미 색인된 페이지라면 Disallow 가 역효과라는 점은 알고 있다 — 크롤을 막으면
+# 구글이 제거 신호를 볼 길도 없어져 URL 만 남은 채 굳는다. 그때 필요한 것은
+# Disallow 가 아니라 noindex 다. /logs 는 sitemap 에 실린 적이 없고 사이트
+# 전체가 최근까지 색인 0건이라 그럴 가능성이 낮다고 보고 이쪽을 택했다.
+# Search Console 에 /logs 가 잡혀 있으면 per-route noindex 로 바꿔야 한다.
+Disallow: /logs
 Disallow: /visitors
 
 Sitemap: https://exhibition-traffic.duckdns.org/sitemap.xml
