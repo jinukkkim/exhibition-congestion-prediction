@@ -5,7 +5,7 @@ import { SiteFooter } from "../src/components/SiteFooter";
 
 describe("SiteFooter", () => {
   it("links to the repository in a new tab", () => {
-    render(<SiteFooter />);
+    render(<SiteFooter container="max-w-[1400px] px-6" />);
 
     const link = screen.getByRole("link", { name: "GitHub" });
     expect(link).toHaveAttribute(
@@ -21,7 +21,7 @@ describe("SiteFooter", () => {
   it("keeps the GitHub mark decorative", () => {
     // 마크는 옆의 "GitHub" 를 그림으로 되풀이할 뿐이라 접근성 트리에 두 번
     // 나오면 안 된다. 링크 이름은 아래 테스트가 따로 고정한다.
-    const { container } = render(<SiteFooter />);
+    const { container } = render(<SiteFooter container="max-w-[1400px] px-6" />);
 
     const mark = container.querySelector("svg");
     expect(mark).not.toBeNull();
@@ -34,7 +34,7 @@ describe("SiteFooter", () => {
   it("keeps the new-tab arrow out of the accessible name", () => {
     // 화살표는 장식이다 — 링크 이름이 "GitHub ↗" 로 읽히면 스크린리더에서
     // 기호까지 발음된다. getByRole 의 정확 일치가 그것을 고정한다.
-    render(<SiteFooter />);
+    render(<SiteFooter container="max-w-[1400px] px-6" />);
 
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
   });

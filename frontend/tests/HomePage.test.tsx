@@ -32,6 +32,22 @@ describe("HomePage", () => {
     expect(await screen.findByRole("link", { name: "GitHub" })).toBeInTheDocument();
   });
 
+  it("puts the footer outside main so it keeps the contentinfo landmark", () => {
+    // <footer> 는 main·article·aside·nav·section 의 자손이 아닐 때만 암묵적
+    // contentinfo 가 된다. main 안에 넣으면 generic 으로 떨어져 스크린리더의
+    // 랜드마크 이동에서 사라지는데, 컴포넌트를 단독으로 렌더하면 감싸는
+    // main 이 없어 늘 통과한다 — 그래서 이 검사는 페이지 쪽에 있어야 한다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toBeInTheDocument();
+    expect(footer.closest("main")).toBeNull();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면

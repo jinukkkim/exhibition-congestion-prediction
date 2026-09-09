@@ -273,8 +273,8 @@ export function VisitorsPage() {
             </section>
           </>
         )}
-        <SiteFooter />
       </main>
+      <SiteFooter container="max-w-[900px] px-6 sm:px-10" />
     </div>
   );
 }

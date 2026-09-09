@@ -280,8 +280,8 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
             )}
           </>
         )}
-        <SiteFooter />
       </main>
+      <SiteFooter container="max-w-[1400px] px-6 sm:px-10 lg:px-16" />
     </div>
   );
 }

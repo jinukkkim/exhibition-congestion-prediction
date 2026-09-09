@@ -8,9 +8,25 @@
 // 자리도 여기지만, 두 데이터셋의 이용허락범위를 아직 확인하지 않았다.
 const REPO_URL = "https://github.com/jinukkkim/exhibition-congestion-prediction";
 
-export function SiteFooter() {
+/**
+ * @param container 그 페이지 `<main>` 이 쓰는 컨테이너 클래스.
+ *
+ * 푸터는 `<main>` **밖**에 서야 한다 — `<footer>` 가 암묵적으로
+ * `contentinfo` 랜드마크가 되는 것은 main·article·aside·nav·section 의
+ * 자손이 아닐 때뿐이고, 안에 넣으면 `generic` 으로 떨어져 스크린리더의
+ * 랜드마크 이동에서 사라진다.
+ *
+ * 그런데 밖으로 나가면 main 의 폭·좌우 여백을 잃는다. 오른쪽 끝이 본문과
+ * 어긋나면 안 되는데 페이지마다 폭이 다르다(1400 / 1280 / 900). 그래서
+ * 페이지가 자기 컨테이너를 알려준다 — 기본값을 두지 않은 이유는 그것이
+ * 곧 세 페이지 중 둘을 조용히 어긋나게 하기 때문이다.
+ */
+export function SiteFooter({ container }: { container: string }) {
   return (
-    <footer className="mt-16 border-t border-hairline/70 pt-6 text-right">
+    // 세로 여백은 main 이 이미 낸다(py-16 의 아래쪽). 여기서 또 mt 를 주면
+    // 두 배가 되므로 아래쪽 pb-16 만 스스로 챙긴다.
+    <footer className={`mx-auto pb-16 ${container}`}>
+      <div className="border-t border-hairline/70 pt-6 text-right">
       <a
         href={REPO_URL}
         target="_blank"
@@ -34,7 +50,8 @@ export function SiteFooter() {
             말하지 않으므로 둘 다 남긴다. 링크 이름은 "GitHub" 하나로 읽혀야
             하므로 스크린리더에서는 뺀다. */}
         <span aria-hidden="true">↗</span>
-      </a>
+        </a>
+      </div>
     </footer>
   );
 }
