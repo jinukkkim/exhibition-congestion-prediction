@@ -95,19 +95,20 @@ describe("HomePage", () => {
     );
   });
 
-  it("links to the raw collection log", async () => {
-    // 관 페이지에서 표를 내린 대신 여기서만 들어갈 수 있으므로, 링크가 사라지면
-    // 수집한 데이터를 화면에서 볼 방법이 없어진다.
+  it("does not link to the developer-only pages", async () => {
+    // /logs 와 /visitors 는 개발자용이라 UI 에서 링크하지 않는다. 라우트는
+    // 살아 있어 주소를 아는 사람은 그대로 열 수 있고, robots.txt 가 크롤링만
+    // 막는다 — 숨기려는 것이지 없애려는 것이 아니다.
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("link", { name: /수집 원본 데이터/ })).toHaveAttribute(
-      "href",
-      "/logs"
-    );
+    expect(screen.queryByRole("link", { name: /수집 원본 데이터/ })).toBeNull();
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.getAttribute("href")).not.toMatch(/^\/(logs|visitors)/);
+    }
   });
 
   it("answers from the clock instead of flashing a loading placeholder", async () => {
