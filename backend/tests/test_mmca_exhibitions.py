@@ -65,6 +65,10 @@ def test_groups_by_venue_and_drops_venues_we_have_no_page_for():
     assert [e.title for e in by_venue["gwacheon"]] == ["과천 전시", "어린이 전시"]
     assert by_venue["seoul"][0].space_codes == ["MMCA-SPACE-1006", "MMCA-SPACE-1007"]
     assert by_venue["gwacheon"][1].space_codes == []
+    # 장소 원문은 뽑은 코드와 별개로 그대로 남는다 — 층과 전시실 아닌 공간이
+    # 코드로는 버려지므로, 사람이 읽는 줄은 이 값을 쓴다.
+    assert by_venue["seoul"][0].place == "지하1층 6, 7전시실"
+    assert by_venue["gwacheon"][1].place == ""
 
 
 def test_keeps_the_period_and_the_site_order():

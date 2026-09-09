@@ -84,6 +84,10 @@ class MmcaExhibition(BaseModel):
     # YYYY-MM-DD. 프론트는 점 표기로만 바꿔 그리므로 date 로 올릴 이유가 없다.
     start_date: str
     end_date: str
+    # 누리집의 장소 문자열 원문. space_codes 가 방 카드를 찾는 값이라면 이쪽은
+    # 사람이 읽는 값이다 — 층이나 전시실 아닌 공간까지 그대로 들어 있고,
+    # 어린이미술관처럼 빈 문자열인 행도 있다.
+    place: str
     # 이 전시가 쓰는 전시실. 전시실이 없는 공간(서울박스, 교육동 등)에서만
     # 열리는 전시는 비어 있고, 헤더 목록에만 실린다.
     space_codes: list[str]

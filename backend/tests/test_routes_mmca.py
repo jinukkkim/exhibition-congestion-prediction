@@ -421,6 +421,7 @@ def test_mmca_exhibitions_serves_the_venue_and_caches_every_venue(client, monkey
             "title": "서울 전시",
             "start_date": "2026-06-19",
             "end_date": "2026-10-11",
+            "place": "지하1층 6, 7전시실",
             "space_codes": ["MMCA-SPACE-1006", "MMCA-SPACE-1007"],
         }
     ]
