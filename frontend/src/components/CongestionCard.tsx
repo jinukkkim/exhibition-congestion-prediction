@@ -403,8 +403,9 @@ export function CongestionCard({
   // D−7 대리 기록이라 지킬 이음매가 없다: 거기서 재이음하면 하루가 이미 다 찬
   // 실선에 걸려 예측 곡선이 통째로 사라진다.
   //
-  // 이음매는 붙이지만 MMCA 처럼 곡선을 오늘 수준으로 평행이동하지는 않는다 —
-  // 그쪽 계수는 백테스트로 확정한 값이고, 여기(연속값·GBR)에는 그 근거가 없다.
+  // 오늘 수준으로의 평행이동은 프론트가 하지 않는다 — 백엔드가 요청 시각에
+  // 붙여 내려보내므로(routes/prediction.py 의 _anchored_today) 여기 도착한
+  // model 값은 이미 보정된 곡선이고, 프론트가 할 일은 이음매뿐이다.
   const lastActual = points[points.length - 1];
   const predPoints: Point[] =
     isTodayView && lastActual

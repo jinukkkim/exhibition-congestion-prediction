@@ -1,6 +1,6 @@
 # Exhibition Traffic — 실시간 전시 혼잡도 예측 시스템
 
-국립중앙박물관 실시간 혼잡도를 서울시 열린데이터광장 API에서 수집하고, 축적된 데이터로 시간대별 혼잡도를 예측하는 개인 포트폴리오 MVP. 베이스라인(요일×시간대 평균)과 scikit-learn 모델의 예측 정확도(MAE)를 비교해 보여준다.
+국립중앙박물관 실시간 혼잡도를 서울시 열린데이터광장 API에서 수집하고, 축적된 데이터로 시간대별 혼잡도를 예측하는 개인 포트폴리오 MVP. 예측은 (요일×시각) 평균 프로파일을 오늘 실측에 맞춰 보정하고 마지막 판독에서 램프로 이어 붙이는 방식이며, 상수의 근거는 `backend/scripts/backtest_*_prediction.py` 의 롤링 오리진 백테스트에 있다.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ scripts/dev.sh
 It also fills the prediction cache when that is empty. The prediction
 response is served from Redis, not the DB, and only the daily batch
 (00:02 KST) writes it — so a server started after that time used to answer
-"collecting, 0/14 days" on a DB full of data, and the chart's dashed
+"collecting, 0/7 days" on a DB full of data, and the chart's dashed
 prediction line was simply absent.
 
 The pull is skipped when the local DB is less than 30 minutes old — production

@@ -48,7 +48,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const tabDates = upcomingDates(today, 7);
   const lastWeek = shiftDate(today, -7);
 
-  // 계속 폴링: 6분 주기 수집이 새 판독을 쌓는 값.
+  // 계속 폴링: 수집기가 새 판독을 쌓는 값 (backend 의 MMCA_POLL_MINUTES 격자).
   const roomsPoll = usePolledFetch(() => fetchMmcaRooms(venue), { intervalMs: POLL_INTERVAL_MS }, [
     venue,
   ]);

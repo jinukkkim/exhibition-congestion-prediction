@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 KR_HOLIDAYS = holidays.country_holidays("KR")
 
 # 미술관 휴관일 달력. KR_HOLIDAYS 와 **다른 것**이다 — 저쪽은 예측 배치의
-# is_holiday 피처가 쓰는 관공서 공휴일이고, 이쪽은 관이 실제로 문을 닫는 날이다.
+# is_holiday 플래그가 쓰는 관공서 공휴일이고, 이쪽은 관이 실제로 문을 닫는 날이다.
 # 근로자의날처럼 공휴일이지만 미술관이 여는 날이 있어 겹치지 않는다.
 #
 # 프론트 src/lib/museumCalendar.ts 가 같은 파일을 import 한다. 규칙은 양쪽에
