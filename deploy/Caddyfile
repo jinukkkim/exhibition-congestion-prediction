@@ -64,6 +64,13 @@ exhibition-traffic.duckdns.org {
 		reverse_proxy localhost:8000
 	}
 
+	# 국중박 전시 목록. 혼잡도는 /congestion/* 로 오지만(그 시절 이름) 전시는
+	# 관 이름을 접두로 쓴다. 새 접두는 여기와 frontend/vite.config.ts 두 곳에
+	# 다 적어야 한다 — 위 /analytics 주석과 같은 이유다.
+	handle /national-museum/* {
+		reverse_proxy localhost:8000
+	}
+
 	# /health* rather than /health/*, so both the liveness endpoint and
 	# /health/collection match. Without this the SPA fallback answers 200 with
 	# index.html for both, which an uptime monitor reads as a healthy backend
