@@ -9,15 +9,17 @@ GradientBoostingRegressor 를 걷어낸 이유는 측정 결과다: 피처가 (�
 2026년 8월 초(목 11~13시 3,292명)에서 9월(2,250명)로 내려온 뒤에도 전 기간
 평균을 내놓아 영업시간 판독의 97%를 과대예측했다(평균 +416명).
 
-아래 상수는 롤링 오리진으로 확정된 값이다. 임의로 바꾸지 말 것 —
-scripts/backtest_seoul_prediction.py 를 돌려서 근거를 다시 만든 뒤에 바꾼다.
+아래 상수와 "비율 보정" 선택은 롤링 오리진으로 확정된 값이다. 임의로 바꾸지
+말 것 — scripts/backtest_seoul_prediction.py 를 돌려서 근거를 다시 만든 뒤에
+바꾼다. (MIN_ANCHOR_OBSERVATIONS 는 해당하지 않는다. 백테스트가 스윕하지
+않으며 근거가 다르다 — 자기 주석 참고.)
 """
 
 from datetime import date, datetime
 from typing import NamedTuple
 
 PROFILE_WINDOW_DAYS = 7        # 7일 168 / 14일 173 / 21일 176 / 28일 180
-# 온종일(= 가장 긴 영업일보다 길어 개장~현재 전체). 30분 177 / 60분 172 /
+# 온종일(= 가장 긴 영업일 전체 길이. 21:00 − 09:30 = 690). 30분 177 / 60분 172 /
 # 120분 172 / 240분 170 / 690분 168. MMCA 는 120분이 이겼다 — 그쪽은 4단계
 # 순서형이라 최근 판독이 곧 신호지만, 이쪽 인구수는 밴드가 굵고 완만해서
 # 짧은 창일수록 밴드 잡음만 크게 잡힌다.
@@ -196,7 +198,6 @@ def predict_value(
 # 여기는 weekday 라 수=2·토=5).
 OPEN_MINUTES = 9 * 60 + 30
 _LONG_CLOSE_DAYS = {2, 5}  # 수·토는 21:00 폐관
-LONGEST_DAY_MINUTES = 21 * 60 - OPEN_MINUTES  # 690 — ANCHOR_WINDOW_MINUTES 의 근거
 
 
 def close_minutes(day: date) -> int:
