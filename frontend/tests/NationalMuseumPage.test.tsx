@@ -317,5 +317,4 @@ describe("NationalMuseumPage date tabs", () => {
     await waitFor(() => expect(screen.queryByText("보통")).not.toBeInTheDocument());
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
   });
-
 });
