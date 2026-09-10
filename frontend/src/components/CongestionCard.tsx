@@ -295,15 +295,22 @@ export function CongestionCard({
     // 영업시간 밖이라는 사실은 판독 없이도 확정된다 — 데이터를 기다렸다가
     // 답하면 페이지를 열 때마다 "불러오는 중"이 한 번 스쳐 지나간다.
     const placeholderNow = new Date();
-    const { open: placeholderOpen, close: placeholderClose } =
-      nationalMuseumBusinessHours(placeholderNow);
+    // 휴관 판정에 넘기는 날짜는 chartDate 다 — 이 자리에선 todayString() 과
+    // 같은 값이고, 둘 다 KST 로 고정돼 있다. `placeholderNow` 를 그대로 넘기면
+    // 브라우저 로컬 Y/M/D 가 되어 KST 보다 느린 타임존이 자정 근처에서
+    // 달력 휴관일을 하루 놓친다 (MmcaPage 의 viewedDate·venueSummary 와 같은
+    // 이유). 분 단위 판정은 반대로 로컬 벽시계 질문이라 placeholderNow 를 쓴다.
+    const { open: placeholderOpen, close: placeholderClose, isOpenToday: placeholderIsOpenToday } =
+      nationalMuseumBusinessHours(new Date(`${chartDate}T00:00:00`));
     const placeholderMinutes = placeholderNow.getHours() * 60 + placeholderNow.getMinutes();
     const outsideHours =
       placeholderMinutes < placeholderOpen || placeholderMinutes > placeholderClose;
 
     return (
       <div className="flex min-h-[420px] flex-col items-center justify-center gap-1 rounded-apple border border-hairline/60 bg-white/70 text-sm text-ink-soft shadow-apple backdrop-blur-xl motion-safe:animate-rise-in">
-        {outsideHours ? (
+        {!placeholderIsOpenToday ? (
+          <span className="text-2xl font-semibold text-ink-soft">휴관일입니다</span>
+        ) : outsideHours ? (
           <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
         ) : error ? (
           <>
@@ -320,23 +327,31 @@ export function CongestionCard({
   const status = statusOf(data?.congest_level ?? "");
   const now = new Date();
   // 축은 그리는 날짜의 영업시간을 쓴다 — 수·토는 21:00, 그 외는 17:30 폐관이라
-  // 요일에 따라 축의 오른쪽 끝이 달라진다.
-  const { open, close } = nationalMuseumBusinessHours(
-    isTodayView ? now : new Date(`${chartDate}T00:00:00`)
+  // 요일에 따라 축의 오른쪽 끝이 달라진다. 오늘 탭에서도 `now` 가 아니라
+  // chartDate 를 넘긴다: 휴관 판정이 요일이 아니라 정확한 날짜를 맞추게 되어,
+  // 브라우저 로컬 Y/M/D 를 넘기면 KST 보다 느린 타임존이 자정 근처에서
+  // 달력 휴관일을 하루 놓친다. chartDate 는 todayString() 이라 KST 고정이다.
+  // 분 단위 판정(nowMinutes)은 로컬 벽시계 질문이라 계속 `now` 를 쓴다.
+  const { open, close, isOpenToday } = nationalMuseumBusinessHours(
+    new Date(`${chartDate}T00:00:00`)
   );
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = isTodayView && nowMinutes >= open && nowMinutes <= close;
+  // 달력 휴관일(1월1일·설날·추석 등)에는 시각과 무관하게 닫혀 있다 —
+  // isOpenToday 가 false 면 영업시간 안에 있어도 열 수 없다.
+  const isOpen = isTodayView && isOpenToday && nowMinutes >= open && nowMinutes <= close;
   // 영업시간만 보고 "실시간"이라 적으면 수집기나 상류가 죽어도 초록 점이
   // 계속 뛴다. 표시 중인 판독 자체의 나이로 판정한다.
   const stale = isStale(data?.observed_at ?? null, now, SEOUL_STALE_MINUTES);
   const isLive = isOpen && !stale;
-  const openBadge = isOpen
-    ? stale
-      ? "갱신 지연"
-      : "실시간"
-    : nowMinutes < open
-      ? "영업 전"
-      : "영업 종료";
+  const openBadge = !isOpenToday
+    ? "휴관일"
+    : isOpen
+      ? stale
+        ? "갱신 지연"
+        : "실시간"
+      : nowMinutes < open
+        ? "영업 전"
+        : "영업 종료";
   const rawPoints: Point[] = (daily ?? [])
     .map((row) => ({
       minutes: minutesOfDay(row.observed_at),
@@ -388,8 +403,9 @@ export function CongestionCard({
   // D−7 대리 기록이라 지킬 이음매가 없다: 거기서 재이음하면 하루가 이미 다 찬
   // 실선에 걸려 예측 곡선이 통째로 사라진다.
   //
-  // 이음매는 붙이지만 MMCA 처럼 곡선을 오늘 수준으로 평행이동하지는 않는다 —
-  // 그쪽 계수는 백테스트로 확정한 값이고, 여기(연속값·GBR)에는 그 근거가 없다.
+  // 오늘 수준으로의 평행이동은 프론트가 하지 않는다 — 백엔드가 요청 시각에
+  // 붙여 내려보내므로(routes/prediction.py 의 _anchored_today) 여기 도착한
+  // model 값은 이미 보정된 곡선이고, 프론트가 할 일은 이음매뿐이다.
   const lastActual = points[points.length - 1];
   const predPoints: Point[] =
     isTodayView && lastActual

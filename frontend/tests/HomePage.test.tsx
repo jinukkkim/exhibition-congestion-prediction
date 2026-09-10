@@ -19,6 +19,35 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 }
 
 describe("HomePage", () => {
+  it("carries the site footer", async () => {
+    // 푸터는 다섯 페이지가 같은 컴포넌트 한 줄로 붙인다 — 링크 자체는
+    // SiteFooter.test.tsx 가 고정하므로, 여기서는 페이지가 실제로 그것을
+    // 렌더한다는 것만 본다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("link", { name: "GitHub" })).toBeInTheDocument();
+  });
+
+  it("puts the footer outside main so it keeps the contentinfo landmark", () => {
+    // <footer> 는 main·article·aside·nav·section 의 자손이 아닐 때만 암묵적
+    // contentinfo 가 된다. main 안에 넣으면 generic 으로 떨어져 스크린리더의
+    // 랜드마크 이동에서 사라지는데, 컴포넌트를 단독으로 렌더하면 감싸는
+    // main 이 없어 늘 통과한다 — 그래서 이 검사는 페이지 쪽에 있어야 한다.
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toBeInTheDocument();
+    expect(footer.closest("main")).toBeNull();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면
@@ -66,19 +95,20 @@ describe("HomePage", () => {
     );
   });
 
-  it("links to the raw collection log", async () => {
-    // 관 페이지에서 표를 내린 대신 여기서만 들어갈 수 있으므로, 링크가 사라지면
-    // 수집한 데이터를 화면에서 볼 방법이 없어진다.
+  it("does not link to the developer-only pages", async () => {
+    // /logs 와 /visitors 는 개발자용이라 UI 에서 링크하지 않는다. 라우트는
+    // 살아 있어 주소를 아는 사람은 그대로 열 수 있고, robots.txt 가 크롤링만
+    // 막는다 — 숨기려는 것이지 없애려는 것이 아니다.
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("link", { name: /수집 원본 데이터/ })).toHaveAttribute(
-      "href",
-      "/logs"
-    );
+    expect(screen.queryByRole("link", { name: /수집 원본 데이터/ })).toBeNull();
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.getAttribute("href")).not.toMatch(/^\/(logs|visitors)/);
+    }
   });
 
   it("answers from the clock instead of flashing a loading placeholder", async () => {

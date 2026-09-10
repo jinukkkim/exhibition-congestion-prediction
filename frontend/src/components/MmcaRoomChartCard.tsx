@@ -185,7 +185,6 @@ export function MmcaRoomChartCard({
   nowMinutes,
   now,
   viewDate,
-  isOpenToday,
 }: {
   room: MmcaRoomStatus;
   // 이 방에서 진행중인 전시. 전시실 표기가 없는 전시만 있는 관이거나 목록을
@@ -204,7 +203,6 @@ export function MmcaRoomChartCard({
   // 차트가 그리는 날짜. 생략하면 오늘. 오늘이 아니면 지나간 날의 기록만 그리므로
   // 실시간 배지·현재 등급을 그리지 않는다.
   viewDate?: string;
-  isOpenToday: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   // 커서의 x 를 분으로 되돌려 마크 격자에 맞춘 값 하나. 계열 위의 점으로
@@ -220,7 +218,10 @@ export function MmcaRoomChartCard({
   // 미래 탭의 곡선은 지난주 같은 요일의 대리값이다 — 오늘 차트의 회색 비교선과
   // 같은 뜻이므로 색도 같게 둔다 (CongestionCard 와 같은 규칙).
   const lineStroke = isTodayView ? CHART_BLUE : LAST_WEEK_STROKE;
-  const isOpen = isTodayView && isOpenToday && nowMinutes >= open && nowMinutes <= close;
+  // 요일 휴관은 여기서 보지 않는다 — 휴관일에는 MmcaPage 가 방 목록을 통째로
+  // 안내 하나로 바꾸므로 이 카드가 그려지지 않는다. 한 사실을 두 곳에서
+  // 말하던 자리였다.
+  const isOpen = isTodayView && nowMinutes >= open && nowMinutes <= close;
 
   const points = roomPoints(daily, spaceCode, open, close);
   // Last week is always a fully-elapsed day, so it just uses the plain
@@ -269,15 +270,13 @@ export function MmcaRoomChartCard({
   // 표시 중인 판독 자체의 나이로 판정한다.
   const stale = isStale(room.observed_at, now, MMCA_STALE_MINUTES);
   const isLive = isOpen && !stale;
-  const openBadge = !isOpenToday
-    ? "휴관일"
-    : isOpen
-      ? stale
-        ? "갱신 지연"
-        : "실시간"
-      : nowMinutes < open
-        ? "영업 전"
-        : "영업 종료";
+  const openBadge = isOpen
+    ? stale
+      ? "갱신 지연"
+      : "실시간"
+    : nowMinutes < open
+      ? "영업 전"
+      : "영업 종료";
 
   function handleHoverMove(event: MouseEvent<SVGRectElement>) {
     const svg = svgRef.current;
@@ -337,8 +336,12 @@ export function MmcaRoomChartCard({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-soft">
               {title}
             </p>
+            {/* 본문 농도(text-ink)가 아니라 옅은 쪽을 쓴다 — 카드의 주인공은
+                곡선이고, 전시명은 그 방이 무엇인지 알려주는 딸림 줄이다.
+                위의 방 이름과 같은 토큰이지만 크기·자간·대문자가 달라 둘의
+                순서는 그대로 읽힌다. */}
             {exhibitionTitle && (
-              <p className="mt-1 truncate text-sm text-ink" title={exhibitionTitle}>
+              <p className="mt-1 truncate text-sm text-ink-soft" title={exhibitionTitle}>
                 {exhibitionTitle}
               </p>
             )}
@@ -367,9 +370,7 @@ export function MmcaRoomChartCard({
               <span className="text-2xl font-semibold text-ink-soft">정보 없음</span>
             )
           ) : (
-            <span className="text-2xl font-semibold text-ink-soft">
-              {isOpenToday ? "영업 시간이 아닙니다" : "휴관일입니다"}
-            </span>
+            <span className="text-2xl font-semibold text-ink-soft">영업 시간이 아닙니다</span>
           )}
         </div>
         )}

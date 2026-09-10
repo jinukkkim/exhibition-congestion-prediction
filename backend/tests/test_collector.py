@@ -1,6 +1,7 @@
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 
 import fakeredis
 import httpx
@@ -253,6 +254,139 @@ def test_is_venue_open_deoksugung_closed_on_monday():
     assert _is_venue_open("deoksugung", datetime(2026, 7, 27, 14, 0)) is False
     # 2026-07-28 is a Tuesday — same hours as Seoul, open.
     assert _is_venue_open("deoksugung", datetime(2026, 7, 28, 14, 0)) is True
+
+
+def test_is_closed_day_opens_a_holiday_monday():
+    """2026-08-17(광복절 대체) 과천관은 열었다 — non-여유 판독 185건.
+    출처는 공식 문서가 아니라 실측이다(관람정보 페이지는 '매주 월요일'만
+    적는다). 스펙의 '알려진 한계' 참고."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("gwacheon", date(2026, 8, 17)) is False
+    assert _is_closed_day("deoksugung", date(2026, 8, 17)) is False
+
+
+def test_is_closed_day_closes_the_day_after_a_holiday_monday():
+    """2026-08-18 과천관은 219 판독이 전부 여유였다(빈 건물). 다른 모든
+    화요일은 non-여유가 59~157."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("gwacheon", date(2026, 8, 18)) is True
+    # 서울관은 요일 휴관이 없어 대체 휴관도 없다 — 같은 날 non-여유 65.
+    assert _is_closed_day("seoul", date(2026, 8, 18)) is False
+
+
+def test_is_closed_day_still_closes_a_plain_monday():
+    from app.collector import _is_closed_day
+
+    # 2026-09-07 은 공휴일이 아닌 월요일이다.
+    assert _is_closed_day("gwacheon", date(2026, 9, 7)) is True
+    assert _is_closed_day("seoul", date(2026, 9, 7)) is False
+    # 그 다음 화요일은 대체 휴관이 아니다 — 앞날이 공휴일이 아니었다.
+    assert _is_closed_day("gwacheon", date(2026, 9, 8)) is False
+
+
+def test_is_closed_day_honours_an_ad_hoc_closure():
+    """서울관 2026-09-08 임시 휴관 — 관람정보 페이지가 명시하고, 그날 판독
+    1,928건의 non-여유가 0이었다."""
+    from app.collector import _is_closed_day
+
+    assert _is_closed_day("seoul", date(2026, 9, 8)) is True
+    # 2026-01-01 은 목요일이다 — 과천관의 요일 휴관과 무관하므로 오직 첫째
+    # 갈래(closed[venue])로만 닫힐 수 있다.
+    assert _is_closed_day("gwacheon", date(2026, 1, 1)) is True
+
+
+def test_is_closed_day_does_not_close_the_day_after_a_lunar_new_year_monday():
+    """설·추석 연휴 월요일은 publicHolidays 에 넣지 않는다.
+
+    2026-02-16(월)은 설 연휴 전날이고 2026-02-17 은 설날이다. 그 월요일을
+    공휴일로 실으면 셋째 갈래가 설날을 대체 휴관으로 닫는데, 과천·덕수궁의
+    공표 휴관일은 "1월1일, 매주 월요일" 뿐이라 그날 문을 연다. 셋째 갈래의
+    근거는 대체공휴일 한 사례(2026-08-17)뿐이라 연휴 월요일까지 늘리지
+    않는다.
+    """
+    from app.collector import _is_closed_day
+
+    for venue in ("gwacheon", "deoksugung"):
+        # 월요일 자체는 여전히 요일 휴관이다 — 공휴일 예외를 주지 않았다.
+        assert _is_closed_day(venue, date(2026, 2, 16)) is True
+        # 설날은 열려 있다.
+        assert _is_closed_day(venue, date(2026, 2, 17)) is False
+        # 2027 년의 같은 충돌.
+        assert _is_closed_day(venue, date(2027, 2, 8)) is True
+        assert _is_closed_day(venue, date(2027, 2, 9)) is False
+
+
+def test_is_closed_day_matches_the_shared_fixture():
+    """shared/museum-holidays.test-cases.json 은 두 언어 구현이 같은 답을
+    내는지 확인하는 유일한 장치다 — 이 테스트가 프론트의 같은 이름 테스트와
+    같은 파일을 읽는다. 한쪽 규칙만 바뀌면 이 테스트나 그쪽이 실패한다."""
+    from app.collector import _is_closed_day
+
+    fixture_path = (
+        Path(__file__).resolve().parents[2] / "shared" / "museum-holidays.test-cases.json"
+    )
+    cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert len(cases) > 0
+
+    for case in cases:
+        target = date.fromisoformat(case["date"])
+        assert _is_closed_day(case["venue"], target) is case["closed"], (
+            f"{case['venue']} {case['date']}: {case['why']}"
+        )
+
+
+def test_collect_mmca_once_polls_gwacheon_on_a_holiday_monday(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    seen_codes = []
+
+    def fake_fetch(client, space_code, api_key):
+        seen_codes.append(space_code)
+        return MmcaCongestionReading(
+            observed_at=datetime(2026, 8, 17, 14, 0),
+            space_code=space_code,
+            space_nm="테스트 전시실",
+            agnc_nm="테스트관",
+            congestion_nm="보통",
+        )
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001"]},
+    )
+
+    # 14:00 은 probe 라운드가 아니지만 창이 비어 있어 전부 부른다.
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 8, 17, 14, 0)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-2001"]
+    assert len(result) == 1
+
+
+def test_collect_mmca_once_skips_gwacheon_the_day_after(monkeypatch, session_factory):
+    import app.collector as collector_module
+
+    def fake_fetch(client, space_code, api_key):
+        raise AssertionError("대체 휴관일에는 부르지 않는다")
+
+    monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
+    monkeypatch.setattr(
+        collector_module.settings,
+        "mmca_venue_space_codes",
+        {"gwacheon": ["MMCA-SPACE-2001"]},
+    )
+
+    assert (
+        collector_module.collect_mmca_once(
+            session_factory=session_factory, now=datetime(2026, 8, 18, 14, 0)
+        )
+        == []
+    )
 
 
 def test_collect_mmca_once_skips_api_call_when_closed(monkeypatch, session_factory):
@@ -533,25 +667,7 @@ def test_collect_mmca_once_skips_only_the_closed_venue(monkeypatch, session_fact
     assert seen_codes == ["MMCA-SPACE-1001"]
 
 
-def test_collect_mmca_once_polls_a_room_that_read_empty_all_first_hour(monkeypatch, session_factory):
-    """전시가 없어 첫 시간 내내 빈 판독만 온 방도 다른 방과 똑같이 매 라운드
-    돈다. 예전에는 11시부터 2시간 주기로 떨어뜨렸는데(옛 1,000콜/일 상한),
-    그러면 낮에 새로 여는 전시를 최대 2시간 뒤에야 잡았다."""
-    import app.collector as collector_module
-
-    with session_factory() as session:
-        for minute in (10, 20, 30, 40, 50):
-            session.add(
-                RawMmcaCongestion(
-                    observed_at=datetime(2026, 7, 27, 10, minute),
-                    space_code="MMCA-SPACE-1002",
-                    congestion_nm=None,
-                )
-            )
-        session.commit()
-
-    seen_codes = []
-
+def _record_fetch(monkeypatch, collector_module, seen_codes, congestion_nm="보통"):
     def fake_fetch(client, space_code, api_key):
         seen_codes.append(space_code)
         return MmcaCongestionReading(
@@ -559,7 +675,7 @@ def test_collect_mmca_once_polls_a_room_that_read_empty_all_first_hour(monkeypat
             space_code=space_code,
             space_nm="테스트 전시실",
             agnc_nm="테스트관",
-            congestion_nm="보통",
+            congestion_nm=congestion_nm,
         )
 
     monkeypatch.setattr(collector_module, "fetch_mmca_congestion", fake_fetch)
@@ -569,14 +685,137 @@ def test_collect_mmca_once_polls_a_room_that_read_empty_all_first_hour(monkeypat
         {"seoul": ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]},
     )
 
-    # 12:00 은 옛 2시간 재확인 그리드(11/13/15/17/19/21)에서 벗어난 라운드라,
-    # 스킵이 살아 있었다면 1002 가 빠졌을 시각이다.
+
+def _seed(session_factory, space_code, minutes, congestion_nm):
+    with session_factory() as session:
+        for hour, minute in minutes:
+            session.add(
+                RawMmcaCongestion(
+                    observed_at=datetime(2026, 7, 27, hour, minute),
+                    space_code=space_code,
+                    congestion_nm=congestion_nm,
+                )
+            )
+        session.commit()
+
+
+def test_collect_mmca_once_skips_a_room_with_no_exhibition_between_probes(
+    monkeypatch, session_factory
+):
+    """전시가 없어 빈 판독만 오는 방은 probe 라운드 사이에서 빠진다."""
+    import app.collector as collector_module
+
+    _seed(session_factory, "MMCA-SPACE-1001", [(11, 40), (11, 50)], "보통")
+    _seed(session_factory, "MMCA-SPACE-1002", [(11, 40), (11, 50)], None)
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
+    result = collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 52)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-1001"]
+    assert len(result) == 1
+
+
+def test_collect_mmca_once_probe_round_polls_a_room_with_no_exhibition(
+    monkeypatch, session_factory
+):
+    """probe 라운드에서는 빈 판독만 오던 방도 다시 부른다.
+
+    이 스킵은 옛 1,000콜/일 상한 시절에도 있었고, 그때는 재확인이 2시간
+    주기라 낮에 새로 여는 전시를 최대 2시간 뒤에야 잡아서 걷어냈다. 다시
+    넣은 지금 그 지연을 _PROBE_MINUTES 로 묶어 두는 것이 요점이다.
+    """
+    import app.collector as collector_module
+
+    _seed(session_factory, "MMCA-SPACE-1001", [(11, 40), (11, 50)], "보통")
+    _seed(session_factory, "MMCA-SPACE-1002", [(11, 40), (11, 50)], None)
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
     result = collector_module.collect_mmca_once(
         session_factory=session_factory, now=datetime(2026, 7, 27, 12, 0)
     )
 
     assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
     assert len(result) == 2
+
+
+def test_collect_mmca_once_polls_a_revived_room_on_every_round_again(
+    monkeypatch, session_factory
+):
+    """probe 가 살아난 방을 잡으면 다음 라운드부터 다시 매번 돈다.
+
+    1003·1005 가 37일 내리 0002 였다가 2026-09-01 15:00 에 살아난 것이
+    이 경로다 — 개장 시각이 아니라 장중이었다.
+    """
+    import app.collector as collector_module
+
+    _seed(session_factory, "MMCA-SPACE-1001", [(11, 40), (12, 0)], "보통")
+    _seed(session_factory, "MMCA-SPACE-1002", [(11, 40)], None)
+    _seed(session_factory, "MMCA-SPACE-1002", [(12, 0)], "여유")
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 12, 2)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+
+
+def test_collect_mmca_once_polls_everything_when_the_probe_window_is_empty(
+    monkeypatch, session_factory
+):
+    """창에 판독이 하나도 없으면 스킵하지 않는다 — 개관 직후·재시작 직후에
+    빈 결과를 "전부 0002" 로 읽으면 다음 probe 까지 통째로 잃는다."""
+    import app.collector as collector_module
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 12, 2)
+    )
+
+    assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
+
+
+def test_probe_rounds_survive_a_grid_that_does_not_divide_the_probe_interval(
+    monkeypatch, session_factory
+):
+    """격자가 30 을 나누지 않아도 30분 창마다 probe 라운드가 하나 있다.
+
+    MMCA_POLL_MINUTES 는 이미 세 번(10→1→2) 바뀐 값이다. 4 가 되면 라운드의
+    분이 0,4,…,28,32,… 라 30 이 아예 나오지 않으므로, `% 30 == 0` 으로
+    판정하면 probe 가 정각 하나로 줄고 그만큼 되살아난 방을 늦게 잡는다.
+    """
+    import app.collector as collector_module
+
+    monkeypatch.setattr(collector_module, "MMCA_POLL_MINUTES", 4)
+    _seed(session_factory, "MMCA-SPACE-1001", [(11, 40), (11, 44)], "보통")
+    _seed(session_factory, "MMCA-SPACE-1002", [(11, 40), (11, 44)], None)
+
+    seen_codes = []
+    _record_fetch(monkeypatch, collector_module, seen_codes)
+
+    # 11:47 → 라운드 마크 11:44. 30분 창 안쪽이라 probe 가 아니다.
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 47)
+    )
+    assert seen_codes == ["MMCA-SPACE-1001"]
+
+    # 11:35 → 라운드 마크 11:32. 30 은 격자에 없지만 이것이 그 창의 첫
+    # 라운드라 probe 다.
+    seen_codes.clear()
+    collector_module.collect_mmca_once(
+        session_factory=session_factory, now=datetime(2026, 7, 27, 11, 35)
+    )
+    assert seen_codes == ["MMCA-SPACE-1001", "MMCA-SPACE-1002"]
 
 
 def test_collect_mmca_once_polls_every_configured_room(monkeypatch, session_factory):

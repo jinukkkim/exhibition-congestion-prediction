@@ -29,7 +29,7 @@ export function DateTabs({
                 : "border-hairline/60 text-ink-soft hover:border-hairline hover:bg-ink/5 hover:text-ink"
             }`}
           >
-            {/* 혼잡도를 결정하는 것은 요일이고(모델 피처가 요일·시간·공휴일뿐)
+            {/* 혼잡도를 결정하는 것은 요일이고(예측 프로파일의 키가 요일·시각뿐)
                 사람이 계획하는 것은 날짜이므로, 둘을 상하로 나눠 위계를 준다. */}
             <span className={`text-[11px] font-medium ${isSelected ? "text-canvas/70" : ""}`}>
               {index === 0 ? "오늘" : weekdayKo(date)}

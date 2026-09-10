@@ -1,7 +1,8 @@
 """서울시(국립중앙박물관) 예측의 롤링 오리진 백테스트.
 
-app/prediction/seoul.py 의 세 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTES
-/ RAMP_MINUTES)와 "덧셈 보정" 선택의 근거를 만드는 스크립트다. 상수를 바꾸려면
+app/prediction/seoul.py 의 상수(PROFILE_WINDOW_DAYS / ANCHOR_WINDOW_MINUTES /
+RAMP_MINUTES / SEAM_BUCKET_MINUTES / SEAM_WINDOW_MINUTES)와 "비율 보정" 선택의
+근거를 만드는 스크립트다. 상수를 바꾸려면
 먼저 이걸 돌려서 새 근거를 만들 것. backtest_mmca_prediction.py 와 같은 형태다.
 
 프로덕션 함수를 그대로 호출한다 — 로직을 재구현하면 근거가 갈라진다.

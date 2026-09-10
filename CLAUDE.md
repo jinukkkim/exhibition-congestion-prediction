@@ -51,11 +51,16 @@ skill. Only what is true of *this* repo belongs here:
   not occur. If one ever lands in CI, the two meanings collide and the visual
   one needs a different name.
 - **Scope** — one of `fe` (`frontend/`, tests and e2e included), `be`
-  (`backend/app/` and `backend/tests/`), `dev` (`backend/scripts/`),
+  (`backend/app/`, `backend/tests/`, and `shared/`), `dev` (`backend/scripts/`),
   `deploy` (`deploy/`). Documentation and CI take no scope: `docs:` and
   `ci:` already say it. A change spanning `fe` and `be` is two commits, not
   a new scope — that has happened 4 times in this repo's history, so it is
   rare enough to split.
+
+  `shared/` rides with `be` because its only backend-side consumer is
+  `app/config.py`'s loader — even though the frontend reads the same files
+  too (`import`, not a loader). A change touching only `shared/` still takes
+  `be`, not a scope of its own.
 
   `dev` is not "never ships": `deploy/deploy.sh` runs three of those scripts
   (`migrate_add_*.py`, `migrate_drop_*.py`) on **every** production deploy.

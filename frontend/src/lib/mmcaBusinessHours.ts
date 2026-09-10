@@ -1,4 +1,5 @@
 import type { MmcaVenue } from "../api/mmca";
+import { isClosedDay } from "./museumCalendar";
 
 const OPEN_MINUTES = 10 * 60; // 10:00, every day
 const NORMAL_CLOSE_MINUTES = 18 * 60;
@@ -13,21 +14,6 @@ const LONG_CLOSE_DAYS: Partial<Record<MmcaVenue, Set<number>>> = {
   deoksugung: new Set([3, 6]),
 };
 
-// Same rule as the backend's collector.py _VENUE_CLOSED_DAYS — Deoksugung is
-// inside the palace grounds and Gwacheon keeps the same Tuesday–Sunday week;
-// only Seoul opens every day. JS Date.getDay(): Sun=0, Mon=1 (the backend's
-// Python datetime.weekday() is Mon=0, a different convention — this is the
-// same real-world rule translated to JS's convention, not a copy of the
-// value).
-//
-// ponytail: 요일만 본다. 대체공휴일 월요일에는 실제로 문을 열지만(2026-08-17
-// 과천관에 정상 혼잡 기록이 있다) 그날은 휴관일로 그려진다. 공휴일 달력이
-// 들어오면 그때 함께 고친다.
-const VENUE_CLOSED_DAYS: Partial<Record<MmcaVenue, Set<number>>> = {
-  gwacheon: new Set([1]),
-  deoksugung: new Set([1]),
-};
-
 export function mmcaBusinessHours(
   venue: MmcaVenue,
   date: Date
@@ -35,6 +21,38 @@ export function mmcaBusinessHours(
   const close = LONG_CLOSE_DAYS[venue]?.has(date.getDay())
     ? LONG_CLOSE_MINUTES
     : NORMAL_CLOSE_MINUTES;
-  const isOpenToday = !VENUE_CLOSED_DAYS[venue]?.has(date.getDay());
-  return { open: OPEN_MINUTES, close, isOpenToday };
+  return { open: OPEN_MINUTES, close, isOpenToday: !isClosedDay(venue, date) };
+}
+
+/**
+ * `from` **다음**으로 이 관이 문을 여는 날. 휴관일 안내가 "언제 다시 오면
+ * 되는지"까지 말하려면 필요한 값이라 mmcaBusinessHours 바로 옆에 둔다 — 다른
+ * 파일에 두면 museumCalendar.ts 의 `isClosedDay`(요일 규칙은 `WEEKLY_CLOSED`)
+ * 를 고칠 때 한쪽만 고치게 된다.
+ *
+ * `from` 자신은 세지 않는다. 부르는 자리가 이미 "그날은 휴관일" 인 곳이다.
+ *
+ * `from` 의 시:분은 결과에 닿지 않는다 — `mmcaBusinessHours` 를 거쳐 읽는
+ * `isClosedDay` 는 요일이 아니라 날짜(연-월-일)를 보므로, 호출부가 현재
+ * 시각이 담긴 Date(오늘 탭)를 주든 자정으로 만든 Date(미래 탭)를 주든 같은
+ * 날짜로 취급되어 답이 같다. 한국은 서머타임이 없어 날짜를 하루씩 미는 것도
+ * 날짜 경계를 어긋나게 하지 않는다.
+ *
+ * 7일을 넘겨 찾지 않고 `null` 을 돌려준다. 어느 관도 이틀을 잇달아 쉬지
+ * 않지만, museumCalendar.ts 의 `closed[venue]`(임시 휴관일 날짜 목록)에
+ * 이레 연속을 다 적으면 무한 루프가 되는 형태라 상한을 둔다 —
+ * businessHoursLine 이 같은 상황에서 "상시 휴관" 을 돌려주는 것과 같은
+ * 방어이고, 호출부는 안내 줄을 생략하면 된다.
+ */
+export function nextOpenDay(
+  venue: MmcaVenue,
+  from: Date
+): { weekday: number; open: number } | null {
+  const date = new Date(from);
+  for (let i = 0; i < 7; i++) {
+    date.setDate(date.getDate() + 1);
+    const { open, isOpenToday } = mmcaBusinessHours(venue, date);
+    if (isOpenToday) return { weekday: date.getDay(), open };
+  }
+  return null;
 }
