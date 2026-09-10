@@ -126,10 +126,9 @@ def mmca_daily(venue: str, date: str | None = Query(default=None)) -> list[MmcaD
             .all()
         )
 
-    # ponytail: assumes one poll batch finishes within the same minute it
-    # starts (true today — an 8-room batch takes ~4s). If room counts grow
-    # enough to push a batch past a minute boundary, switch to a real
-    # batch_id instead of bucketing by minute.
+    # 한 라운드의 판독은 collector 가 전부 라운드 격자 마크로 찍어 두므로
+    # (collect_mmca_once 의 round_time) 분 버킷이 곧 라운드다 — 라운드가 분
+    # 경계를 넘어도 갈리지 않는다.
     buckets: dict[datetime, dict[str, RawMmcaCongestion]] = defaultdict(dict)
     for row in rows:
         bucket_key = row.observed_at.replace(second=0, microsecond=0)

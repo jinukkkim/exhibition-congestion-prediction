@@ -45,8 +45,9 @@ def get_prediction() -> dict | None:
 
 
 # 오늘 곡선은 최근 120분 실측에 매달려 있어 판독마다 바뀐다. 프론트가 60초로
-# 폴링하므로(MmcaPage 의 POLL_INTERVAL_MS) TTL 도 60초로 맞춘다 — 수집 주기인
-# 600초로 잡으면 새 판독이 들어와도 최대 10분간 곡선이 안 움직인다.
+# 폴링하므로(MmcaPage 의 POLL_INTERVAL_MS) TTL 도 60초로 맞춘다 — 수집 격자에
+# 맞추면 새 판독이 들어와도 그 격자만큼 곡선이 안 움직이고, 그 격자는 값이
+# 아니라 움직이는 값이다(MMCA_POLL_MINUTES 는 10 → 1 → 2 로 바뀌어 왔다).
 MMCA_PREDICTION_TTL_TODAY_SECONDS = 60
 # 미래 날짜는 편차가 없어 하루 안에서 정적이다.
 MMCA_PREDICTION_TTL_FUTURE_SECONDS = 3600

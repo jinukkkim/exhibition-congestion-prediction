@@ -95,10 +95,6 @@ class MmcaCongestionReading:
 
 
 def fetch_congestion(client: httpx.Client, space_code: str, api_key: str) -> MmcaCongestionReading:
-    # ponytail: passing the key through httpx's `params` (which percent-encodes
-    # it) assumes the "decoding" form of the data.go.kr service key. If real
-    # calls 401 once a live key is wired in, try passing the already-encoded
-    # key directly in the URL instead — known data.go.kr gotcha.
     response = client.get(
         f"{BASE_URL}/congestion",
         params={"serviceKey": api_key, "spaceCode": space_code},
