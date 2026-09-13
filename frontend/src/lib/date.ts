@@ -76,3 +76,14 @@ export function formatMinutes(minutes: number): string {
 export function exhibitionPeriod(startDate: string, endDate: string): string {
   return `${startDate.replaceAll("-", ".")} – ${endDate.replaceAll("-", ".")}`;
 }
+
+/**
+ * `date` 가 `from` 보다 몇 주 앞인가. 비교선 라벨("지난주" / "2주 전")이 이 값을 쓴다.
+ *
+ * 둘 다 자정 UTC 로 파싱되므로 차이가 정확히 일수의 배수다. KST 는 DST 가 없어
+ * 이 계산이 어긋날 자리도 없다.
+ */
+export function weeksBefore(date: string, from: string): number {
+  const DAY_MS = 86_400_000;
+  return Math.round((Date.parse(from) - Date.parse(date)) / (7 * DAY_MS));
+}

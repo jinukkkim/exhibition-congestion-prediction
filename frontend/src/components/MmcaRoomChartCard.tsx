@@ -2,7 +2,7 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { formatMinutes, monthDayWeekday, shiftDate, todayString, weeksBefore } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES, resample } from "../lib/resample";
 import { statusOf } from "../lib/status";
@@ -179,6 +179,7 @@ export function MmcaRoomChartCard({
   exhibitionTitle = null,
   daily,
   lastWeekDaily = null,
+  lastWeekDate,
   prediction = null,
   open,
   close,
@@ -192,6 +193,9 @@ export function MmcaRoomChartCard({
   exhibitionTitle?: string | null;
   daily: MmcaDailyLogPoint[] | null;
   lastWeekDaily?: MmcaDailyLogPoint[] | null;
+  // lastWeekDaily 가 실제로 어느 날짜인지. 이름과 달리 D−14 일 수 있다 —
+  // 그 하루가 비어 페이지가 물러섰을 때다(lib/comparisonDay).
+  lastWeekDate?: string;
   // 이 방의 예측. 이력이 모자라 응답에서 빠진 방은 null 이다.
   prediction?: MmcaRoomPrediction | null;
   open: number;
@@ -299,6 +303,14 @@ export function MmcaRoomChartCard({
   // 미래 탭의 괄호가 영구히 빈다.
   const comparePoints = isTodayView ? lastWeekPoints : points;
 
+  // 비교선의 날짜는 페이지가 정해 보낸다. D−7 에 기록이 없으면 D−14 가 오므로
+  // (lib/comparisonDay) 여기서 shiftDate 로 만들면 라벨이 실제로 그린 하루와
+  // 어긋난다. 미래 탭의 비교 계열은 chartDate 자신(D−7 대리 기록)이라 언제나
+  // 지난주다.
+  const compareDate = (isTodayView && lastWeekDate) || shiftDate(chartDate, -7);
+  const compareWeeks = weeksBefore(compareDate, chartDate);
+  const compareLabel = compareWeeks === 1 ? "지난주" : `${compareWeeks}주 전`;
+
   // 마크 격자 계열은 짚은 x 에 값이 실제로 있을 때만 값을 낸다 (창을 넓히면
   // 없는 시각을 있는 것처럼 말한다 — HOVER_MATCH_MINUTES 주석 참고).
   //
@@ -317,7 +329,7 @@ export function MmcaRoomChartCard({
   // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교
   // 시리즈 자신일 때만 괄호를 생략한다.
   const hoverPrimary = hoverPrediction ?? hoverActual ?? hoverCompare;
-  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : "지난주 ";
+  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : `${compareLabel} `;
   const hoverSuffix = hoverPrediction || hoverActual ? hoverCompare : undefined;
 
   return (
@@ -386,7 +398,7 @@ export function MmcaRoomChartCard({
               {lastWeekLinePath && (
                 <span className="flex items-center gap-1.5">
                   <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
-                  {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
+                  {monthDayWeekday(compareDate)} {compareLabel}
                 </span>
               )}
               {predictionPath && (
@@ -579,7 +591,7 @@ export function MmcaRoomChartCard({
               <span className="font-semibold" style={{ color: statusOf(hoverPrimary.label).text }}>
                 {hoverPrimary.label}
               </span>
-              {hoverSuffix && <span className="ml-1 text-ink-soft">(지난주 {hoverSuffix.label})</span>}
+              {hoverSuffix && <span className="ml-1 text-ink-soft">({compareLabel} {hoverSuffix.label})</span>}
             </div>
           )}
           <div className="relative mt-2 h-4 text-[11px] font-mono text-ink-soft/70">

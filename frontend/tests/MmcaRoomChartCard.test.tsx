@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES } from "../src/lib/resample";
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
@@ -1192,5 +1192,69 @@ describe("tier gridlines", () => {
 
     // 빈 차트에 눈금만 남으면 값이 있는 것처럼 보인다.
     expect(screen.queryAllByTestId("mmca-room-chart-tier-line")).toHaveLength(0);
+  });
+
+});
+
+describe("MmcaRoomChartCard 비교선 라벨", () => {
+  // 라벨은 "오늘로부터 몇 주 전인가" 라서 시계에 매달려 있다.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T14:30:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("labels the comparison line by the day it actually holds", () => {
+    // MMCA 가 이 갈래가 실제로 도는 곳이다 — 정기 휴관 요일이 아닌 날 문을 닫으면
+    // 게이트가 그날을 수집하지 않아 D−7 이 통째로 비고, 페이지가 D−14 를 보낸다
+    // (lib/comparisonDay). 카드가 날짜를 스스로 shiftDate(-7) 로 만들면 그린 것과
+    // 적은 것이 어긋난다.
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-01T10:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-01T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        lastWeekDate="2026-07-01"
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+      />
+    );
+
+    expect(screen.getByText(/7\/1\(수\)\s*2주 전/)).toBeInTheDocument();
+    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+  });
+
+  it("still says 지난주 when the comparison line really is last week", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-08T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        lastWeekDate="2026-07-08"
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+      />
+    );
+
+    expect(screen.getByText(/7\/8\(수\)\s*지난주/)).toBeInTheDocument();
   });
 });

@@ -6,8 +6,7 @@ import {
   monthDayWeekday,
   todayString,
   upcomingDates,
-  weekdayKo,
-} from "../src/lib/date";
+  weekdayKo, weeksBefore } from "../src/lib/date";
 
 describe("upcomingDates", () => {
   it("lists the given day and the following ones in order", () => {
@@ -76,5 +75,13 @@ describe("formatMinutes", () => {
     expect(formatMinutes(21 * 60)).toBe("21:00");
     expect(formatMinutes(0)).toBe("00:00");
     expect(formatMinutes(23 * 60 + 59)).toBe("23:59");
+  });
+});
+
+describe("weeksBefore", () => {
+  it("counts whole weeks back from a day", () => {
+    // 비교선 라벨이 이 값으로 "지난주" 와 "2주 전" 을 가른다.
+    expect(weeksBefore("2026-07-21", "2026-07-28")).toBe(1);
+    expect(weeksBefore("2026-07-14", "2026-07-28")).toBe(2);
   });
 });
