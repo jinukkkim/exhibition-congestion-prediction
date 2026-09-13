@@ -11,9 +11,22 @@ from app.cache import (
     MMCA_PREDICTION_TTL_TODAY_SECONDS,
     get_mmca_exhibitions,
     get_mmca_prediction,
+    get_mmca_weekly_profile,
     revive,
     set_mmca_exhibitions,
     set_mmca_prediction,
+    set_mmca_weekly_profile,
+)
+# 개관 시각·야간개장 요일·주간 휴관 요일은 수집기가 이미 갖고 있다. 값을 옮겨
+# 적으면 그 순간부터 둘이 갈라지므로 import 한다 — scripts/purge_out_of_hours_mmca.py
+# 가 _is_venue_open 을 재구현하지 않는 것과 같은 규율이다. _is_venue_open 자체를
+# 쓰지 않는 이유는 _in_profile_window 의 주석에 있다.
+from app.collector import (
+    _COLLECTION_START,
+    _LONG_CLOSE,
+    _LONG_DAYS,
+    _NORMAL_CLOSE,
+    _VENUE_CLOSED_DAYS,
 )
 from app.config import MMCA_SPACE_NAMES, settings
 from app.db import SessionLocal
@@ -36,6 +49,9 @@ from app.schemas import (
     MmcaPredictionPoint,
     MmcaRoomPrediction,
     MmcaRoomStatus,
+    MmcaWeeklyProfile,
+    MmcaWeeklyProfileCell,
+    MmcaWeeklyProfileRoom,
 )
 
 router = APIRouter()
@@ -321,3 +337,100 @@ def mmca_exhibitions(venue: str) -> list[MmcaExhibition]:
     for venue_id, exhibitions in by_venue.items():
         set_mmca_exhibitions(venue_id, [vars(e) for e in exhibitions])
     return [MmcaExhibition(**vars(e)) for e in by_venue.get(venue, [])]
+
+
+def _in_profile_window(venue: str, stamp: datetime) -> bool:
+    """이 판독이 요일 × 시각 프로파일에 들어가는가.
+
+    두 가지를 건다.
+
+    **주간 휴관 요일은 통째로 뺀다.** _is_venue_open 을 그대로 쓰지 않는 이유가
+    이것이다 — 그쪽은 공휴일 월요일을 "열림"으로 판정하는 것이 옳고(실제로 문을
+    연다), 여기서는 그 하루가 "월요일" 행 전체가 되는 것이 문제다. 과천관
+    월요일 판독은 2026-08-17 하루뿐이고 그날은 광복절 대체공휴일이라 평소보다
+    붐볐다 — 그대로 두면 평소 문을 닫는 요일이 그 관의 가장 붐비는 시각으로
+    뽑힌다. 행이 아예 없는 편이 맞다.
+
+    **정시가 개관 시간에 온전히 들어갈 때만 센다.** 한 시간을 한 칸으로 평균
+    내므로, 폐관 정각이 걸친 칸은 판독 한둘로 값이 낮게 깔린 채 "가장 한산한
+    시각"으로 뽑힌다(routes/congestion.py 의 _full_hour_open 과 같은 이유).
+    남는 것은 과천관 10~17시, 야간개장이 있는 서울관은 수·토에 10~20시다.
+    """
+    if stamp.weekday() in _VENUE_CLOSED_DAYS.get(venue, set()):
+        return False
+    close = _LONG_CLOSE if stamp.weekday() in _LONG_DAYS.get(venue, set()) else _NORMAL_CLOSE
+    open_minutes = _COLLECTION_START.hour * 60 + _COLLECTION_START.minute
+    close_minutes = close.hour * 60 + close.minute
+    return stamp.hour * 60 >= open_minutes and (stamp.hour + 1) * 60 <= close_minutes
+
+
+@router.get("/mmca/weekly-profile", response_model=MmcaWeeklyProfile)
+def mmca_weekly_profile(venue: str) -> MmcaWeeklyProfile:
+    """수집 전체 기간의 (요일, 시각) 평균 등급 — 관 단위 한 장과 전시실별 한 장씩.
+
+    서울시 쪽(/congestion/weekly-profile)과 같은 목적이지만 축이 하나 더 있다.
+    값이 방마다 따로 나오므로 관 단위 칸은 **방 평균들의 평균**이다 — 판독이
+    많은 방이 가중치를 더 갖지 않는다. 방 자체는 MIN_SAMPLE_DAYS 로 거른다.
+    예측이 쓰는 것과 같은 게이트이며, 전시가 없어 혼잡도를 주지 않는 방이 상시로
+    있기 때문에 필요하다.
+
+    창은 예측의 14일(PROFILE_WINDOW_DAYS)이 아니라 수집 전체다. 그 14일은
+    백테스트가 *예측 오차*로 고른 값이고, 여기 목적은 요일 성격의 *설명*이다.
+
+    덕수궁관을 따로 막지 않는다 — 판독이 전부 혼잡도 없는 값이라 프로파일이
+    비고, 그대로 collecting 으로 나간다. 없는 조건에 가드를 세우지 않는다.
+    """
+    codes = settings.mmca_venue_space_codes.get(venue)
+    if codes is None:
+        raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
+
+    cached = get_mmca_weekly_profile(venue)
+    if cached is not None:
+        return MmcaWeeklyProfile(**cached)
+
+    with SessionLocal() as session:
+        rows = (
+            session.query(RawMmcaCongestion)
+            .filter(RawMmcaCongestion.space_code.in_(codes))
+            .order_by(RawMmcaCongestion.observed_at.asc())
+            .all()
+        )
+
+    window = [row for row in rows if _in_profile_window(venue, row.observed_at)]
+    days_by_code = sample_days(window)
+    kept = {code for code, days in days_by_code.items() if days >= MIN_SAMPLE_DAYS}
+    counted = [row for row in window if row.space_code in kept and row.congestion_nm is not None]
+    if not counted:
+        # 캐시하지 않는다 — 수집이 시작되면 풀리는 상태다(congestion 쪽과 같다).
+        return MmcaWeeklyProfile(status="collecting", cells=[], rooms=[])
+
+    profile = build_profile(counted)
+
+    by_room: dict[str, list[MmcaWeeklyProfileCell]] = defaultdict(list)
+    venue_cells: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for (space_code, weekday, hour), rank in sorted(profile.items()):
+        by_room[space_code].append(
+            MmcaWeeklyProfileCell(weekday=weekday, hour=hour, rank=round(rank, 2))
+        )
+        venue_cells[(weekday, hour)].append(rank)
+
+    result = MmcaWeeklyProfile(
+        status="ready",
+        since=counted[0].observed_at.date().isoformat(),
+        until=counted[-1].observed_at.date().isoformat(),
+        samples=len(counted),
+        cells=[
+            MmcaWeeklyProfileCell(
+                weekday=weekday, hour=hour, rank=round(sum(ranks) / len(ranks), 2)
+            )
+            for (weekday, hour), ranks in sorted(venue_cells.items())
+        ],
+        rooms=[
+            MmcaWeeklyProfileRoom(
+                space_code=code, space_nm=MMCA_SPACE_NAMES.get(code), cells=by_room[code]
+            )
+            for code in sorted(by_room)
+        ],
+    )
+    set_mmca_weekly_profile(venue, result.model_dump())
+    return result

@@ -60,6 +60,32 @@ class RawLogPoint(BaseModel):
     fields: dict[str, str | int | float | None]
 
 
+class MmcaWeeklyProfileCell(BaseModel):
+    # 0=월 … 6=일 (datetime.weekday()).
+    weekday: int
+    hour: int
+    # 평균 등급 0.0~3.0 (여유·보통·약간 붐빔·붐빔). 최빈값이 아니라 평균인
+    # 이유는 prediction/mmca.py 의 build_profile 주석에 있다.
+    rank: float
+
+
+class MmcaWeeklyProfileRoom(BaseModel):
+    space_code: str
+    space_nm: str | None
+    cells: list[MmcaWeeklyProfileCell]
+
+
+class MmcaWeeklyProfile(BaseModel):
+    status: str
+    since: str | None = None
+    until: str | None = None
+    samples: int = 0
+    # 관 단위 — 같은 (요일, 시각)에 있는 방들의 평균. 방마다 값이 하나씩이므로
+    # 판독이 많은 방이 가중치를 더 갖지 않는다.
+    cells: list[MmcaWeeklyProfileCell]
+    rooms: list[MmcaWeeklyProfileRoom]
+
+
 class MmcaRoomStatus(BaseModel):
     space_code: str
     space_nm: str | None
