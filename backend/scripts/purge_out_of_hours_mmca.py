@@ -33,11 +33,22 @@ Not in deploy.sh — a data cleanup, not a schema migration. Idempotent by
 nature: a second run finds nothing left to delete. Previewing is the default;
 deletion happens only with --delete.
 
-Run this only where the collector it imports already reads the calendar. The
-gate is imported rather than reimplemented, so against pre-calendar code a
-weekday-only gate judges the same rows and silently keeps the closed days —
-it fails as a preview count too small rather than as a wrong deletion, which
-is only recognisable against a known figure.
+Run this only where the collector it imports already reads the calendar, and
+treat that as a hard precondition rather than a preference. The gate is
+imported rather than reimplemented, so pre-calendar code does not judge less
+than the calendar — it judges *differently*. Its _VENUE_CLOSED_DAYS was
+{"gwacheon": {0}, "deoksugung": {0}}: every Monday closed, no exception. So it
+keeps 2026-08-18's 219 genuinely-closed rows and condemns 2026-08-17's 219
+instead — the holiday Monday the museum actually opened, 185 of those readings
+non-여유. That is the irreversible deletion of real visitor data, not a preview
+count that comes up short.
+
+The preview total does not catch the swap. Against production as it stood for
+the run below, both gates condemn exactly 297 rows: the same 78 from
+2026-08-15 either way, plus 219 from whichever day the gate believes in. The
+figure a reader would check against is the figure that coincides, and main()
+prints the total and a per-venue split but never the dates. Verify the
+deployed collector, not the count.
 
 **Already run in production on 2026-09-11**, right after the calendar
 deployed: 297 rows deleted (Gwacheon 219 on 2026-08-18, the substitute
@@ -46,8 +57,10 @@ previews 0. The hold this file used to carry — no first run until after
 2026-10-05, on the grounds that rule 3 rested on a single inferred pair of
 days — was lifted first: 2026-08-18's closure was confirmed from the museum's
 own notice, and it is the only rule-3 day in the collected data. Its 219 rows
-were 192 여유 readings and 27 empty ones, against 59~94 non-여유 on every
-other Tuesday of those rooms.
+were 192 여유 readings and 27 empty ones, against 59~157 non-여유 on every
+other Tuesday of those rooms — the same range the calendar spec measures over
+all of Gwacheon (docs/superpowers/specs/2026-09-08-museum-holiday-calendar-design.md),
+since the seven rooms that made up those 219 carry the whole spread.
 
 Seoul's own ad-hoc closure (2026-09-08, 1,928 rows) is not in that count: it
 had already been deleted from production by then, before this file could see
@@ -102,10 +115,13 @@ def out_of_hours(rows: Sequence[Row]) -> list[Row]:
 def main(session_factory=SessionLocal) -> None:
     parser = argparse.ArgumentParser()
     # 미리보기가 기본값이고 삭제는 --delete 로만 일어난다. 뒤집혀 있었을 때는
-    # 플래그를 잊는 것이 곧 프로덕션 행 삭제였다. 지금 이 기본값이 지키는 것은
-    # 순서다 — 달력을 읽지 않는 배포에서 돌리면 지워야 할 2,225행 중 78행만
-    # 지우고 조용히 끝나므로(위 docstring), 먼저 미리보기 숫자를 2,225 와
-    # 맞춰 보게 만드는 자리가 여기다.
+    # 플래그를 잊는 것이 곧 프로덕션 행 삭제였다.
+    #
+    # 다만 이 기본값이 순서까지 지켜 주지는 않는다. 달력을 읽지 않는 배포에서
+    # 돌려도 미리보기는 297 을 찍었을 것이고, 달력을 읽는 배포에서 실제로 찍은
+    # 수도 297 이다 — 숫자가 같고 지워질 행이 다르다(위 docstring). 아래 출력은
+    # 합계와 관별 내역뿐이라 그 차이가 드러나지도 않는다. 순서는 이 숫자가
+    # 아니라 배포된 collector 를 보고 확인해야 한다.
     parser.add_argument(
         "--delete", action="store_true", help="actually delete; without it this only previews"
     )
