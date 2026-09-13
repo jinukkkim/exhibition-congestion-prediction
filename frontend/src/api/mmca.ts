@@ -85,3 +85,35 @@ export async function fetchMmcaExhibitions(venue: MmcaVenue): Promise<MmcaExhibi
   }
   return res.json();
 }
+
+export interface MmcaWeeklyProfileCell {
+  // 0=월 … 6=일. 관이 주간 휴관하는 요일은 아예 오지 않는다.
+  weekday: number;
+  hour: number;
+  // 평균 등급 0.0~3.0 (여유·보통·약간 붐빔·붐빔).
+  rank: number;
+}
+
+export interface MmcaWeeklyProfileRoom {
+  space_code: string;
+  space_nm: string | null;
+  cells: MmcaWeeklyProfileCell[];
+}
+
+export interface MmcaWeeklyProfile {
+  status: "collecting" | "ready";
+  since: string | null;
+  until: string | null;
+  samples: number;
+  // 관 단위 — 같은 칸에 있는 방들의 평균.
+  cells: MmcaWeeklyProfileCell[];
+  rooms: MmcaWeeklyProfileRoom[];
+}
+
+export async function fetchMmcaWeeklyProfile(venue: MmcaVenue): Promise<MmcaWeeklyProfile> {
+  const res = await fetch(`/mmca/weekly-profile?venue=${venue}`);
+  if (!res.ok) {
+    throw new Error(`failed to fetch mmca weekly profile: ${res.status}`);
+  }
+  return res.json();
+}

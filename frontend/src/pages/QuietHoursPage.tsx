@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 
 import { fetchWeeklyProfile, type WeeklyProfileCell } from "../api/congestion";
+import { CongestionHeatmap } from "../components/CongestionHeatmap";
 import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
-import { WEEKDAY_NAMES, extremes, quietHoursHeadline, rankScale } from "../lib/quietHours";
+import { extremes, quietHoursHeadline, rankScale } from "../lib/quietHours";
 import { VENUES } from "../venues";
 
 // 다른 화면과 같은 주기다. 값 자체는 서버가 6시간 캐시하므로 한 번 받고 멈추어도
@@ -40,10 +41,6 @@ export function QuietHoursPage() {
   const cells: WeeklyProfileCell[] = profile.data?.cells ?? [];
   const found = extremes(cells);
   const headline = quietHoursHeadline(venue.name, cells);
-  // 요일마다 열리는 시각이 다르다(수·토는 야간개장). 열은 실제로 값이 있는
-  // 시각만 세워야 빈 열이 생기지 않는다.
-  const hours = [...new Set(cells.map((cell) => cell.hour))].sort((a, b) => a - b);
-  const byCell = new Map(cells.map((cell) => [`${cell.weekday}-${cell.hour}`, cell]));
   const rankOf = rankScale(cells.map((cell) => cell.population_avg));
 
   return (
@@ -56,8 +53,12 @@ export function QuietHoursPage() {
           >
             ← {venue.name}
           </Link>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            {venue.name} 요일·시간대별 혼잡도 기록
+          {/* 바로 위 되돌아가기 링크가 이미 관 이름을 말하지만 제목에서
+              빼지는 않는다 — 검색창에 치는 말이 관 이름이고, h1 이 그
+              말을 갖고 있어야 한다. 대신 서술을 줄이고 한 급 작게 쓴다:
+              관 이름이 긴 MMCA 에서 5xl 짜리 두 줄이 화면을 다 먹었다. */}
+          <h1 className="mt-2 text-balance break-keep text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+            {venue.name} 시간대별 혼잡도
           </h1>
           {headline !== null && (
             // 히트맵은 그림이라 검색엔진이 읽지 못한다. 이 페이지가 색인되는
@@ -73,58 +74,19 @@ export function QuietHoursPage() {
               : "아직 집계할 판독이 모이지 않았습니다."}
           </p>
         ) : (
-          // 좁은 화면에서는 표가 가로로 넘친다 — 본문을 밀어내는 대신 표만
-          // 스스로 스크롤한다.
-          <div className="overflow-x-auto">
-            {/* min-w 가 없으면 표가 좁은 화면에 맞춰 줄어들 뿐 스크롤되지
-                않는다 — w-full 이 이미 100% 라 넘칠 것이 없기 때문이다. 그러면
-                네 자리 숫자 열두 칸이 뭉개진다. 요일 열 40 + 시각 열 11 × 52. */}
-            <table className="w-full min-w-[620px] border-separate border-spacing-0.5 text-center">
-              <caption className="sr-only">
-                요일과 시각별 평균 생활인구. 진할수록 사람이 많습니다.
-              </caption>
-              <thead>
-                <tr>
-                  <th className="w-10" />
-                  {hours.map((hour) => (
-                    <th
-                      key={hour}
-                      scope="col"
-                      className="pb-1 text-xs font-normal tabular-nums text-ink-soft"
-                    >
-                      {hour}시
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {WEEKDAY_NAMES.map((name, weekday) => (
-                  <tr key={name}>
-                    <th scope="row" className="pr-2 text-sm font-normal text-ink-soft">
-                      {name}
-                    </th>
-                    {hours.map((hour) => {
-                      const cell = byCell.get(`${weekday}-${hour}`);
-                      if (cell === undefined) {
-                        // 그 요일 그 시각에는 문을 열지 않는다. 빈 칸이 곧
-                        // 야간개장이 수·토뿐이라는 말이다.
-                        return <td key={hour} className="h-9" />;
-                      }
-                      return (
-                        <td
-                          key={hour}
-                          className="h-9 rounded text-xs tabular-nums text-ink"
-                          style={{ backgroundColor: cellShade(rankOf(cell.population_avg)) }}
-                        >
-                          {Math.round(cell.population_avg).toLocaleString()}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CongestionHeatmap
+            cells={cells}
+            caption="요일과 시각별 평균 생활인구. 진할수록 사람이 많습니다."
+            // 요일 열 40 + 시각 열 11 × 52. 네 자리 숫자가 뭉개지지 않는 폭이다.
+            minWidthClass="min-w-[620px]"
+            renderCell={(cell) => ({
+              label: Math.round(cell.population_avg).toLocaleString(),
+              style: {
+                backgroundColor: cellShade(rankOf(cell.population_avg)),
+                color: "#1D1D1F",
+              },
+            })}
+          />
         )}
 
         {/* 각주 뭉치가 아니라 데이터 명세다. 관 페이지의 VenueInfoList 와 같은

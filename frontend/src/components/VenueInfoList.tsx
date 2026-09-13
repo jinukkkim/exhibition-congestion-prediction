@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 import { businessHoursLine } from "../lib/businessHoursLine";
 import type { Venue } from "../venues";
@@ -44,6 +45,20 @@ export function VenueInfoList({ venue }: { venue: Venue }) {
           <dd className="whitespace-pre-line text-ink">{value}</dd>
         </Fragment>
       ))}
+      {/* 이 관의 요일 × 시각 기록. 관 정보 안에 두는 이유는 그 페이지가 이 관에
+          대한 것이기 때문이다 — 사이트 전체 푸터보다 여기가 맥락이 맞고, 검색
+          엔진에도 같은 주제끼리 이어지는 내부 링크가 더 쓸모 있다. 덕수궁관에는
+          그 페이지가 없어 줄 자체가 서지 않는다(venues.ts 의 hasQuietHours). */}
+      {venue.hasQuietHours && (
+        <>
+          <dt className="sr-only">혼잡도 기록</dt>
+          <dd className="col-start-2 mt-1">
+            <Link to={`${venue.path}/when`} className={LINK_CLASS}>
+              요일·시간대별 혼잡도 기록 →
+            </Link>
+          </dd>
+        </>
+      )}
       {/* 금액·시간은 우리가 베껴 둔 값이라 언젠가 어긋난다. 원본으로 가는 길을
           같은 표 안에 둔다. dl 은 dt 없는 dd 를 두면 안 되므로 dt 는 남기고
           화면에서만 감춘다. */}

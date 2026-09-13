@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { WeeklyProfileCell } from "../src/api/congestion";
-import { extremes, hourLabel, quietHoursHeadline, rankScale } from "../src/lib/quietHours";
+import {
+  extremes,
+  hourLabel,
+  mmcaQuietHoursHeadline,
+  quietHoursHeadline,
+  rankLabel,
+  rankScale,
+} from "../src/lib/quietHours";
 
 function cell(weekday: number, hour: number, population_avg: number): WeeklyProfileCell {
   return { weekday, hour, population_avg };
@@ -71,5 +78,44 @@ describe("rankScale", () => {
 
   it("gives ties the same shade and survives a single value", () => {
     expect(rankScale([900, 900, 900])(900)).toBe(0);
+  });
+});
+
+describe("rankLabel", () => {
+  const LEVELS = ["여유", "보통", "약간 붐빔", "붐빔"];
+
+  it("rounds the mean to the level a visitor already knows", () => {
+    expect(rankLabel(0.21, LEVELS)).toBe("여유");
+    expect(rankLabel(1.4, LEVELS)).toBe("보통");
+    expect(rankLabel(2.34, LEVELS)).toBe("약간 붐빔");
+    expect(rankLabel(3.0, LEVELS)).toBe("붐빔");
+  });
+
+  it("stays inside the scale at both ends", () => {
+    // 평균이라 0~3 을 벗어날 수 없지만, 벗어나면 undefined 가 칸에 찍힌다.
+    expect(rankLabel(-1, LEVELS)).toBe("여유");
+    expect(rankLabel(9, LEVELS)).toBe("붐빔");
+  });
+});
+
+describe("mmcaQuietHoursHeadline", () => {
+  it("makes the venue the subject — no 일대 hedge", () => {
+    // 서울시 쪽은 생활인구라 "일대는" 이라고 물러서야 한다. 이쪽은 전시실
+    // 혼잡도 그 자체라 관을 바로 주어로 쓴다.
+    const line = mmcaQuietHoursHeadline("국립현대미술관 서울관", [
+      { weekday: 1, hour: 10, rank: 0.0 },
+      { weekday: 5, hour: 16, rank: 2.58 },
+    ]);
+
+    expect(line).toBe(
+      "국립현대미술관 서울관은 화요일 오전 10시가 가장 한산하고, 토요일 오후 4시가 가장 붐빕니다."
+    );
+  });
+
+  it("says nothing when one cell would be both ends", () => {
+    expect(mmcaQuietHoursHeadline("국립현대미술관 서울관", [])).toBeNull();
+    expect(
+      mmcaQuietHoursHeadline("국립현대미술관 서울관", [{ weekday: 1, hour: 10, rank: 1 }])
+    ).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { LogsPage } from "./pages/LogsPage";
 import { MmcaPage } from "./pages/MmcaPage";
+import { MmcaQuietHoursPage } from "./pages/MmcaQuietHoursPage";
 import { NationalMuseumPage } from "./pages/NationalMuseumPage";
 import { QuietHoursPage } from "./pages/QuietHoursPage";
 import { VisitorsPage } from "./pages/VisitorsPage";
@@ -23,7 +24,14 @@ export default function App() {
             들어온 사람이 주소만 보고도 어디 소속인지 알게 된다. */}
         <Route path="/venues/national-museum/when" element={<QuietHoursPage />} />
         <Route path="/venues/mmca-seoul" element={<MmcaPage venue="seoul" />} />
+        {/* 덕수궁관에는 같은 라우트를 두지 않는다 — 판독에 혼잡도가 실리지 않아
+            격자가 통째로 빈다. 빈 페이지는 검색에도 관람객에게도 줄 것이 없다. */}
+        <Route path="/venues/mmca-seoul/when" element={<MmcaQuietHoursPage venue="seoul" />} />
         <Route path="/venues/mmca-gwacheon" element={<MmcaPage venue="gwacheon" />} />
+        <Route
+          path="/venues/mmca-gwacheon/when"
+          element={<MmcaQuietHoursPage venue="gwacheon" />}
+        />
         <Route path="/venues/mmca-deoksugung" element={<MmcaPage venue="deoksugung" />} />
         {/* 어디에도 없는 주소는 빈 #root 로 끝난다 — 오타나 옛 링크로 들어온
             사람에게 아무것도 없는 화면과 돌아갈 링크 하나 없는 막다른 길을

@@ -1,5 +1,3 @@
-import { Link } from "react-router-dom";
-
 // 모든 페이지 맨 아래 한 줄. 페이지마다 붙이는 대신 컴포넌트로 둔 이유는
 // 링크 주소가 다섯 곳에 흩어지지 않게 하려는 것뿐이다 — 레포를 옮기면 여기만
 // 고친다.
@@ -9,10 +7,6 @@ import { Link } from "react-router-dom";
 // 데이터 출처 표기(공공누리는 네 유형 모두 출처표시를 포함한다)가 들어갈
 // 자리도 여기지만, 두 데이터셋의 이용허락범위를 아직 확인하지 않았다.
 const REPO_URL = "https://github.com/jinukkkim/exhibition-congestion-prediction";
-// App.tsx 의 같은 이름 라우트. 관 페이지 어디에서도 링크하지 않기로 했으므로
-// (그 화면에 필요한 줄이 아니다) 사이트 안에서 이 페이지로 가는 길은 여기
-// 하나뿐이고, 크롤러가 sitemap.xml 밖에서 닿는 경로도 이것뿐이다.
-const QUIET_HOURS_PATH = "/venues/national-museum/when";
 
 /**
  * @param container 그 페이지 `<main>` 이 쓰는 컨테이너 클래스.
@@ -32,17 +26,7 @@ export function SiteFooter({ container }: { container: string }) {
     // 세로 여백은 main 이 이미 낸다(py-16 의 아래쪽). 여기서 또 mt 를 주면
     // 두 배가 되므로 아래쪽 pb-16 만 스스로 챙긴다.
     <footer className={`mx-auto pb-16 ${container}`}>
-      {/* 링크가 둘이 되면서 text-right 로는 모자란다. 좁은 화면에서 둘이 한
-          줄에 못 서면 줄바꿈한다 — 푸터가 가로로 넘치는 쪽이 나쁘다. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-hairline/70 pt-6">
-      {/* GitHub 쪽의 uppercase·tracking 을 따라가지 않는다: 한글에 uppercase 는
-          아무 일도 하지 않고, 0.2em 자간은 글자가 흩어져 읽힌다. */}
-      <Link
-        to={QUIET_HOURS_PATH}
-        className="text-xs text-ink-soft transition hover:text-accent"
-      >
-        국립중앙박물관 한산한 시간
-      </Link>
+      <div className="border-t border-hairline/70 pt-6 text-right">
       <a
         href={REPO_URL}
         target="_blank"

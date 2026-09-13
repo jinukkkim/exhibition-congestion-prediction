@@ -73,3 +73,39 @@ export function rankScale(values: number[]): (value: number) => number {
   const rank = new Map(sorted.map((value, index) => [value, last === 0 ? 0 : index / last]));
   return (value) => rank.get(value) ?? 0;
 }
+
+/**
+ * 평균 등급(0.0~3.0)을 사람이 읽는 등급 이름으로.
+ *
+ * 반올림이라 "1.4 = 보통" 이다. 소수를 그대로 적으면 관람객에게 아무 뜻이 없고,
+ * 이 사이트는 이미 네 등급의 이름으로 혼잡도를 말한다(lib/status.ts) — 같은
+ * 말을 쓰는 편이 새 척도를 가르치는 것보다 낫다. 잃는 것은 칸 사이의 미세한
+ * 차이인데, 그건 색이 아니라 아래 명세표가 감당할 몫이 아니다.
+ */
+export function rankLabel(rank: number, levels: string[]): string {
+  return levels[Math.min(levels.length - 1, Math.max(0, Math.round(rank)))];
+}
+
+/**
+ * MMCA 관 페이지의 한 문장. quietHoursHeadline 과 같은 자리에 서지만 값의
+ * 정체가 달라 문구가 다르다 — 이쪽은 전시실 혼잡도라 "일대" 라는 헷지가 필요
+ * 없다. 서울시 쪽은 생활인구여서 그 헷지를 달아야 했다.
+ */
+export function mmcaQuietHoursHeadline(
+  venueName: string,
+  cells: { weekday: number; hour: number; rank: number }[]
+): string | null {
+  if (cells.length === 0) return null;
+  let quietest = cells[0];
+  let busiest = cells[0];
+  for (const cell of cells) {
+    if (cell.rank < quietest.rank) quietest = cell;
+    if (cell.rank > busiest.rank) busiest = cell;
+  }
+  if (quietest === busiest) return null;
+  return (
+    `${venueName}은 ` +
+    `${WEEKDAY_NAMES[quietest.weekday]}요일 ${hourLabel(quietest.hour)}가 가장 한산하고, ` +
+    `${WEEKDAY_NAMES[busiest.weekday]}요일 ${hourLabel(busiest.hour)}가 가장 붐빕니다.`
+  );
+}

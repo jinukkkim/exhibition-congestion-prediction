@@ -1,16 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { SiteFooter } from "../src/components/SiteFooter";
 
-// 푸터가 내부 링크를 들게 되면서 Router 컨텍스트 없이는 렌더되지 않는다.
 function renderFooter() {
-  return render(
-    <MemoryRouter>
-      <SiteFooter container="max-w-[1400px] px-6" />
-    </MemoryRouter>
-  );
+  return render(<SiteFooter container="max-w-[1400px] px-6" />);
 }
 
 describe("SiteFooter", () => {
@@ -49,14 +43,4 @@ describe("SiteFooter", () => {
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
   });
 
-  it("carries the only in-app link to the quiet-hours page", () => {
-    // 관 페이지에서 링크를 걷어냈으므로 여기가 사이트 안의 유일한 경로다.
-    // 이 링크가 사라지면 /when 은 sitemap.xml 에만 남은 고아 페이지가 된다.
-    renderFooter();
-
-    expect(screen.getByRole("link", { name: "국립중앙박물관 한산한 시간" })).toHaveAttribute(
-      "href",
-      "/venues/national-museum/when"
-    );
-  });
 });
