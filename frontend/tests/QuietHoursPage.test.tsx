@@ -40,6 +40,7 @@ function renderPage() {
 
 describe("QuietHoursPage", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -82,5 +83,29 @@ describe("QuietHoursPage", () => {
       expect(screen.getByText("아직 집계할 판독이 모이지 않았습니다.")).toBeInTheDocument()
     );
     expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("polls its way out of the collecting state", async () => {
+    // collecting 도 200 응답이라, 한 번 받고 멈추면 집계가 시작된 뒤에도 손으로
+    // 새로고침하기 전까지 그 문구에 머문다. 스스로 풀려야 하는 상태다.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(api, "fetchWeeklyProfile")
+      .mockResolvedValueOnce({
+        status: "collecting",
+        since: null,
+        until: null,
+        samples: 0,
+        cells: [],
+      })
+      .mockResolvedValue(PROFILE);
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("아직 집계할 판독이 모이지 않았습니다.")).toBeInTheDocument()
+    );
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
   });
 });

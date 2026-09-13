@@ -7,9 +7,12 @@ import { usePolledFetch } from "../hooks/usePolledFetch";
 import { WEEKDAY_NAMES, extremes, quietHoursHeadline, rankScale } from "../lib/quietHours";
 import { VENUES } from "../venues";
 
-// 값은 서버가 6시간 캐시한다. 다시 받을 이유가 없으므로 한 번 받고 멈추고,
-// 이 주기는 첫 요청이 실패했을 때의 재시도 간격으로만 쓰인다.
-const RETRY_INTERVAL_MS = 60_000;
+// 다른 화면과 같은 주기다. 값 자체는 서버가 6시간 캐시하므로 한 번 받고 멈추어도
+// 될 것 같지만, 그러면 status: "collecting" 에서 빠져나올 길이 없어진다 — 그것도
+// 200 응답이라 usePolledFetch 는 "받았다"로 보고 폴링을 끊고, 집계가 시작된 뒤에도
+// 손으로 새로고침하기 전까지 "아직 집계할 판독이 모이지 않았습니다" 에 머문다.
+// 스스로 풀려야 하는 상태이므로 멈추지 않는다. 매 요청은 Redis 적중이다.
+const POLL_INTERVAL_MS = 60_000;
 
 // CHART_BLUE(#0071E3)의 rgb. 알파로 농담을 내야 해서 16진수 토큰을 그대로는
 // 쓰지 못한다 — 색 자체는 차트와 같은 파랑이다.
@@ -32,10 +35,7 @@ export function QuietHoursPage() {
   // 제목은 사람이 검색창에 치는 말에 맞춘다 — "혼잡도"로 검색하는 사람은 없다.
   useDocumentTitle(`${venue.name} 한산한 시간`);
 
-  const profile = usePolledFetch(fetchWeeklyProfile, {
-    intervalMs: RETRY_INTERVAL_MS,
-    stopWhenLoaded: true,
-  });
+  const profile = usePolledFetch(fetchWeeklyProfile, { intervalMs: POLL_INTERVAL_MS });
 
   const cells: WeeklyProfileCell[] = profile.data?.cells ?? [];
   const found = extremes(cells);
