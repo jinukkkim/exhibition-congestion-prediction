@@ -4,6 +4,7 @@ import { HomePage } from "./pages/HomePage";
 import { LogsPage } from "./pages/LogsPage";
 import { MmcaPage } from "./pages/MmcaPage";
 import { NationalMuseumPage } from "./pages/NationalMuseumPage";
+import { QuietHoursPage } from "./pages/QuietHoursPage";
 import { VisitorsPage } from "./pages/VisitorsPage";
 
 export default function App() {
@@ -18,6 +19,9 @@ export default function App() {
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/visitors" element={<VisitorsPage />} />
         <Route path="/venues/national-museum" element={<NationalMuseumPage />} />
+        {/* 관 페이지 아래에 둔다 — 같은 관을 다루는 페이지이고, 검색으로
+            들어온 사람이 주소만 보고도 어디 소속인지 알게 된다. */}
+        <Route path="/venues/national-museum/when" element={<QuietHoursPage />} />
         <Route path="/venues/mmca-seoul" element={<MmcaPage venue="seoul" />} />
         <Route path="/venues/mmca-gwacheon" element={<MmcaPage venue="gwacheon" />} />
         <Route path="/venues/mmca-deoksugung" element={<MmcaPage venue="deoksugung" />} />

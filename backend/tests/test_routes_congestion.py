@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
@@ -260,3 +262,90 @@ def test_daily_raw_adds_the_fields_we_never_parsed_into_columns(client):
     assert "LIVE_SUB_PPLTN" not in fields
     # Redundant with the row's own observed_at, which is already a column.
     assert "PPLTN_TIME" not in fields
+
+
+# 2026-08-24 월 / 2026-08-26 수(야간개장) / 2026-08-29 토(야간개장).
+def _reading(session, stamp: datetime, population: int) -> None:
+    session.add(
+        RawCongestion(
+            observed_at=stamp,
+            congest_level="보통",
+            population_min=population,
+            population_max=population,
+        )
+    )
+
+
+def test_weekly_profile_reports_collecting_when_no_readings(client):
+    test_client, _ = client
+    response = test_client.get("/congestion/weekly-profile")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "collecting",
+        "since": None,
+        "until": None,
+        "samples": 0,
+        "cells": [],
+    }
+
+
+def test_weekly_profile_keeps_only_hours_wholly_inside_opening_times(client):
+    """반 시간치만 담긴 칸은 평균이 낮게 깔려 "가장 한산한 시각"을 훔쳐 간다.
+
+    개관 09:30·평일 폐관 17:30 이라 월요일의 9시·17시 칸이 그렇고, 21:00 정각에
+    닫는 수요일의 21시 칸도 판독 한둘뿐이다. 반대로 수요일 20시는 야간개장이라
+    온전한 한 시간이며, 같은 시각이 월요일에는 아예 없다.
+    """
+    test_client, session_factory = client
+    with session_factory() as session:
+        _reading(session, datetime(2026, 8, 24, 9, 35), 100)   # 월 09:30 개관 직후
+        _reading(session, datetime(2026, 8, 24, 10, 30), 200)  # 월 온전한 한 시간
+        _reading(session, datetime(2026, 8, 24, 17, 10), 300)  # 월 17:30 폐관 직전
+        _reading(session, datetime(2026, 8, 26, 20, 30), 400)  # 수 야간개장
+        _reading(session, datetime(2026, 8, 26, 21, 0), 500)   # 수 21:00 폐관 정각
+        session.commit()
+
+    body = test_client.get("/congestion/weekly-profile").json()
+
+    assert body["status"] == "ready"
+    assert [(cell["weekday"], cell["hour"]) for cell in body["cells"]] == [(0, 10), (2, 20)]
+
+
+def test_weekly_profile_averages_each_cell_and_reports_its_span(client):
+    test_client, session_factory = client
+    with session_factory() as session:
+        _reading(session, datetime(2026, 8, 24, 10, 5), 1000)
+        _reading(session, datetime(2026, 8, 24, 10, 55), 2000)
+        # 다른 주의 같은 요일·시각은 같은 칸에 들어간다 — 요일 프로파일의 요점.
+        _reading(session, datetime(2026, 8, 31, 10, 5), 3000)
+        _reading(session, datetime(2026, 8, 29, 14, 5), 900)
+        session.commit()
+
+    body = test_client.get("/congestion/weekly-profile").json()
+
+    assert body["since"] == "2026-08-24"
+    assert body["until"] == "2026-08-31"
+    # 칸이 아니라 판독을 센다 — 네 판독이 두 칸으로 묶인다.
+    assert body["samples"] == 4
+    assert body["cells"] == [
+        {"weekday": 0, "hour": 10, "population_avg": 2000.0},
+        {"weekday": 5, "hour": 14, "population_avg": 900.0},
+    ]
+
+
+def test_weekly_profile_serves_the_cached_payload_unchanged(client):
+    """전체 이력 스캔이라 캐시가 본 경로다 — 두 번째 요청이 같은 몸통이어야 한다."""
+    test_client, session_factory = client
+    with session_factory() as session:
+        _reading(session, datetime(2026, 8, 24, 10, 5), 1000)
+        session.commit()
+
+    first = test_client.get("/congestion/weekly-profile").json()
+
+    # 캐시를 읽는지 확인하려면 DB 가 달라져도 응답이 그대로여야 한다.
+    with session_factory() as session:
+        _reading(session, datetime(2026, 8, 25, 11, 5), 9999)
+        session.commit()
+
+    assert test_client.get("/congestion/weekly-profile").json() == first
