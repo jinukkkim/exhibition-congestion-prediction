@@ -74,6 +74,15 @@ def set_mmca_prediction(venue: str, day: str, payload: list[dict], ttl: int) -> 
     r.set(f"mmca:prediction:{venue}:{day}", json.dumps(payload), ex=ttl)
 
 
+def set_mmca_weekly_profile(venue: str, result: dict) -> None:
+    r.set(f"mmca:weekly-profile:{venue}", json.dumps(result), ex=WEEKLY_PROFILE_TTL_SECONDS)
+
+
+def get_mmca_weekly_profile(venue: str) -> dict | None:
+    raw = r.get(f"mmca:weekly-profile:{venue}")
+    return json.loads(raw) if raw else None
+
+
 def get_mmca_prediction(venue: str, day: str) -> list[dict] | None:
     raw = r.get(f"mmca:prediction:{venue}:{day}")
     return json.loads(raw) if raw else None

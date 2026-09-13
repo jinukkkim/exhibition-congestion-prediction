@@ -228,9 +228,12 @@ def weekly_profile() -> WeeklyProfile:
     박물관의 달력 휴관일은 1월 1일·설날·추석 사흘뿐이라 8주 평균에서 한 칸이
     움직일 여지도 거의 없다.
     """
-    cached = get_weekly_profile()
+    # revive 를 거친다 — 생성자에 바로 넣으면 모델에 필드가 하나 느는 배포
+    # 직후 여섯 시간(이 응답의 TTL) 동안 모든 요청이 500 이다. 그 helper 의
+    # docstring 이 같은 사고를 기록하고 있다.
+    cached = revive(get_weekly_profile(), WeeklyProfile)
     if cached is not None:
-        return WeeklyProfile(**cached)
+        return cached
 
     # ponytail: 기간 제한 없는 전체 스캔. 이 파일의 다른 라우트가 모두 시간
     # 범위를 거는 것과 다른데, 그 차이가 곧 이 응답의 정의다 — "수집 전체
