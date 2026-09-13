@@ -10,10 +10,18 @@ r = redis.from_url(settings.redis_url, decode_responses=True)
 
 LATEST_KEY = "congestion:latest"
 PREDICTION_KEY = "congestion:prediction"
+WEEKLY_PROFILE_KEY = "congestion:weekly-profile"
 UPDATE_CHANNEL = "congestion:updates"
 
 LATEST_TTL_SECONDS = 900  # survives up to 2 missed 5-minute collection cycles
 PREDICTION_TTL_SECONDS = 86400
+# 수집 전체 기간의 (요일, 시각) 평균이라 하루치가 더해져도 값이 눈에 띄게 움직이지
+# 않는다 — 이 TTL 이 따라잡는 것은 평균이 아니라 화면에 적히는 집계 기간의 끝
+# 날짜다. 6시간이면 하루에 네 번 따라잡는다. 예측과 달리 배치가 만들어 두는 값이
+# 아니라 첫 요청이 만들어 넣는다: 전체 이력 스캔이라 매 요청 돌릴 수는 없지만,
+# 배치에 묶으면 배포 직후부터 00:02 까지 페이지가 비어 있게 된다.
+# 화면이 이 값을 "갱신 6시간"으로 적는다(QuietHoursPage) — 바꾸면 그 줄도 바꾼다.
+WEEKLY_PROFILE_TTL_SECONDS = 21600
 
 
 def _reading_to_dict(reading: CongestionReading) -> dict:
@@ -41,6 +49,15 @@ def set_prediction(result: dict) -> None:
 
 def get_prediction() -> dict | None:
     raw = r.get(PREDICTION_KEY)
+    return json.loads(raw) if raw else None
+
+
+def set_weekly_profile(result: dict) -> None:
+    r.set(WEEKLY_PROFILE_KEY, json.dumps(result), ex=WEEKLY_PROFILE_TTL_SECONDS)
+
+
+def get_weekly_profile() -> dict | None:
+    raw = r.get(WEEKLY_PROFILE_KEY)
     return json.loads(raw) if raw else None
 
 

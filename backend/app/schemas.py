@@ -12,6 +12,26 @@ class CongestionHistoryPoint(BaseModel):
     population_avg: float
 
 
+class WeeklyProfileCell(BaseModel):
+    # 0=월 … 6=일 (datetime.weekday()).
+    weekday: int
+    hour: int
+    population_avg: float
+
+
+class WeeklyProfile(BaseModel):
+    status: str
+    # 집계에 들어간 판독의 첫날과 마지막 날. "언제까지의 데이터인가"를 화면이
+    # 직접 적을 수 있어야 하는 값이라 응답에 싣는다 — 수집 시작일을 프론트에
+    # 박아두면 venues.ts 의 earliestDate 와 두 곳에서 같은 말을 하게 된다.
+    since: str | None = None
+    until: str | None = None
+    # 집계에 들어간 판독 수. 화면이 "판독 n건"으로 적는다 — 표본 수 없는 집계는
+    # 독자가 신뢰도를 가늠할 방법이 없다.
+    samples: int = 0
+    cells: list[WeeklyProfileCell]
+
+
 class DailyLogPoint(BaseModel):
     observed_at: str
     congest_level: str
