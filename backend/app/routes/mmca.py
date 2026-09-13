@@ -384,9 +384,13 @@ def mmca_weekly_profile(venue: str) -> MmcaWeeklyProfile:
     if codes is None:
         raise HTTPException(status_code=400, detail=f"unknown venue: {venue}")
 
-    cached = get_mmca_weekly_profile(venue)
+    # revive 를 거치는 이유는 그 docstring 에 적힌 그대로다 — 배포로 모델에
+    # 필드가 하나 늘면 직전 버전이 써 둔 payload 는 되살아나지 않고, 그대로
+    # 생성자에 넣으면 TTL 이 다 될 때까지 여섯 시간 동안 모든 요청이 500 이
+    # 된다. 캐시는 버려도 되는 값이므로 못 읽으면 없는 값으로 친다.
+    cached = revive(get_mmca_weekly_profile(venue), MmcaWeeklyProfile)
     if cached is not None:
-        return MmcaWeeklyProfile(**cached)
+        return cached
 
     with SessionLocal() as session:
         rows = (

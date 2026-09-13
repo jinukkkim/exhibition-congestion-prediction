@@ -157,3 +157,25 @@ def test_serves_the_cached_payload_unchanged(client):
     assert test_client.get("/mmca/weekly-profile?venue=seoul").json() == first
     # 캐시는 관마다 따로다 — 다른 관 요청이 이 페이로드를 받으면 안 된다.
     assert test_client.get("/mmca/weekly-profile?venue=gwacheon").json()["cells"] == []
+
+
+def test_a_cache_written_by_an_older_model_is_treated_as_a_miss(client):
+    """모델에 필드가 하나 느는 배포 직후를 흉내 낸다.
+
+    캐시는 버려도 되는 값이다. 그대로 생성자에 넣으면 TTL 이 다 될 때까지
+    여섯 시간 동안 모든 요청이 500 이 된다.
+    """
+    from app.cache import set_mmca_weekly_profile
+
+    test_client, session_factory = client
+    with session_factory() as session:
+        _days(session, SEOUL_A, datetime(2026, 8, 25, 14, 5), "보통")
+        session.commit()
+
+    # 지금 모델이 요구하는 cells/rooms 가 없는, 이전 배포가 남긴 모양.
+    set_mmca_weekly_profile("seoul", {"status": "ready", "samples": 1})
+
+    response = test_client.get("/mmca/weekly-profile?venue=seoul")
+
+    assert response.status_code == 200
+    assert response.json()["cells"] == [{"weekday": 1, "hour": 14, "rank": 1.0}]

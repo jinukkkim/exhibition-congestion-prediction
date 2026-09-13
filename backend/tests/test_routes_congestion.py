@@ -349,3 +349,20 @@ def test_weekly_profile_serves_the_cached_payload_unchanged(client):
         session.commit()
 
     assert test_client.get("/congestion/weekly-profile").json() == first
+
+
+def test_weekly_profile_treats_a_cache_written_by_an_older_model_as_a_miss(client):
+    """형제 엔드포인트(/mmca/weekly-profile)와 같은 이유의 같은 보호다."""
+    from app.cache import set_weekly_profile
+
+    test_client, session_factory = client
+    with session_factory() as session:
+        _reading(session, datetime(2026, 8, 24, 10, 5), 1000)
+        session.commit()
+
+    set_weekly_profile({"status": "ready", "samples": 1})
+
+    response = test_client.get("/congestion/weekly-profile")
+
+    assert response.status_code == 200
+    assert response.json()["cells"] == [{"weekday": 0, "hour": 10, "population_avg": 1000.0}]
