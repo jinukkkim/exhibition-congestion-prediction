@@ -232,6 +232,21 @@ def weekly_profile() -> WeeklyProfile:
     if cached is not None:
         return WeeklyProfile(**cached)
 
+    # ponytail: 기간 제한 없는 전체 스캔. 이 파일의 다른 라우트가 모두 시간
+    # 범위를 거는 것과 다른데, 그 차이가 곧 이 응답의 정의다 — "수집 전체
+    # 기간"이라 창을 걸면 답이 달라진다.
+    #
+    # 측정(2026-09-14, 16,881행): 스캔 + 집계 중앙값 93ms, 6시간 캐시 뒤라 하루
+    # 네 번. 행당 비용이 선형이고 서울 수집이 24시간 */5 = 288행/일이므로,
+    # 1년 뒤 10.5만행 ≈ 0.6초, 5년 뒤 52.6만행 ≈ 2.9초(이 랩톱 기준, 프로덕션
+    # 박스는 더 느리다).
+    #
+    # load_only 로 컬럼을 좁히는 것은 효과가 없다 — 재어 보면 오히려 느리다
+    # (중앙값 93.5ms -> 103.2ms). raw_response 가 이미 deferred 라 큰 페이로드는
+    # 원래 실리지 않고, 지연 컬럼 처리 비용이 좁아진 SELECT 를 상쇄한다.
+    #
+    # 한 번의 갱신이 1초를 넘기기 시작하면(대략 1년) 예측처럼 일일 배치가 미리
+    # 계산해 캐시에 넣는 쪽으로 옮긴다. 그 전까지는 이 편이 단순하다.
     with SessionLocal() as session:
         rows = session.query(RawCongestion).order_by(RawCongestion.observed_at.asc()).all()
 
