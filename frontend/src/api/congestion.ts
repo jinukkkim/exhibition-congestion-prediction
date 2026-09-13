@@ -43,6 +43,31 @@ export async function fetchPrediction(): Promise<PredictionResult> {
   return res.json();
 }
 
+export interface WeeklyProfileCell {
+  // 0=월 … 6=일 (파이썬 datetime.weekday()와 같은 번호).
+  weekday: number;
+  hour: number;
+  population_avg: number;
+}
+
+export interface WeeklyProfile {
+  status: "collecting" | "ready";
+  // 집계에 들어간 첫날/마지막 날. collecting 이면 둘 다 null 이다.
+  since: string | null;
+  until: string | null;
+  // 집계에 들어간 판독 수. collecting 이면 0.
+  samples: number;
+  cells: WeeklyProfileCell[];
+}
+
+export async function fetchWeeklyProfile(): Promise<WeeklyProfile> {
+  const res = await fetch("/congestion/weekly-profile");
+  if (!res.ok) {
+    throw new Error(`failed to fetch weekly profile: ${res.status}`);
+  }
+  return res.json();
+}
+
 export interface DailyLogPoint {
   observed_at: string;
   congest_level: string;
