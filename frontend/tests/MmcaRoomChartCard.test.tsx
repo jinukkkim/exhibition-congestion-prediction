@@ -1193,7 +1193,6 @@ describe("tier gridlines", () => {
     // 빈 차트에 눈금만 남으면 값이 있는 것처럼 보인다.
     expect(screen.queryAllByTestId("mmca-room-chart-tier-line")).toHaveLength(0);
   });
-
 });
 
 describe("MmcaRoomChartCard 비교선 라벨", () => {

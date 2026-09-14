@@ -6,7 +6,9 @@ import {
   monthDayWeekday,
   todayString,
   upcomingDates,
-  weekdayKo, weeksBefore } from "../src/lib/date";
+  weekdayKo,
+  weeksBefore,
+} from "../src/lib/date";
 
 describe("upcomingDates", () => {
   it("lists the given day and the following ones in order", () => {
