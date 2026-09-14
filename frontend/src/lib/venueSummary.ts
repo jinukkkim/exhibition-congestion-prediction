@@ -2,16 +2,16 @@ import type { CurrentCongestion } from "../api/congestion";
 import type { MmcaRoomStatus, MmcaVenue } from "../api/mmca";
 import { seoulDateString } from "./date";
 import { mmcaBusinessHours } from "./mmcaBusinessHours";
+import { labelOf, latestObservedAt, venueTier } from "./mmcaVenueCongestion";
 import { nationalMuseumBusinessHours } from "./nationalMuseumBusinessHours";
-import { STATUS_LEVELS } from "./status";
 
 export type VenueSummary =
   // label 은 카드 안에 짧게 얹히는 상태 배지다 — 진행 중인 일도 말줄임표 없이
   // 쓴다("불러오는 중", "집계 중"). 말줄임표는 카드를 통째로 채우는 독립 문구의
   // 것이다(CongestionCard·MmcaPage 의 "불러오는 중...").
   | { kind: "inactive"; label: string }
-  | { kind: "level"; level: string; population: number; observedAt: string }
-  | { kind: "counts"; counts: { level: string; count: number }[]; observedAt: string };
+  // population 은 국중박만 싣는다 — MMCA 는 인원 추정을 주지 않고 등급뿐이다.
+  | { kind: "level"; level: string; population?: number; observedAt: string };
 
 function minutesOfDay(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
@@ -98,25 +98,18 @@ export function mmcaSummary(
     return { kind: "inactive", label: polled ? "정보 없음" : "집계 중" };
   }
 
-  const tally = new Map<string, number>();
-  for (const room of read) {
-    tally.set(room.congestion_nm, (tally.get(room.congestion_nm) ?? 0) + 1);
-  }
-
-  // 아는 레벨을 혼잡도순으로 먼저 쏟고, 목록에 없는 레벨은 등장 순서대로 뒤에
-  // 붙인다 (statusOf가 회색 fallback으로 그려 준다).
-  const unknown = [...tally.keys()].filter((level) => !STATUS_LEVELS.includes(level));
-  const counts = [...STATUS_LEVELS, ...unknown]
-    .filter((level) => tally.has(level))
-    .map((level) => ({ level, count: tally.get(level) as number }));
+  // 전시실별 개수("여유 3 · 보통 1")를 세던 자리다. 관 하나를 등급 하나로 접어
+  // 국중박 카드와 같은 모양으로 읽히게 한다 — 집계 규칙과 그 대가는
+  // lib/mmcaVenueCongestion.ts 에 적혀 있다.
+  const tier = venueTier(read);
+  // 네 등급 어디에도 없는 문자열만 온 경우. 실측 66k 판독에는 없었지만, 접을 수
+  // 없는 값을 접은 척하느니 없다고 말한다.
+  if (tier === null) return { kind: "inactive", label: "정보 없음" };
 
   return {
-    kind: "counts",
-    counts,
-    // ISO 문자열은 같은 포맷이면 사전순 = 시간순.
-    observedAt: read.reduce(
-      (latest, room) => (room.observed_at > latest ? room.observed_at : latest),
-      read[0].observed_at
-    ),
+    kind: "level",
+    level: labelOf(tier),
+    // read 가 비어 있지 않음은 위에서 확인했다 — null 이 나올 수 없다.
+    observedAt: latestObservedAt(read) as string,
   };
 }

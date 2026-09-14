@@ -2,14 +2,21 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { MmcaDailyLogPoint, MmcaRoomPrediction, MmcaRoomStatus } from "../api/mmca";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
+import { tierOf, venueTier } from "../lib/mmcaVenueCongestion";
 import { formatMinutes, monthDayWeekday, shiftDate, todayString, weeksBefore } from "../lib/date";
 import { MMCA_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES, resample } from "../lib/resample";
-import { statusOf } from "../lib/status";
+import { STATUS_LEVELS, statusOf } from "../lib/status";
 
-const CHART_WIDTH = 480;
-const CHART_HEIGHT = 200;
-const TIERS = ["여유", "보통", "약간 붐빔", "붐빔"];
+// 방 카드의 기본 치수. 관 전체 카드는 전폭이라 국중박 CongestionCard 와 같은
+// 1120x320 을 prop 으로 넘겨 받는다 — viewBox 를 그대로 늘리면 선 굵기·글자·점이
+// 통째로 확대돼 "국중박과 같은 그림"이 아니라 "방 카드를 확대한 그림"이 된다.
+const DEFAULT_CHART_WIDTH = 480;
+const DEFAULT_CHART_HEIGHT = 200;
+// 혼잡도 낮은 순 = 등급 인덱스. lib/status.ts 의 목록 하나를 쓴다 — 여기 따로
+// 적어 두면 lib/mmcaVenueCongestion.ts 의 tierOf 가 보는 목록과 갈라질 수 있다.
+// 백엔드 prediction/mmca.py 의 RANK_LABELS 와 같은 순서여야 한다.
+const TIERS = STATUS_LEVELS;
 // How close a resampled point must sit to the hovered x to count as a value
 // there — applies to every series drawn on the mark grid (today's, last
 // week's, the future tab's D−7 proxy), not just the last-week comparison.
@@ -35,6 +42,14 @@ const HOVER_MATCH_MINUTES = BUCKET_MINUTES / 2;
 // pure and value-free so sharing wouldn't add venue-specific conditionals,
 // but extracting them touches a file this task didn't otherwise need to
 // touch. Revisit if a third consumer appears.
+// 양 끝 눈금(개관·폐관)과 부딪히는 정시 눈금을 버리는 최소 간격.
+//
+// 분으로 재는 것이 맞다. 눈금 라벨은 svg 안이 아니라 그 아래 별도 div 에
+// 퍼센트로 앉는 HTML 이라(이 파일 맨 아래) viewBox 폭과는 아무 상관이 없고,
+// 퍼센트는 곧 영업시간에 대한 분의 비율이다. 국중박 CongestionCard 가 이것을
+// 좌표 단위(MIN_GAP_UNITS)로 재지만 그쪽은 폭이 하나뿐이라 차이가 드러나지
+// 않는다 — 여기서 같은 방식을 쓰면 관 전체 카드와 방 카드가 같은 하루에 서로
+// 다른 눈금을 갖게 된다.
 const MIN_GAP_MINUTES = 35;
 
 function minutesOfDay(isoString: string): number {
@@ -62,16 +77,16 @@ function hourlyTicks(open: number, close: number): { minutes: number; label: str
 type Point = { minutes: number; tier: number; label: string };
 type XY = { x: number; y: number };
 
-function xOf(minutes: number, open: number, close: number): number {
-  return ((minutes - open) / (close - open || 1)) * CHART_WIDTH;
+function xOf(minutes: number, open: number, close: number, width: number): number {
+  return ((minutes - open) / (close - open || 1)) * width;
 }
 
-function yOf(tier: number): number {
-  return CHART_HEIGHT - 24 - (tier / (TIERS.length - 1)) * (CHART_HEIGHT - 48);
+function yOf(tier: number, height: number): number {
+  return height - 24 - (tier / (TIERS.length - 1)) * (height - 48);
 }
 
-function toXY(points: Point[], open: number, close: number): XY[] {
-  return points.map((p) => ({ x: xOf(p.minutes, open, close), y: yOf(p.tier) }));
+function toXY(points: Point[], open: number, close: number, width: number, height: number): XY[] {
+  return points.map((p) => ({ x: xOf(p.minutes, open, close, width), y: yOf(p.tier, height) }));
 }
 
 function nearestWithin(points: Point[], minutes: number, maxDistance: number): Point | undefined {
@@ -130,10 +145,10 @@ function smoothPath(xy: XY[]): string {
   return d;
 }
 
-function areaPath(xy: XY[], linePath: string): string {
+function areaPath(xy: XY[], linePath: string, height: number): string {
   const first = xy[0];
   const last = xy[xy.length - 1];
-  return `M ${first.x} ${CHART_HEIGHT} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${CHART_HEIGHT} Z`;
+  return `M ${first.x} ${height} L ${first.x} ${first.y} ${linePath.slice(linePath.indexOf("C"))} L ${last.x} ${height} Z`;
 }
 
 // 판독을 마크 격자로 모아 평균낸 점. 생판독을 그대로 그리지 않는 이유는
@@ -143,13 +158,22 @@ function areaPath(xy: XY[], linePath: string): string {
 //
 // 영업시간 자르기가 리샘플보다 **먼저**다: 폐관 뒤 판독이 폐관 마크로 반올림돼
 // 마지막 값에 섞이면 안 된다.
-function roomPoints(daily: MmcaDailyLogPoint[] | null, spaceCode: string, open: number, close: number): Point[] {
+// aggregate 면 방 하나를 고르는 대신 그 행의 방들을 평균낸다 — 이 한 줄이 방
+// 곡선과 관 전체 곡선의 유일한 차이다. 뒤의 영업시간 자르기·리샘플·등급명
+// 붙이기는 둘이 똑같고, 소수 tier 도 이미 그리던 값이다.
+function roomPoints(
+  daily: MmcaDailyLogPoint[] | null,
+  spaceCode: string,
+  open: number,
+  close: number,
+  aggregate: boolean
+): Point[] {
   const raw = (daily ?? [])
     .flatMap((row): { minutes: number; value: number }[] => {
-      const value = row.rooms.find((r) => r.space_code === spaceCode)?.congestion_nm;
-      if (value == null) return [];
-      const tier = TIERS.indexOf(value);
-      if (tier === -1) return [];
+      const tier = aggregate
+        ? venueTier(row.rooms)
+        : tierOf(row.rooms.find((r) => r.space_code === spaceCode)?.congestion_nm);
+      if (tier === null) return [];
       return [{ minutes: minutesOfDay(row.observed_at), value: tier }];
     })
     .filter((p) => p.minutes >= open && p.minutes <= close);
@@ -186,6 +210,9 @@ export function MmcaRoomChartCard({
   nowMinutes,
   now,
   viewDate,
+  aggregate = false,
+  width = DEFAULT_CHART_WIDTH,
+  height = DEFAULT_CHART_HEIGHT,
 }: {
   room: MmcaRoomStatus;
   // 이 방에서 진행중인 전시. 전시실 표기가 없는 전시만 있는 관이거나 목록을
@@ -207,6 +234,13 @@ export function MmcaRoomChartCard({
   // 차트가 그리는 날짜. 생략하면 오늘. 오늘이 아니면 지나간 날의 기록만 그리므로
   // 실시간 배지·현재 등급을 그리지 않는다.
   viewDate?: string;
+  // 켜면 `room.space_code` 로 방 하나를 고르는 대신 매 판독의 방들을 평균내
+  // 관 전체 곡선을 그린다. 이때 `room` 은 MmcaPage 가 만든 합성 상태이고,
+  // 제목·현재 등급·신선도 배지는 그 값을 그대로 쓴다.
+  aggregate?: boolean;
+  // 좌표계 치수. 관 전체 카드만 전폭이라 국중박과 같은 1120x320 을 넘긴다.
+  width?: number;
+  height?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   // 커서의 x 를 분으로 되돌려 마크 격자에 맞춘 값 하나. 계열 위의 점으로
@@ -227,23 +261,23 @@ export function MmcaRoomChartCard({
   // 말하던 자리였다.
   const isOpen = isTodayView && nowMinutes >= open && nowMinutes <= close;
 
-  const points = roomPoints(daily, spaceCode, open, close);
+  const points = roomPoints(daily, spaceCode, open, close, aggregate);
   // Last week is always a fully-elapsed day, so it just uses the plain
   // per-room series — no synthetic-opening-point treatment (that's about
   // masking today's known 10:00-poll gap, not relevant to a past day).
-  const lastWeekPoints = roomPoints(lastWeekDaily, spaceCode, open, close);
+  const lastWeekPoints = roomPoints(lastWeekDaily, spaceCode, open, close, aggregate);
 
   const ticks = hourlyTicks(open, close);
   // 합성 개관점이 여기 있었다. 백엔드가 10:00 폴을 건너뛰던 시절 곡선이 10:10
   // 에서 시작하는 것을 가리려고 10:00 에 여유 한 점을 얹던 것인데, 수집 시작이
   // 10:00 이 된 뒤로(collector.py 의 _COLLECTION_START) 그 조건(첫 점이 :10)이
   // 참이 되는 일이 없어 죽은 코드였다. 지금은 첫 마크가 곧 개관이다.
-  const xy = points.length > 0 ? toXY(points, open, close) : [];
-  const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close) : [];
+  const xy = points.length > 0 ? toXY(points, open, close, width, height) : [];
+  const lastWeekXy = lastWeekPoints.length > 0 ? toXY(lastWeekPoints, open, close, width, height) : [];
   const linePath = points.length > 1 ? smoothPath(xy) : "";
   const lastWeekLinePath = lastWeekPoints.length > 1 ? smoothPath(lastWeekXy) : "";
-  const areaD = points.length > 1 ? areaPath(xy, linePath) : "";
-  const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath) : "";
+  const areaD = points.length > 1 ? areaPath(xy, linePath, height) : "";
+  const lastWeekAreaD = lastWeekPoints.length > 1 ? areaPath(lastWeekXy, lastWeekLinePath, height) : "";
   const lastPoint = points[points.length - 1];
   // /mmca/prediction 은 60초 캐시, /mmca/daily 는 캐시가 없다 — 최대 한 폴링
   // 만큼 예측이 낡아 있을 수 있고, 그러면 페이로드의 이음매가 실선의 마지막
@@ -263,7 +297,7 @@ export function MmcaRoomChartCard({
     isTodayView && lastPoint
       ? [lastPoint, ...predPointsRaw.filter((p) => p.minutes > lastPoint.minutes)]
       : predPointsRaw;
-  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close) : [];
+  const predXy = predPoints.length > 1 ? toXY(predPoints, open, close, width, height) : [];
   const predictionPath = predPoints.length > 1 ? smoothPath(predXy) : "";
   // 예측만 있어도 차트는 보여야 한다.
   const hasAnySeries = Boolean(linePath || lastWeekLinePath || predictionPath);
@@ -286,9 +320,9 @@ export function MmcaRoomChartCard({
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
-    const svgX = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH;
+    const svgX = ((event.clientX - rect.left) / rect.width) * width;
     // xOf 의 역 (0 나눗셈 가드까지 대칭으로).
-    const minutes = open + (svgX / CHART_WIDTH) * (close - open || 1);
+    const minutes = open + (svgX / width) * (close - open || 1);
     // 계열이 마크 격자 위에 있으므로(roomPoints 의 resample) 짚은 위치도 같은
     // 격자로 맞춘다 — 십자선이 미끄러지지 않고 마크 단위로 튀고, 시계에 12:43
     // 같은 임의의 분이 뜨지 않는다. 스냅을 먼저, 영업시간 가두기를 나중에
@@ -414,8 +448,8 @@ export function MmcaRoomChartCard({
           )}
           <svg
             ref={svgRef}
-            data-testid="mmca-room-chart"
-            viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+            data-testid={aggregate ? "mmca-venue-chart" : "mmca-room-chart"}
+            viewBox={`0 0 ${width} ${height}`}
             className="w-full overflow-visible"
           >
             {hasAnySeries && (
@@ -440,7 +474,7 @@ export function MmcaRoomChartCard({
 
                     라벨은 붙이지 않는다. 곡선이 아침에 낮게 시작해 왼쪽 아래가
                     항상 곡선과 겹치고, 피하려면 라벨용 여백을 내야 하는데 그러면
-                    xOf 가 [0, CHART_WIDTH] 이 아니게 되어 호버 좌표 계산이 전부
+                    xOf 가 [0, width] 이 아니게 되어 호버 좌표 계산이 전부
                     딸려 온다. 지금 등급은 카드 위 큰 글자가 말하고 임의의 점은
                     호버가 말하므로, 눈금은 "네 단계"라는 구조만 보이면 된다.
 
@@ -451,9 +485,9 @@ export function MmcaRoomChartCard({
                     key={tier}
                     data-testid="mmca-room-chart-tier-line"
                     x1={0}
-                    y1={yOf(tier)}
-                    x2={CHART_WIDTH}
-                    y2={yOf(tier)}
+                    y1={yOf(tier, height)}
+                    x2={width}
+                    y2={yOf(tier, height)}
                     stroke="#D2D2D7"
                     strokeWidth={1}
                     strokeDasharray="2 5"
@@ -506,23 +540,23 @@ export function MmcaRoomChartCard({
                 {isOpen && lastPoint && (
                   <>
                     <line
-                      x1={xOf(lastPoint.minutes, open, close)}
-                      y1={yOf(lastPoint.tier)}
-                      x2={xOf(lastPoint.minutes, open, close)}
-                      y2={CHART_HEIGHT}
+                      x1={xOf(lastPoint.minutes, open, close, width)}
+                      y1={yOf(lastPoint.tier, height)}
+                      x2={xOf(lastPoint.minutes, open, close, width)}
+                      y2={height}
                       stroke="#D2D2D7"
                       strokeWidth={1}
                       strokeDasharray="3 4"
                     />
                     <circle
-                      cx={xOf(lastPoint.minutes, open, close)}
-                      cy={yOf(lastPoint.tier)}
+                      cx={xOf(lastPoint.minutes, open, close, width)}
+                      cy={yOf(lastPoint.tier, height)}
                       r={14}
                       fill={`url(#glow-${spaceCode})`}
                     />
                     <circle
-                      cx={xOf(lastPoint.minutes, open, close)}
-                      cy={yOf(lastPoint.tier)}
+                      cx={xOf(lastPoint.minutes, open, close, width)}
+                      cy={yOf(lastPoint.tier, height)}
                       r={4.5}
                       fill="#FFFFFF"
                       stroke={CHART_BLUE}
@@ -533,10 +567,10 @@ export function MmcaRoomChartCard({
                 {hoverPrimary && hoverMinutes != null && (
                   <>
                     <line
-                      x1={xOf(hoverMinutes, open, close)}
+                      x1={xOf(hoverMinutes, open, close, width)}
                       y1={0}
-                      x2={xOf(hoverMinutes, open, close)}
-                      y2={CHART_HEIGHT}
+                      x2={xOf(hoverMinutes, open, close, width)}
+                      y2={height}
                       stroke="#D2D2D7"
                       strokeWidth={1}
                     />
@@ -549,8 +583,8 @@ export function MmcaRoomChartCard({
                       point ? (
                         <circle
                           key={i}
-                          cx={xOf(hoverMinutes, open, close)}
-                          cy={yOf(point.tier)}
+                          cx={xOf(hoverMinutes, open, close, width)}
+                          cy={yOf(point.tier, height)}
                           r={4}
                           fill="#FFFFFF"
                           stroke={stroke}
@@ -563,8 +597,8 @@ export function MmcaRoomChartCard({
                 <rect
                   x={0}
                   y={0}
-                  width={CHART_WIDTH}
-                  height={CHART_HEIGHT}
+                  width={width}
+                  height={height}
                   fill="transparent"
                   onMouseMove={handleHoverMove}
                   onMouseLeave={() => setHoverMinutes(null)}
@@ -577,7 +611,7 @@ export function MmcaRoomChartCard({
               data-testid="mmca-room-chart-tooltip"
               className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-hairline/60 bg-white/95 px-2.5 py-1.5 text-[11px] shadow-apple backdrop-blur-xl"
               style={{
-                left: `${Math.min(Math.max((xOf(hoverMinutes, open, close) / CHART_WIDTH) * 100, 14), 86)}%`,
+                left: `${Math.min(Math.max((xOf(hoverMinutes, open, close, width) / width) * 100, 14), 86)}%`,
               }}
             >
               {/* 짚은 x 는 이미 마크 위라 걸린 계열 값의 시각과 항상 같고,

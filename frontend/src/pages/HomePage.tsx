@@ -11,8 +11,8 @@ import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000; // MmcaPage와 같은 주기
 
-// 레벨 하나를 점 + 이름(+ MMCA는 방 개수)으로. 색은 상세 페이지와 같은 토큰.
-function LevelText({ level, count }: { level: string; count?: number }) {
+// 레벨 하나를 점 + 이름으로. 색은 상세 페이지와 같은 토큰.
+function LevelText({ level }: { level: string }) {
   const status = statusOf(level);
   return (
     <span
@@ -21,7 +21,6 @@ function LevelText({ level, count }: { level: string; count?: number }) {
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.core }} />
       {level}
-      {count !== undefined && <span className="font-mono tabular-nums">{count}</span>}
     </span>
   );
 }
@@ -117,18 +116,17 @@ export function HomePage() {
                   {summary.kind === "level" && (
                     <>
                       <LevelText level={summary.level} />
-                      <span className="text-sm text-ink-soft">
-                        <span className="font-mono tabular-nums">
-                          {Math.round(summary.population).toLocaleString()}
+                      {/* 인원 추정은 국중박에만 있다 (MMCA 는 등급만 준다). */}
+                      {summary.population !== undefined && (
+                        <span className="text-sm text-ink-soft">
+                          <span className="font-mono tabular-nums">
+                            {Math.round(summary.population).toLocaleString()}
+                          </span>
+                          명
                         </span>
-                        명
-                      </span>
+                      )}
                     </>
                   )}
-                  {summary.kind === "counts" &&
-                    summary.counts.map(({ level, count }) => (
-                      <LevelText key={level} level={level} count={count} />
-                    ))}
                 </div>
                 {summary.kind !== "inactive" && (
                   <p className="mt-1 text-[11px] text-ink-soft/70">

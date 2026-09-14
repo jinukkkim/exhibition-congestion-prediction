@@ -175,7 +175,7 @@ describe("HomePage", () => {
     expect(museumCard).toHaveTextContent("14:20 기준");
   });
 
-  it("shows per-level room counts for an MMCA venue", async () => {
+  it("folds an MMCA venue's rooms into one level, like the National Museum card", async () => {
     render(
       <MemoryRouter>
         <HomePage />
@@ -183,9 +183,11 @@ describe("HomePage", () => {
     );
 
     const seoulCard = venueCard(/국립현대미술관 서울관/);
-    // 여유 2 · 보통 1 — 개수까지 붙은 문자열로 봐야 카운트가 빠져도 잡힌다.
-    await waitFor(() => expect(seoulCard).toHaveTextContent("여유2"));
-    expect(seoulCard).toHaveTextContent("보통1");
+    // 여유·여유·보통 = 평균 0.33 -> "여유". 전시실 개수를 세던 자리다.
+    await waitFor(() => expect(seoulCard).toHaveTextContent("여유"));
+    expect(seoulCard).not.toHaveTextContent("여유2");
+    // 인원 추정은 국중박에만 실린다.
+    expect(seoulCard).not.toHaveTextContent("명");
     expect(seoulCard).toHaveTextContent("14:20 기준");
   });
 
