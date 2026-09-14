@@ -237,6 +237,53 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
   });
 
+  it("labels the comparison line by the day it actually holds", () => {
+    // D−7 이 통째로 빈 날에는 페이지가 D−14 를 보낸다(lib/comparisonDay). 카드가
+    // 날짜를 스스로 shiftDate(-7) 로 만들면, 그린 것은 2주 전인데 범례는 지난주
+    // 날짜를 적는다 — 그리는 것과 적는 것이 어긋나는 자리다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-01T10:00:00", 700),
+          dailyPoint("2026-07-01T11:00:00", 800),
+        ]}
+        lastWeekDate="2026-07-01"
+        viewDate="2026-07-15"
+      />
+    );
+
+    // 범례는 날짜와 말이 한 span 안에 있다 — 둘이 함께 맞아야 한다.
+    expect(screen.getByText(/7\/1\(수\)\s*2주 전/)).toBeInTheDocument();
+    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+  });
+
+  it("still says 지난주 when the comparison line really is last week", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", 700),
+          dailyPoint("2026-07-08T11:00:00", 800),
+        ]}
+        lastWeekDate="2026-07-08"
+        viewDate="2026-07-15"
+      />
+    );
+
+    expect(screen.getByText(/7\/8\(수\)\s*지난주/)).toBeInTheDocument();
+  });
+
   it("labels the legend by the drawn date, not by today", () => {
     // 범례가 todayString() 에 하드코딩되어 있으면 8/22 곡선 옆에 "8/23(일) 오늘"
     // 이라고 적힌다. 그리는 것과 적는 것이 어긋나면 안 된다.

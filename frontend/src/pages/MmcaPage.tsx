@@ -17,6 +17,7 @@ import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { fetchComparisonDay } from "../lib/comparisonDay";
 import {
   exhibitionPeriod,
   formatMinutes,
@@ -46,7 +47,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const isTodayTab = selectedDate === today;
   // 국중박과 달리 따라갈 서버 목록이 없어 프론트가 날짜를 만든다.
   const tabDates = upcomingDates(today, 7);
-  const lastWeek = shiftDate(today, -7);
 
   // 계속 폴링: 수집기가 새 판독을 쌓는 값 (backend 의 MMCA_POLL_MINUTES 격자).
   const roomsPoll = usePolledFetch(() => fetchMmcaRooms(venue), { intervalMs: POLL_INTERVAL_MS }, [
@@ -63,10 +63,13 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 성공하면 정지: 지나간 날의 확정 데이터라 다시 물어볼 이유가 없다. 다만
   // 실패했을 때 재시도가 없으면 회색 비교선이 그 페이지 세션 내내 사라지므로,
   // 값이 도착할 때까지는 다음 tick 에 다시 시도한다.
-  const lastWeekPoll = usePolledFetch(
-    () => fetchMmcaDaily(venue, lastWeek),
+  // D−7 이 통째로 빈 날 — 정기 휴관 요일이 아닌 날의 대체·임시 휴관이 그렇다 —
+  // 에는 D−14 로 물러선다(lib/comparisonDay). 게이트가 휴관일을 아예 수집하지
+  // 않으므로 그 이레 뒤 화면에는 그을 비교선이 없다.
+  const comparisonPoll = usePolledFetch(
+    () => fetchComparisonDay(today, (date) => fetchMmcaDaily(venue, date)),
     { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
-    [venue, lastWeek]
+    [venue, today]
   );
 
   // 오늘 탭은 곡선이 최근 120분 실측에 매달려 있어 판독마다 바뀌므로 계속
@@ -106,11 +109,12 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const daily = dailyPoll.data;
   // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이 기준인지
   // 흐려진다.
-  const lastWeekDaily = isTodayTab ? lastWeekPoll.data : null;
+  const lastWeekDaily = isTodayTab ? (comparisonPoll.data?.points ?? null) : null;
+  const lastWeekDate = comparisonPoll.data?.date;
   // 오늘/지난주 로그는 전시실 전체가 공유하는 fetch 한 건이다. 실패하면 방
   // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
   // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
-  const trendError = dailyPoll.error || (isTodayTab && lastWeekPoll.error);
+  const trendError = dailyPoll.error || (isTodayTab && comparisonPoll.error);
   // 예측은 없어도 차트가 그려져야 한다 — trendError 에 넣지 않는다. 이력이
   // 모자란 방은 응답에서 빠지므로 조회 실패는 곧 "그 방은 점선 없음"이다.
   const predictionByCode = new Map(
@@ -267,6 +271,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                     exhibitionTitle={exhibitionTitle(room.space_code)}
                     daily={daily}
                     lastWeekDaily={lastWeekDaily}
+                    lastWeekDate={lastWeekDate}
                     prediction={predictionByCode.get(room.space_code) ?? null}
                     open={open}
                     close={close}

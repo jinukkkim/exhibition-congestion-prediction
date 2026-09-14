@@ -20,6 +20,26 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   };
 }
 
+// D−7 이 비면 페이지가 D−14 까지 한 번 더 부른다(lib/comparisonDay). 호출 횟수를
+// 세는 테스트들은 그 갈래의 대상이 아니므로, 지난주에 기록이 있는 평상시를
+// 흉내 낸다 — 빈 배열을 돌려주면 모든 날이 "휴관" 으로 읽힌다.
+function dailyWithLastWeek() {
+  return vi
+    .spyOn(api, "fetchMmcaDaily")
+    .mockImplementation(async (_venue, date) =>
+      date === shiftDate(todayString(), -7)
+        ? [
+            {
+              observed_at: `${date}T11:00:00`,
+              rooms: [
+                { space_code: "MMCA-SPACE-1001", space_nm: "1전시실", congestion_nm: "여유" },
+              ],
+            },
+          ]
+        : []
+    );
+}
+
 describe("MmcaPage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -143,7 +163,7 @@ describe("MmcaPage", () => {
 
   it("stops polling and ignores in-flight responses after unmount", async () => {
     const fetchMmcaRooms = vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
-    const fetchMmcaDaily = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    const fetchMmcaDaily = dailyWithLastWeek();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const { unmount } = render(
@@ -187,7 +207,7 @@ describe("MmcaPage", () => {
   });
 
   it("fetches daily data exactly once regardless of how many rooms there are", async () => {
-    const fetchMmcaDaily = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    const fetchMmcaDaily = dailyWithLastWeek();
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
       makeRoom({ space_code: "MMCA-SPACE-1001", space_nm: "1전시실" }),
       makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실" }),
@@ -506,7 +526,7 @@ describe("MmcaPage", () => {
   });
 
   it("fetches last week's daily data once per venue, separate from the 60s poll", async () => {
-    const fetchMmcaDaily = vi.spyOn(api, "fetchMmcaDaily").mockResolvedValue([]);
+    const fetchMmcaDaily = dailyWithLastWeek();
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
     render(

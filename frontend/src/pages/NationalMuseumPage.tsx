@@ -9,6 +9,7 @@ import { VenueInfoList } from "../components/VenueInfoList";
 import { useCongestionStream } from "../hooks/useCongestionStream";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { fetchComparisonDay } from "../lib/comparisonDay";
 import { exhibitionPeriod, shiftDate, todayString } from "../lib/date";
 import { VENUES } from "../venues";
 
@@ -31,7 +32,6 @@ export function NationalMuseumPage() {
   // 오늘 탭은 오늘 실제를 그리고, 미래 탭은 그릴 실제가 없으므로 지난주 같은
   // 요일(D-7)의 실제 기록을 대리로 쓴다.
   const chartDate = selectedDate === today ? today : shiftDate(selectedDate, -7);
-  const lastWeek = shiftDate(today, -7);
 
   // 계속 폴링: 새 판독이 실제로 쌓이는 값. current 는 SSE 가 주 경로지만,
   // 스트림이 죽어도 갱신이 멈추지 않도록 폴링을 폴백으로 둔다.
@@ -53,10 +53,12 @@ export function NationalMuseumPage() {
   // 없다 — 이 엔드포인트는 날짜를 받지 않아 deps 가 없고, 억지로 넣으면 훅이
   // 탭을 옮길 때마다 값을 비워 차트가 한 번씩 사라진다.
   const prediction = usePolledFetch(fetchPrediction, { intervalMs: POLL_INTERVAL_MS });
-  const lastWeekDaily = usePolledFetch(
-    () => fetchDaily(lastWeek),
+  // 회색 비교선. D−7 이 통째로 빈 날(정기 휴관 요일이 아닌 날의 휴관, 수집
+  // 장애)에는 D−14 로 물러선다 — lib/comparisonDay 가 그 판단을 한다.
+  const comparison = usePolledFetch(
+    () => fetchComparisonDay(today, fetchDaily),
     { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
-    [lastWeek]
+    [today]
   );
   // 전시 목록은 하루 단위로도 거의 안 바뀐다 — 한 번 받고 멈춘다(백엔드도
   // 6시간 캐시다). 실패하면 그냥 목록이 없는 화면이고, 혼잡도는 그대로 읽힌다.
@@ -145,7 +147,8 @@ export function NationalMuseumPage() {
             daily={daily.data}
             // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이
             // 기준인지 흐려진다.
-            lastWeekDaily={selectedDate === today ? lastWeekDaily.data : null}
+            lastWeekDaily={selectedDate === today ? (comparison.data?.points ?? null) : null}
+            lastWeekDate={comparison.data?.date}
             // 예측은 고른 날짜의 것을 그대로 — 실측(오늘 또는 D−7)과 축만
             // 공유하고 날짜는 다를 수 있다. 응답의 days 에 그 날짜가 없으면
             // (자정을 넘겨 폴링이 갱신된 직후) 점선만 없다.
@@ -154,7 +157,7 @@ export function NationalMuseumPage() {
             }
             viewDate={chartDate}
             error={initial.error}
-            chartError={daily.error || (selectedDate === today && lastWeekDaily.error)}
+            chartError={daily.error || (selectedDate === today && comparison.error)}
           />
         </section>
       </main>
