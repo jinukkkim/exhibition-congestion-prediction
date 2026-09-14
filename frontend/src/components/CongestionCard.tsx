@@ -2,7 +2,7 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint, PredictionCurvePoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { formatMinutes, monthDayWeekday, shiftDate, todayString, weeksBefore } from "../lib/date";
+import { formatMinutes, shiftDate, todayString, weeksBefore } from "../lib/date";
 import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { BUCKET_MINUTES, resample } from "../lib/resample";
@@ -567,17 +567,27 @@ export function CongestionCard({
               <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
                 {/* 그리는 날짜의 곡선이 실제로 있을 때만 — 예측 점선만 있는 개관
                     전 시각에는 그을 실선이 없어 범례가 없는 선을 가리킨다. */}
+                {/* 범례는 계열이 무엇인지만 말한다 — 날짜는 적지 않는다.
+                    어느 하루인지는 날짜 탭이 이미 말하고, 곡선마다 날짜를
+                    되풀이하면 세 항목이 길어져 정작 무엇이 무엇인지가 늦게
+                    읽힌다. 호버 툴팁은 짚은 시각과 값을 그대로 적으므로 구체적인
+                    값이 필요한 자리는 그쪽이다.
+
+                    오늘 탭이 아니면 실선은 그 날짜의 실제가 아니라 선택한 날의
+                    지난주 같은 요일 기록(대리값)이다 — 그래서 "오늘"이 아니라
+                    "지난주"라고 적는다. 색도 이미 회색 비교선과 같다. */}
                 {xy.length > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
-                    {monthDayWeekday(chartDate)}
-                    {isTodayView ? " 오늘" : ""}
+                    {isTodayView ? "오늘" : "지난주"}
                   </span>
                 )}
                 {lastWeekXy.length > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
-                    {monthDayWeekday(compareDate)} {compareLabel}
+                    {/* D−7 이 비어 D−14 로 물러선 날은 "2주 전"이다 —
+                        그리는 것과 적는 것이 어긋나면 안 된다. */}
+                    {compareLabel}
                   </span>
                 )}
                 {predictionPath && (

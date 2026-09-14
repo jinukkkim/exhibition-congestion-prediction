@@ -536,7 +536,7 @@ describe("MmcaRoomChartCard past-day view", () => {
     // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
     renderPastDay();
 
-    expect(screen.getAllByText(/7\/11\(토\)/).length).toBeGreaterThan(0);
+    expect(screen.getByText("지난주")).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
     expect(screen.queryByText("갱신 지연")).not.toBeInTheDocument();
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
@@ -549,12 +549,14 @@ describe("MmcaRoomChartCard past-day view", () => {
     expect(screen.getByTestId("mmca-room-chart-line")).toHaveAttribute("stroke", "#D1D1D1");
   });
 
-  it("labels the legend by the drawn date, not by today", () => {
+  it("calls a proxy day's curve 지난주, never 오늘", () => {
+    // 미래 탭의 실선은 그 날짜의 실제가 아니라 지난주 같은 요일의 대리값이다.
     renderPastDay();
 
-    expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
-    expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument();
+    expect(screen.getByText("지난주")).toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+    // 범례에 날짜는 더 이상 없다 — 어느 하루인지는 날짜 탭이 말한다.
+    expect(screen.queryByText(/\d+\/\d+\(/)).not.toBeInTheDocument();
   });
 });
 
@@ -768,7 +770,7 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     expect((dashedD.match(/C/g) ?? []).length).toBe(1);
   });
 
-  it("labels the prediction in the legend, noting when today anchors it", () => {
+  it("labels the prediction 예측, whether or not today anchors it", () => {
     const { rerender } = render(
       <MmcaRoomChartCard
         room={makeRoom()}
@@ -784,7 +786,9 @@ describe("MmcaRoomChartCard 예측 점선", () => {
       />
     );
 
-    expect(screen.getByText("예측 (오늘 반영)")).toBeInTheDocument();
+    // 오늘 판독 고정 여부(anchored)는 범례가 답할 질문이 아니다 — 곡선이
+    // 무엇인지가 아니라 어떻게 만들어졌는지다.
+    expect(screen.getByText("예측")).toBeInTheDocument();
 
     rerender(
       <MmcaRoomChartCard
@@ -805,7 +809,7 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     );
 
     expect(screen.getByText("예측")).toBeInTheDocument();
-    expect(screen.queryByText("예측 (오늘 반영)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/오늘 반영/)).not.toBeInTheDocument();
   });
 
   it("keeps the whole future-tab curve — the D−7 proxy line must not re-anchor it", () => {
@@ -1230,8 +1234,8 @@ describe("MmcaRoomChartCard 비교선 라벨", () => {
       />
     );
 
-    expect(screen.getByText(/7\/1\(수\)\s*2주 전/)).toBeInTheDocument();
-    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+    expect(screen.getByText("2주 전")).toBeInTheDocument();
+    expect(screen.queryByText("지난주")).not.toBeInTheDocument();
   });
 
   it("still says 지난주 when the comparison line really is last week", () => {
@@ -1254,6 +1258,6 @@ describe("MmcaRoomChartCard 비교선 라벨", () => {
       />
     );
 
-    expect(screen.getByText(/7\/8\(수\)\s*지난주/)).toBeInTheDocument();
+    expect(screen.getByText("지난주")).toBeInTheDocument();
   });
 });

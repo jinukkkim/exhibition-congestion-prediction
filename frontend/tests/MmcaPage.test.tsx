@@ -742,7 +742,8 @@ describe("MmcaPage date tabs", () => {
 
     // 8/1 - 7 = 7/25
     await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", "2026-07-25"));
-    expect(screen.getAllByText(/7\/25\(토\)/).length).toBeGreaterThan(0);
+    // 범례는 날짜를 적지 않는다 — 그 대리값이 무엇인지만 말한다.
+    await waitFor(() => expect(screen.getAllByText("지난주").length).toBeGreaterThan(0));
   });
 
   it("fetches the prediction for the selected date, not the last-week proxy date", async () => {
