@@ -1155,7 +1155,7 @@ describe("mark grid", () => {
 });
 
 describe("tier gridlines", () => {
-  it("draws one line per congestion level, at the level's own height", () => {
+  it("draws a line at each boundary between levels, not at the levels themselves", () => {
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
@@ -1170,16 +1170,24 @@ describe("tier gridlines", () => {
       />
     );
 
-    // 곡선이 마크 평균이라 값이 소수다 — 등급 위에 앉지 않는 높이가 무슨 뜻인지
-    // 읽으려면 눈금이 있어야 한다. 네 줄이 등간격이라는 것이 "4단계"를 말한다.
+    // 선은 등급 위(0·1·2·3)가 아니라 등급 사이(0.5·1.5·2.5)에 있다 — 곡선이
+    // 그 선을 넘는 자리가 곧 등급 이름이 바뀌는 자리다(labelOf 의 반올림 임계값).
+    // 네 등급 사이의 경계는 셋이다.
     const lines = screen.getAllByTestId("mmca-room-chart-tier-line");
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(3);
 
     const ys = lines.map((l) => Number(l.getAttribute("y1")));
     // yOf 는 tier 가 클수록 위(작은 y)로 간다.
-    expect(ys[0]).toBeGreaterThan(ys[3]);
+    expect(ys[0]).toBeGreaterThan(ys[2]);
     const gaps = ys.slice(0, -1).map((y, i) => y - ys[i + 1]);
     for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0], 6);
+
+    // 기본 치수(480x200)에서 yOf(t) = 176 − t/3 × 152 이므로 경계는
+    // 150.67 · 100 · 49.33 이고, 가운데 줄이 정확히 도면의 세로 중앙이다.
+    // 여백을 바꾸면 이 값이 깨지고, 그때 다시 볼 값이 맞다.
+    expect(ys[0]).toBeCloseTo(150.67, 1);
+    expect(ys[1]).toBeCloseTo(100, 6);
+    expect(ys[2]).toBeCloseTo(49.33, 1);
   });
 
   it("does not draw them on a card with nothing to plot", () => {
