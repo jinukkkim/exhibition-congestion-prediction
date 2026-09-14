@@ -73,7 +73,8 @@ export function venuePrediction(predictions: MmcaRoomPrediction[]): MmcaRoomPred
 
   return {
     space_code: VENUE_SPACE_CODE,
-    space_nm: VENUE_TITLE,
+    // 차트 카드는 예측의 이름을 읽지 않는다 (점만 쓴다) — 지어낼 이유가 없다.
+    space_nm: null,
     anchored: predictions.every((room) => room.anchored),
     points,
   };
@@ -98,12 +99,13 @@ export function latestObservedAt(rooms: { observed_at: string | null }[]): strin
 
 // 관 전체를 전시실 하나인 척 접은 상태. 차트 카드가 제목·현재 등급·신선도 점을
 // 이 값으로 그대로 그리므로 카드 쪽에 관 전용 분기를 두지 않아도 된다.
-export function venueRoomStatus(rooms: MmcaRoomStatus[] | null): MmcaRoomStatus {
+export function venueRoomStatus(rooms: MmcaRoomStatus[] | null, name: string): MmcaRoomStatus {
   const read = rooms ?? [];
   const tier = venueTier(read);
   return {
     space_code: VENUE_SPACE_CODE,
-    space_nm: VENUE_TITLE,
+    // 카드 제목에 그대로 실린다 — 방 카드가 "1전시실"인 자리에 관 이름이 선다.
+    space_nm: name,
     congestion_nm: tier === null ? null : labelOf(tier),
     // 판독이 있는 방만 센다 — 값 없이 시각만 실려 온 방이 "기준" 시각을
     // 끌어올리면 현재 등급보다 새 시각이 적힌다.
@@ -115,4 +117,3 @@ export function venueRoomStatus(rooms: MmcaRoomStatus[] | null): MmcaRoomStatus 
 // 값으로 SVG 그라디언트 id 를 만들기 때문에 같은 페이지의 방 카드와 부딪히면
 // 채움색이 서로 섞인다.
 export const VENUE_SPACE_CODE = "venue-total";
-export const VENUE_TITLE = "관 전체";

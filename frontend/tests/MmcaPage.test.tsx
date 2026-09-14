@@ -96,7 +96,8 @@ describe("MmcaPage", () => {
     expect(chart).toHaveAttribute("viewBox", "0 0 1120 320");
 
     const venueSection = chart.closest("section") as HTMLElement;
-    expect(within(venueSection).getByText("관 전체")).toBeInTheDocument();
+    // 방 카드가 "1전시실"인 자리에 관 이름이 그대로 선다.
+    expect(within(venueSection).getByText("국립현대미술관 서울관")).toBeInTheDocument();
     // 여유(0)·약간 붐빔(2) = 평균 1.0 -> "보통".
     expect(within(venueSection).getByText("보통")).toBeInTheDocument();
 

@@ -283,7 +283,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                   aggregate
                   width={VENUE_CHART_WIDTH}
                   height={VENUE_CHART_HEIGHT}
-                  room={venueRoomStatus(rooms)}
+                  room={venueRoomStatus(rooms, name)}
                   daily={daily}
                   lastWeekDaily={lastWeekDaily}
                   lastWeekDate={lastWeekDate}

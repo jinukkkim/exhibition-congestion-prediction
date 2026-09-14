@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { MmcaRoomPrediction, MmcaRoomStatus } from "../src/api/mmca";
 import {
   VENUE_SPACE_CODE,
-  VENUE_TITLE,
   labelOf,
   latestObservedAt,
   tierOf,
@@ -21,6 +20,8 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
     ...overrides,
   };
 }
+
+const VENUE_NAME = "국립현대미술관 서울관";
 
 function makePrediction(overrides: Partial<MmcaRoomPrediction> = {}): MmcaRoomPrediction {
   return {
@@ -96,14 +97,18 @@ describe("latestObservedAt", () => {
 
 describe("venueRoomStatus", () => {
   it("folds the rooms into one synthetic room the chart card can draw", () => {
-    const status = venueRoomStatus([
-      makeRoom({ congestion_nm: "여유" }),
-      makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "약간 붐빔" }),
-    ]);
+    const status = venueRoomStatus(
+      [
+        makeRoom({ congestion_nm: "여유" }),
+        makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "약간 붐빔" }),
+      ],
+      VENUE_NAME
+    );
 
     expect(status).toEqual({
       space_code: VENUE_SPACE_CODE,
-      space_nm: VENUE_TITLE,
+      // 방 카드가 "1전시실"인 자리에 관 이름이 그대로 선다.
+      space_nm: VENUE_NAME,
       congestion_nm: "보통", // 평균 1.0
       observed_at: "2026-07-28T10:55:00",
     });
@@ -112,14 +117,17 @@ describe("venueRoomStatus", () => {
   it("takes the newest timestamp only from rooms that actually reported a level", () => {
     // 값 없이 시각만 실려 온 방이 "기준" 시각을 끌어올리면, 카드가 현재 등급보다
     // 새 시각을 적는다.
-    const status = venueRoomStatus([
-      makeRoom({ congestion_nm: "붐빔", observed_at: "2026-07-28T10:55:00" }),
-      makeRoom({
-        space_code: "MMCA-SPACE-1002",
-        congestion_nm: null,
-        observed_at: "2026-07-28T11:05:00",
-      }),
-    ]);
+    const status = venueRoomStatus(
+      [
+        makeRoom({ congestion_nm: "붐빔", observed_at: "2026-07-28T10:55:00" }),
+        makeRoom({
+          space_code: "MMCA-SPACE-1002",
+          congestion_nm: null,
+          observed_at: "2026-07-28T11:05:00",
+        }),
+      ],
+      VENUE_NAME
+    );
 
     expect(status.congestion_nm).toBe("붐빔");
     expect(status.observed_at).toBe("2026-07-28T10:55:00");
@@ -128,13 +136,13 @@ describe("venueRoomStatus", () => {
   it("reports no level when no room has a reading", () => {
     // 덕수궁관이 상시로 이 상태다 — 전시실 하나가 resultCode 0002 로 빈 응답을
     // 준다.
-    const status = venueRoomStatus([makeRoom({ congestion_nm: null, observed_at: null })]);
+    const status = venueRoomStatus([makeRoom({ congestion_nm: null, observed_at: null })], VENUE_NAME);
     expect(status.congestion_nm).toBeNull();
     expect(status.observed_at).toBeNull();
   });
 
   it("survives rooms not having arrived yet", () => {
-    expect(venueRoomStatus(null).congestion_nm).toBeNull();
+    expect(venueRoomStatus(null, VENUE_NAME).congestion_nm).toBeNull();
   });
 });
 
