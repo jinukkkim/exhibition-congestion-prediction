@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +6,12 @@ import { MmcaPage } from "../src/pages/MmcaPage";
 import * as api from "../src/api/mmca";
 import type { MmcaDailyLogPoint, MmcaRoomStatus } from "../src/api/mmca";
 import { shiftDate, todayString } from "../src/lib/date";
+
+// 방 카드가 담긴 section. 그 앞에 관 전체 카드 section 이 따로 서므로 "첫
+// section" 으로는 못 고른다.
+function roomGrid(): HTMLElement | null {
+  return screen.getAllByTestId("mmca-room-chart")[0].closest("section");
+}
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   return {
@@ -71,6 +77,67 @@ describe("MmcaPage", () => {
     await waitFor(() => expect(screen.getByText("1전시실")).toBeInTheDocument());
     expect(screen.getByText("2전시실")).toBeInTheDocument();
     expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2);
+  });
+
+  it("puts a venue-total card above the room cards, at the National Museum's size", async () => {
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실", congestion_nm: "약간 붐빔" }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="seoul" />
+      </MemoryRouter>
+    );
+
+    const chart = await screen.findByTestId("mmca-venue-chart");
+    // 국중박 CongestionCard 의 좌표계. 방 카드(480x200)를 늘린 것이 아니다.
+    expect(chart).toHaveAttribute("viewBox", "0 0 1120 320");
+
+    const venueSection = chart.closest("section") as HTMLElement;
+    // 방 카드가 "1전시실"인 자리에 관 이름이 그대로 선다.
+    expect(within(venueSection).getByText("국립현대미술관 서울관")).toBeInTheDocument();
+    // 여유(0)·약간 붐빔(2) = 평균 1.0 -> "보통".
+    expect(within(venueSection).getByText("보통")).toBeInTheDocument();
+
+    // 방 카드보다 먼저 선다.
+    expect(venueSection.compareDocumentPosition(roomGrid() as HTMLElement)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it("draws no venue-total card when the venue has a single active room", async () => {
+    // 곡선이 그 방 곡선과 글자 그대로 같아 같은 그림을 두 번 그리게 된다.
+    // 덕수궁관은 전시실이 하나라 늘 이 경우다.
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="deoksugung" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
+    expect(screen.queryByTestId("mmca-venue-chart")).not.toBeInTheDocument();
+  });
+
+  it("keeps the venue-total card off a closed day", async () => {
+    // 요일 휴관은 과천·덕수궁에만 있다 (museumCalendar 의 WEEKLY_CLOSED).
+    vi.setSystemTime(new Date("2026-07-27T11:00:00")); // 월요일 — 과천관 휴관
+    vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([
+      makeRoom({ space_code: "MMCA-SPACE-2001" }),
+      makeRoom({ space_code: "MMCA-SPACE-2002", space_nm: "2전시실", congestion_nm: "보통" }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MmcaPage venue="gwacheon" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText("휴관일입니다")).toBeInTheDocument());
+    expect(screen.queryByTestId("mmca-venue-chart")).not.toBeInTheDocument();
   });
 
   it("shows the venue's business hours once in the header, not per room card", async () => {
@@ -230,14 +297,14 @@ describe("MmcaPage", () => {
   it("renders a single-column layout when the venue has only one room", async () => {
     vi.spyOn(api, "fetchMmcaRooms").mockResolvedValue([makeRoom()]);
 
-    const { container } = render(
+    render(
       <MemoryRouter>
         <MmcaPage venue="deoksugung" />
       </MemoryRouter>
     );
 
     await waitFor(() => expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument());
-    expect(container.querySelector("section")?.className).not.toMatch(/lg:grid-cols-2/);
+    expect(roomGrid()?.className).not.toMatch(/lg:grid-cols-2/);
   });
 
   it("renders a two-column layout when the venue has more than one room", async () => {
@@ -246,14 +313,14 @@ describe("MmcaPage", () => {
       makeRoom({ space_code: "MMCA-SPACE-1002", space_nm: "2전시실" }),
     ]);
 
-    const { container } = render(
+    render(
       <MemoryRouter>
         <MmcaPage venue="seoul" />
       </MemoryRouter>
     );
 
     await waitFor(() => expect(screen.getAllByTestId("mmca-room-chart")).toHaveLength(2));
-    expect(container.querySelector("section")?.className).toMatch(/lg:grid-cols-2/);
+    expect(roomGrid()?.className).toMatch(/lg:grid-cols-2/);
   });
 
   it("replaces the room list with one closed-day notice on a Monday", async () => {
@@ -676,7 +743,8 @@ describe("MmcaPage date tabs", () => {
 
     // 8/1 - 7 = 7/25
     await waitFor(() => expect(fetchMmcaDaily).toHaveBeenCalledWith("seoul", "2026-07-25"));
-    expect(screen.getAllByText(/7\/25\(토\)/).length).toBeGreaterThan(0);
+    // 범례는 날짜를 적지 않는다 — 그 대리값이 무엇인지만 말한다.
+    await waitFor(() => expect(screen.getAllByText("지난주").length).toBeGreaterThan(0));
   });
 
   it("fetches the prediction for the selected date, not the last-week proxy date", async () => {

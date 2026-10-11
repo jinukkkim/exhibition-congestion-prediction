@@ -27,6 +27,12 @@ import {
   WEEKDAY_KO,
 } from "../lib/date";
 import { mmcaBusinessHours, nextOpenDay } from "../lib/mmcaBusinessHours";
+import {
+  VENUE_CHART_HEIGHT,
+  VENUE_CHART_WIDTH,
+  venuePrediction,
+  venueRoomStatus,
+} from "../lib/mmcaVenueCongestion";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -261,6 +267,34 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           <>
             {trendError && rooms !== null && (
               <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
+            )}
+            {/* 관 전체 — 전시실 곡선들을 하나로 접은 값. 국립중앙박물관 카드와
+                같은 1120x320 좌표계로 한 폭을 쓰고, 그 아래에 전시실 카드가
+                지금 그대로 2열로 깔린다. 각 관의 `when` 페이지가 이미 같은 순서다
+                (관 히트맵이 헤드라인, 전시실별은 그 아래).
+
+                활성 전시실이 둘 이상일 때만 그린다. 하나뿐이면 관 곡선이 그 방
+                곡선과 글자 그대로 같아 같은 그림을 두 번 그리게 되고, 덕수궁관은
+                전시실이 MMCA-SPACE-4001 하나인 데다 그 방이 혼잡도를 주지 않아
+                (venueSummary 의 resultCode 0002 주석) 빈 카드가 한 폭을 차지한다. */}
+            {activeRooms.length > 1 && (
+              <section className="mb-6">
+                <MmcaRoomChartCard
+                  aggregate
+                  width={VENUE_CHART_WIDTH}
+                  height={VENUE_CHART_HEIGHT}
+                  room={venueRoomStatus(rooms, name)}
+                  daily={daily}
+                  lastWeekDaily={lastWeekDaily}
+                  lastWeekDate={lastWeekDate}
+                  prediction={venuePrediction(predictionPoll.data ?? [])}
+                  open={open}
+                  close={close}
+                  nowMinutes={nowMinutes}
+                  now={now}
+                  viewDate={chartDate}
+                />
+              </section>
             )}
             {activeRooms.length > 0 && (
               <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
