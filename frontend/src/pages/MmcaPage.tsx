@@ -13,7 +13,6 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
-import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
@@ -331,7 +330,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           </>
         )}
       </main>
-      <SiteFooter container="max-w-[1400px] px-6 sm:px-10 lg:px-16" />
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { fetchMmcaWeeklyProfile, type MmcaVenue } from "../api/mmca";
 import { CongestionHeatmap } from "../components/CongestionHeatmap";
-import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { mmcaQuietHoursHeadline, rankLabel } from "../lib/quietHours";
@@ -174,7 +173,6 @@ export function MmcaQuietHoursPage({ venue }: { venue: MmcaVenue }) {
           </dl>
         </section>
       </main>
-      <SiteFooter container="max-w-[900px] px-6 sm:px-10" />
     </div>
   );
 }

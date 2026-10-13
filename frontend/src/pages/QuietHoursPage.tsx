@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { fetchWeeklyProfile, type WeeklyProfileCell } from "../api/congestion";
 import { CongestionHeatmap } from "../components/CongestionHeatmap";
-import { SiteFooter } from "../components/SiteFooter";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
 import { extremes, quietHoursHeadline, rankScale } from "../lib/quietHours";
@@ -94,8 +93,8 @@ export function QuietHoursPage() {
             맞춰 둔다. 값이 명사형으로 끝나는 것은 이 표만의 규칙이다: 맨 위
             한 문장은 관람객에게 말을 걸고, 여기는 데이터를 기술한다. */}
         <section className="mt-10 border-t border-hairline/70 pt-6">
-          {/* GitHub 링크 같은 uppercase·0.2em 자간을 따라가지 않는다 — 한글에
-              uppercase 는 아무 일도 하지 않고, 그 자간은 글자를 흩어 놓는다. */}
+          {/* uppercase·0.2em 자간을 쓰지 않는다 — 한글에 uppercase 는 아무
+              일도 하지 않고, 그 자간은 글자를 흩어 놓는다. */}
           <h2 className="text-xs font-semibold tracking-wide text-ink-soft">데이터 및 집계 방법</h2>
           <dl className="mt-4 grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm text-ink">
             <dt className="text-ink-soft">출처</dt>
@@ -145,7 +144,6 @@ export function QuietHoursPage() {
           </dl>
         </section>
       </main>
-      <SiteFooter container="max-w-[900px] px-6 sm:px-10" />
     </div>
   );
 }
