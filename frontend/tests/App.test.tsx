@@ -81,7 +81,7 @@ describe("App routing", () => {
     await waitFor(() => expect(document.title).toBe("국립현대미술관 서울관 · 전시 혼잡도 예측"));
 
     fireEvent.click(screen.getByRole("link", { name: /전체 보기/ }));
-    await waitFor(() => expect(document.title).toBe("전시 혼잡도 예측"));
+    await waitFor(() => expect(document.title).toBe("국립중앙박물관·국립현대미술관 혼잡도"));
   });
 
   it("still routes the other MMCA venues to their own page", async () => {
