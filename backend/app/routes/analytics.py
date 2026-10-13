@@ -17,12 +17,12 @@ import gzip
 import hashlib
 import json
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from enum import IntEnum
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterator, NamedTuple
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
@@ -79,7 +79,37 @@ _BOT_UA = re.compile(
     re.I,
 )
 
-_MOBILE_UA = re.compile(r"Mobile|Android|iPhone|iPad|iPod", re.I)
+_MOBILE_UA = re.compile(r"Mobile|Android|iPhone|iPod", re.I)
+# 안드로이드 태블릿은 UA 에 Mobile 을 달지 않는 것으로 폰과 갈린다.
+_TABLET_UA = re.compile(r"iPad|Tablet|Android(?!.*Mobile)", re.I)
+
+# 먼저 맞는 것이 이긴다. 인앱 브라우저와 Chromium 파생은 UA 에 Chrome 과
+# Safari 를 함께 달고 오므로 그 둘보다 앞에 둬야 제 이름을 찾는다.
+_BROWSERS = (
+    ("KakaoTalk", re.compile(r"KAKAOTALK", re.I)),
+    ("Naver", re.compile(r"NAVER\(inapp")),
+    ("Instagram", re.compile(r"Instagram")),
+    ("Whale", re.compile(r"Whale/")),
+    ("Samsung Internet", re.compile(r"SamsungBrowser/")),
+    ("Edge", re.compile(r"Edg(A|iOS)?/")),
+    ("Firefox", re.compile(r"Firefox/|FxiOS/")),
+    ("Chrome", re.compile(r"Chrome/|CriOS/")),
+    ("Safari", re.compile(r"Safari/")),
+)
+
+# 안드로이드 UA 에도 Linux 가, 아이폰 UA 에도 "like Mac OS X" 가 있다. 순서가 판정이다.
+_OSES = (
+    ("iOS", re.compile(r"iPhone|iPad|iPod")),
+    ("Android", re.compile(r"Android")),
+    ("Windows", re.compile(r"Windows")),
+    ("macOS", re.compile(r"Macintosh|Mac OS X")),
+    ("ChromeOS", re.compile(r"CrOS")),
+    ("Linux", re.compile(r"Linux")),
+)
+
+_OTHER = "기타"
+
+_UTM_KEYS = ("source", "medium", "campaign", "content", "term")
 
 _NO_REFERRER = "직접 방문"
 
@@ -89,6 +119,12 @@ _NO_REFERRER = "직접 방문"
 # the response bounded once that stops being true.
 _VISIT_LIMIT = 200
 
+# 페이지뷰는 화면이 필터마다 다시 세도록 집계 전의 행으로 내린다 — 서버에서
+# 세면 필터 조합마다 캐시 미스가 나고 미스 한 번이 로그 창 전체를 훑는다.
+# ponytail: 상한에 닿으면 오래된 쪽이 잘려 직전 기간 비교부터 틀어진다. 그
+# 규모면 일별 rollup 테이블로 옮길 때다.
+_PAGEVIEW_LIMIT = 20_000
+
 
 class _Page(NamedTuple):
     at: float
@@ -97,6 +133,7 @@ class _Page(NamedTuple):
     agent: str
     referer: str
     host: str
+    query: str
 
 
 def _is_page_view(uri: str) -> bool:
@@ -120,21 +157,53 @@ def _referrer_source(referer: str, host: str) -> str | None:
     return netloc
 
 
-def _visitor_label(address: str) -> str:
-    """A short stable name for an address, so two visits can be told apart.
+def _visitor_label(address: str, agent: str) -> str:
+    """A short stable name for a visitor, so two visits can be told apart.
+
+    Address and user agent together, the way Vercel counts a visitor — the
+    address alone makes one person of everyone behind the same NAT.
 
     The address itself never leaves this module — /visitors has no lock on it
     (it is only unlinked), and a page anyone can open should not be a list of
     who was here. Six hex digits over the whole IPv4 space leaves a couple of
-    hundred addresses per label, which is enough to recognise "the same one
-    came back" and not enough to read off an address.
+    hundred addresses per label for any one user agent, which is enough to
+    recognise "the same one came back" and not enough to read off an address.
     """
-    return hashlib.sha256(address.encode()).hexdigest()[:6]
+    return hashlib.sha256(f"{address}\n{agent}".encode()).hexdigest()[:6]
 
 
-def _log_files(since: date) -> Iterator[Path]:
-    """access.log and the rolled siblings that can still hold `since`."""
+def _first_match(agent: str, table: tuple[tuple[str, re.Pattern], ...]) -> str:
+    return next((name for name, pattern in table if pattern.search(agent)), _OTHER)
+
+
+def _browser(agent: str) -> str:
+    return _first_match(agent, _BROWSERS)
+
+
+def _os(agent: str) -> str:
+    return _first_match(agent, _OSES)
+
+
+def _device(agent: str) -> str:
+    if _TABLET_UA.search(agent):
+        return "tablet"
+    return "mobile" if _MOBILE_UA.search(agent) else "desktop"
+
+
+def _utm(query: str) -> dict[str, str]:
+    params = parse_qs(query)
+    return {key: params[f"utm_{key}"][0] for key in _UTM_KEYS if params.get(f"utm_{key}")}
+
+
+def _log_files(since: date) -> tuple[list[Path], bool]:
+    """access.log and the rolled siblings that can still hold `since`.
+
+    And whether a rolled file was skipped for being older than that — which
+    proves the log reaches back past `since` without opening it.
+    """
     path = Path(settings.caddy_access_log)
+    files: list[Path] = []
+    older_skipped = False
     # 롤된 파일은 access-2026-09-01T00-00-00.000.log.gz 로 같은 디렉터리에 남는다.
     # 없는 디렉터리를 glob 하면 예외 없이 빈 결과다 — 개발 머신이 그 경우다.
     for candidate in sorted(path.parent.glob(path.stem + "*")):
@@ -146,12 +215,14 @@ def _log_files(since: date) -> Iterator[Path]:
         # older than that. Skipping on it is what keeps a 30-day window from
         # decompressing 400MB it will throw away line by line.
         if rolled_at.date() < since:
+            older_skipped = True
             continue
-        yield candidate
+        files.append(candidate)
+    return files, older_skipped
 
 
-def _entries(since: date) -> Iterator[dict]:
-    for path in _log_files(since):
+def _entries(paths: list[Path]) -> Iterator[dict]:
+    for path in paths:
         opener = gzip.open if path.suffix == ".gz" else open
         try:
             # encoding 을 안 주면 로케일 기본값을 따른다. systemd 유닛에는 LANG 이
@@ -173,30 +244,43 @@ def _entries(since: date) -> Iterator[dict]:
             continue
 
 
-def _collect(since: date) -> tuple[list[_Page], dict[str, list[float]]]:
+class _Log(NamedTuple):
+    pages: list[_Page]
+    # The calls that confirm a page, by address.
+    calls: dict[str, list[float]]
+    # How far back the log reaches, or None if there is none.
+    coverage: float | None
+
+
+def _collect(since: date) -> _Log:
     """One pass over the log: the page requests, and the calls that confirm them."""
+    files, older_skipped = _log_files(since)
     pages: list[_Page] = []
     calls: defaultdict[str, list[float]] = defaultdict(list)
+    oldest: float | None = None
 
-    for entry in _entries(since):
+    for entry in _entries(files):
         request = entry.get("request")
         at = entry.get("ts")
         if not isinstance(request, dict) or not isinstance(at, (int, float)):
             continue
+        oldest = at if oldest is None else min(oldest, at)
         if entry.get("status", 200) >= 400:
             continue
         address = request.get("client_ip") or request.get("remote_ip") or ""
         uri = request.get("uri", "")
         if _is_page_view(uri):
             headers = request.get("headers") or {}
+            parts = urlsplit(uri)
             pages.append(
                 _Page(
                     at=at,
                     address=address,
-                    path=urlsplit(uri).path.rstrip("/") or "/",
+                    path=parts.path.rstrip("/") or "/",
                     agent=(headers.get("User-Agent") or [""])[0],
                     referer=(headers.get("Referer") or [""])[0],
                     host=request.get("host", ""),
+                    query=parts.query,
                 )
             )
         elif urlsplit(uri).path.startswith(_CONFIRM_PREFIXES):
@@ -206,7 +290,13 @@ def _collect(since: date) -> tuple[list[_Page], dict[str, list[float]]]:
     # faster one that started later. Close to sorted, not sorted.
     for series in calls.values():
         series.sort()
-    return pages, calls
+
+    if older_skipped:
+        # 열지 않은 더 오래된 파일이 있다 — 첫 줄 시각이 아니라 창의 시작까지는
+        # 확실히 덮여 있다. 첫 줄로 재면 직전 기간 비교가 이유 없이 사라진다.
+        floor = datetime.combine(since, time(), tzinfo=_SEOUL_TZ).timestamp()
+        oldest = floor if oldest is None else min(oldest, floor)
+    return _Log(pages, calls, oldest)
 
 
 def _app_started(calls: dict[str, list[float]], page: _Page) -> bool:
@@ -226,74 +316,70 @@ def _app_started(calls: dict[str, list[float]], page: _Page) -> bool:
     return index < len(series) and series[index] <= page.at + _CONFIRM_WINDOW_SECONDS
 
 
+def _window(days: int, now: datetime) -> tuple[datetime, datetime]:
+    """This period's start, and the start of the one before it."""
+    if days == 1:
+        # Vercel 의 "Last 24 Hours" 처럼 달력 하루가 아니라 지금부터 거꾸로 24시간.
+        return now - timedelta(hours=24), now - timedelta(hours=48)
+    start = datetime.combine(now.date() - timedelta(days=days - 1), time(), tzinfo=_SEOUL_TZ)
+    return start, start - timedelta(days=days)
+
+
+def _iso(at: float) -> str:
+    return datetime.fromtimestamp(at, _SEOUL_TZ).replace(microsecond=0).isoformat()
+
+
 def _aggregate(days: int, now: datetime) -> dict:
-    since = (now - timedelta(days=days - 1)).date()
-    pages, calls = _collect(since)
+    now = now.replace(microsecond=0)
+    start, previous_start = _window(days, now)
+    log = _collect(previous_start.date())
 
-    views: defaultdict[date, int] = defaultdict(int)
-    bots: defaultdict[date, int] = defaultdict(int)
-    unconfirmed: defaultdict[date, int] = defaultdict(int)
-    # Addresses are counted and dropped — the set never leaves this function
-    # and no address reaches the response.
-    seen: defaultdict[date, set[str]] = defaultdict(set)
-    referrers: Counter[str] = Counter()
-    devices: Counter[str] = Counter()
-    visits: list[dict] = []
+    pageviews: list[dict] = []
+    recent: list[dict] = []
+    bots = unconfirmed = 0
 
-    for page in sorted(pages):
-        day = datetime.fromtimestamp(page.at, _SEOUL_TZ).date()
-        if day < since:
+    for page in sorted(log.pages):
+        # 직전 기간까지 싣는다 — 화면이 증감률을 거기서 센다.
+        if page.at < previous_start.timestamp():
             continue
 
-        source = _referrer_source(page.referer, page.host)
         if _BOT_UA.search(page.agent):
             kind = "bot"
-            bots[day] += 1
-        elif not _app_started(calls, page):
+        elif not _app_started(log.calls, page):
             # HTML 만 받아 가고 앱은 뜨지 않았다. 대개 스캐너지만 봇 이름을 달지
             # 않으므로 봇과 한 칸에 넣지 않는다 — 백엔드가 죽어 있던 동안의 진짜
             # 방문도 여기로 떨어지고, 그때는 그 사실이 보이는 편이 낫다.
             kind = "unconfirmed"
-            unconfirmed[day] += 1
         else:
             kind = "human"
-            views[day] += 1
-            seen[day].add(page.address)
-            devices["mobile" if _MOBILE_UA.search(page.agent) else "desktop"] += 1
-            if source:
-                referrers[source] += 1
 
-        visits.append(
-            {
-                "at": datetime.fromtimestamp(page.at, _SEOUL_TZ).replace(microsecond=0).isoformat(),
-                "path": page.path,
-                "kind": kind,
-                "visitor": _visitor_label(page.address),
-                "device": "mobile" if _MOBILE_UA.search(page.agent) else "desktop",
-                "referrer": source,
-            }
-        )
+        # Addresses are hashed into the label and dropped — no address
+        # reaches the response.
+        row = {
+            "at": _iso(page.at),
+            "path": page.path,
+            "visitor": _visitor_label(page.address, page.agent),
+            "device": _device(page.agent),
+            "browser": _browser(page.agent),
+            "os": _os(page.agent),
+            "referrer": _referrer_source(page.referer, page.host),
+            "utm": _utm(page.query),
+        }
+        if kind == "human":
+            pageviews.append(row)
+        if page.at >= start.timestamp():
+            recent.append({**row, "kind": kind})
+            bots += kind == "bot"
+            unconfirmed += kind == "unconfirmed"
 
-    window = [since + timedelta(days=n) for n in range(days)]
     return {
-        # 트래픽이 없던 날도 0 으로 싣는다 — 빠지면 추이의 가로축이 조용히
-        # 압축되어 뜸했던 기간이 안 보인다.
-        "daily": [
-            {
-                "date": day.isoformat(),
-                "views": views[day],
-                "visitors": len(seen[day]),
-                "unconfirmed": unconfirmed[day],
-                "bots": bots[day],
-            }
-            for day in window
-        ],
-        "referrers": [
-            {"source": source, "views": count} for source, count in referrers.most_common(20)
-        ],
-        "devices": {"mobile": devices["mobile"], "desktop": devices["desktop"]},
+        "start": start.isoformat(),
+        "previous_start": previous_start.isoformat(),
+        "coverage_start": None if log.coverage is None else _iso(log.coverage),
+        "pageviews": pageviews[-_PAGEVIEW_LIMIT:],
         # 최근 것부터. 잘리는 쪽은 오래된 끝이다.
-        "visits": visits[-_VISIT_LIMIT:][::-1],
+        "recent": recent[-_VISIT_LIMIT:][::-1],
+        "excluded": {"bots": bots, "unconfirmed": unconfirmed},
     }
 
 
@@ -305,10 +391,11 @@ class Range(IntEnum):
     (보관 상한에서 원본 8.8GB, 약 35초) days 를 1부터 세는 것만으로 같은 박스의
     혼잡도 API 까지 함께 느려진다. 화면이 안 쓰는 값을 받을 이유도 없다.
 
-    Literal[7, 30, 90] 이 더 짧지만 pydantic 2.13 이 쿼리스트링 "30" 을 int 로
+    Literal[1, 7, 30, 90] 이 더 짧지만 pydantic 2.13 이 쿼리스트링 "30" 을 int 로
     바꾸지 않아 정상 요청까지 422 가 된다. IntEnum 은 그 변환을 한다.
     """
 
+    day = 1
     week = 7
     month = 30
     quarter = 90

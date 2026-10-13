@@ -148,11 +148,15 @@ def revive[T: BaseModel](cached: dict | list[dict] | None, model: type[T]) -> T 
 # 숫자로 답해도 판단은 같다.
 ANALYTICS_TTL_SECONDS = 600
 
+# 키 이름은 응답 모양과 함께 바뀐다. 일별 합계에서 원시 페이지뷰 행으로 바뀔 때
+# 옛 키를 그대로 쓰면, 배포 직후 TTL 동안 새 화면이 옛 모양을 받아 깨진다.
+_ANALYTICS_KEY = "analytics:pageviews:{days}"
+
 
 def set_analytics(days: int, payload: dict) -> None:
-    r.set(f"analytics:visits:{days}", json.dumps(payload), ex=ANALYTICS_TTL_SECONDS)
+    r.set(_ANALYTICS_KEY.format(days=days), json.dumps(payload), ex=ANALYTICS_TTL_SECONDS)
 
 
 def get_analytics(days: int) -> dict | None:
-    raw = r.get(f"analytics:visits:{days}")
+    raw = r.get(_ANALYTICS_KEY.format(days=days))
     return json.loads(raw) if raw else None
