@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
-const SITE = "전시 혼잡도 예측";
+// index.html 의 WebSite 구조화 데이터(구글 사이트 이름)도 같은 이름을 쓴다.
+export const SITE = "전시 혼잡도 예측";
 
 // 클라이언트 라우팅이라 문서 제목은 스스로 바뀌지 않는다 — 라우트가 바뀌면 그
 // 페이지가 마운트되면서 자기 것으로 덮어쓴다. 그래서 되돌릴 cleanup 이 없다
