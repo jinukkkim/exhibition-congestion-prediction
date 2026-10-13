@@ -16,8 +16,7 @@ export interface Pageview {
 
 export interface RecentVisit extends Pageview {
   // unconfirmed: HTML 만 받아 가고 앱은 뜨지 않은 요청. 대개 스캐너다.
-  // self: 서버 설정(ANALYTICS_EXCLUDE_IPS)에 적힌 내 주소에서 온 요청.
-  kind: "human" | "unconfirmed" | "bot" | "self";
+  kind: "human" | "unconfirmed" | "bot";
 }
 
 export interface VisitStats {
@@ -28,7 +27,7 @@ export interface VisitStats {
   coverage_start: string | null;
   pageviews: Pageview[];
   recent: RecentVisit[];
-  excluded: { bots: number; unconfirmed: number; self: number };
+  excluded: { bots: number; unconfirmed: number };
 }
 
 export async function fetchVisits(days: number): Promise<VisitStats> {

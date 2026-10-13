@@ -70,7 +70,6 @@ const KIND_LABEL: Record<RecentVisit["kind"], string> = {
   human: "사람",
   unconfirmed: "미확인",
   bot: "봇",
-  self: "나",
 };
 
 function Delta({ value }: { value: number | null }) {
@@ -479,8 +478,7 @@ export function VisitorsPage() {
                     앱은 뜨지 않은 요청 — 대개 스캐너다. */}
                 {data && (
                   <p className="text-[12px] text-neutral-500">
-                    제외됨: 나 {data.excluded.self.toLocaleString()} · 봇{" "}
-                    {data.excluded.bots.toLocaleString()} · 미확인{" "}
+                    제외됨: 봇 {data.excluded.bots.toLocaleString()} · 미확인{" "}
                     {data.excluded.unconfirmed.toLocaleString()}
                   </p>
                 )}

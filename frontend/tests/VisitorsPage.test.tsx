@@ -48,9 +48,8 @@ const STATS: VisitStats = {
       ...pv({ at: "2026-09-07T03:11:00+09:00", visitor: "57a58d", device: "mobile" }),
       kind: "unconfirmed",
     },
-    { ...pv({ at: "2026-09-07T01:00:00+09:00", visitor: "e1e1e1" }), kind: "self" },
   ],
-  excluded: { bots: 21, unconfirmed: 9, self: 4 },
+  excluded: { bots: 21, unconfirmed: 9 },
 };
 
 function tile(label: string): string {
@@ -178,8 +177,6 @@ describe("VisitorsPage", () => {
     expect(table.getByText("93345f").closest("tr")?.textContent).toContain("사람");
     expect(table.getByText("57a58d").closest("tr")?.textContent).toContain("미확인");
     expect(table.getByText("57a58d").closest("tr")?.textContent).toContain("09-07 03:11");
-    expect(table.getByText("e1e1e1").closest("tr")?.textContent).toContain("나");
-    expect(screen.getByText(/나 4/)).toBeInTheDocument();
     expect(screen.getByText(/봇 21/)).toBeInTheDocument();
     expect(screen.getByText(/미확인 9/)).toBeInTheDocument();
   });
