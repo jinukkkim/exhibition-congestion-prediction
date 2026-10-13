@@ -158,7 +158,7 @@ def test_bots_are_counted_apart_from_people(write_log):
 
     # 봇이 순방문자나 기기 비율을 밀어올리면 두 숫자 다 못 쓰게 된다.
     assert len(current(result)) == 1
-    assert result["excluded"] == {"bots": 3, "unconfirmed": 0}
+    assert result["excluded"] == {"bots": 3, "unconfirmed": 0, "self": 0}
 
 
 def test_html_taken_without_the_app_starting_is_not_a_pageview(write_log):
@@ -175,7 +175,7 @@ def test_html_taken_without_the_app_starting_is_not_a_pageview(write_log):
 
     assert len(current(result)) == 1
     # 봇 이름을 달지 않았으니 봇 칸에도 들어가지 않는다.
-    assert result["excluded"] == {"bots": 0, "unconfirmed": 1}
+    assert result["excluded"] == {"bots": 0, "unconfirmed": 1, "self": 0}
 
 
 def test_a_call_long_after_the_page_does_not_confirm_it(write_log):
@@ -441,3 +441,32 @@ def test_the_route_takes_only_the_ranges_the_page_offers(write_log, monkeypatch)
     # 1~365 를 열어두면 값마다 캐시 슬롯이 생겨 TTL 이 무의미해진다. 잠금 없는
     # 라우트에서 캐시 미스 한 번의 비용이 크므로 화면이 쓰는 값만 받는다.
     assert client.get("/analytics/visits?days=14").status_code == 422
+
+
+def test_my_own_addresses_are_left_out_and_listed_as_me(write_log, monkeypatch):
+    import app.routes.analytics as analytics
+
+    monkeypatch.setattr(analytics.settings, "analytics_exclude_ips", " 1.1.1.1 , 2001:db8::1")
+    write_log(
+        [
+            *visit(NOW, ip="1.1.1.1"),
+            *visit(NOW, ip="2001:db8::1", ua=PHONE_UA),
+            *visit(NOW, ip="3.3.3.3"),
+        ]
+    )
+
+    result = _aggregate(1, NOW)
+
+    assert len(current(result)) == 1
+    assert result["excluded"] == {"bots": 0, "unconfirmed": 0, "self": 2}
+    # 목록에는 남는다 — 설정이 먹었는지 확인할 곳이 거기다.
+    assert sorted(v["kind"] for v in result["recent"]) == ["human", "self", "self"]
+
+
+def test_no_addresses_set_leaves_out_nobody(write_log, monkeypatch):
+    import app.routes.analytics as analytics
+
+    monkeypatch.setattr(analytics.settings, "analytics_exclude_ips", "")
+    write_log(visit(NOW))
+
+    assert _aggregate(1, NOW)["excluded"]["self"] == 0

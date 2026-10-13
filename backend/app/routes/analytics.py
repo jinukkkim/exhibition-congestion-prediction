@@ -334,16 +334,20 @@ def _aggregate(days: int, now: datetime) -> dict:
     start, previous_start = _window(days, now)
     log = _collect(previous_start.date())
 
+    mine = {ip.strip() for ip in settings.analytics_exclude_ips.split(",") if ip.strip()}
     pageviews: list[dict] = []
     recent: list[dict] = []
-    bots = unconfirmed = 0
+    excluded = {"bots": 0, "unconfirmed": 0, "self": 0}
 
     for page in sorted(log.pages):
         # 직전 기간까지 싣는다 — 화면이 증감률을 거기서 센다.
         if page.at < previous_start.timestamp():
             continue
 
-        if _BOT_UA.search(page.agent):
+        # 내 주소가 먼저다 — 내가 연 탭은 앱이 떴든 아니든 방문자가 아니다.
+        if page.address in mine:
+            kind = "self"
+        elif _BOT_UA.search(page.agent):
             kind = "bot"
         elif not _app_started(log.calls, page):
             # HTML 만 받아 가고 앱은 뜨지 않았다. 대개 스캐너지만 봇 이름을 달지
@@ -369,8 +373,10 @@ def _aggregate(days: int, now: datetime) -> dict:
             pageviews.append(row)
         if page.at >= start.timestamp():
             recent.append({**row, "kind": kind})
-            bots += kind == "bot"
-            unconfirmed += kind == "unconfirmed"
+            if kind == "bot":
+                excluded["bots"] += 1
+            elif kind != "human":
+                excluded[kind] += 1
 
     return {
         "start": start.isoformat(),
@@ -379,7 +385,7 @@ def _aggregate(days: int, now: datetime) -> dict:
         "pageviews": pageviews[-_PAGEVIEW_LIMIT:],
         # 최근 것부터. 잘리는 쪽은 오래된 끝이다.
         "recent": recent[-_VISIT_LIMIT:][::-1],
-        "excluded": {"bots": bots, "unconfirmed": unconfirmed},
+        "excluded": excluded,
     }
 
 

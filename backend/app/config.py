@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # (deploy/Caddyfile 의 log 블록과 같은 경로여야 한다). 개발 머신에는 없고,
     # 없으면 트래픽 0 으로 읽힌다.
     caddy_access_log: str = "/var/log/caddy/access.log"
+    # 방문 집계에서 뺄 내 주소들, 쉼표로 구분 (예: "1.2.3.4,2001:db8::1").
+    # 로그의 client_ip 와 글자 그대로 비교한다. 집 회선 IP 가 바뀌면 여기도
+    # 고쳐야 하고, IP 가 자주 바뀌는 휴대폰 데이터는 사실상 잡지 못한다.
+    analytics_exclude_ips: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 
