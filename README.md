@@ -43,6 +43,10 @@ cp .env.example .env   # fill in SEOUL_API_KEY and MMCA_API_KEY
   the backup freshness figure in `/health/collection`, the second for
   `/analytics/visits`. Neither exists on a dev machine, which is why one reports
   `null` and the other reads as zero traffic.
+- `ANALYTICS_EXCLUDE_IPS` — your own addresses, comma-separated, left out of
+  `/analytics/visits` so your visits don't count. Set it in the server's
+  `.env`; compared verbatim against Caddy's `client_ip`, so a changed home IP
+  needs updating here, and mobile data (which changes IP often) mostly slips through.
 
 ### Developing against real data
 
