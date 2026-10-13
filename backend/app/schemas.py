@@ -12,6 +12,26 @@ class CongestionHistoryPoint(BaseModel):
     population_avg: float
 
 
+class WeeklyProfileCell(BaseModel):
+    # 0=월 … 6=일 (datetime.weekday()).
+    weekday: int
+    hour: int
+    population_avg: float
+
+
+class WeeklyProfile(BaseModel):
+    status: str
+    # 집계에 들어간 판독의 첫날과 마지막 날. "언제까지의 데이터인가"를 화면이
+    # 직접 적을 수 있어야 하는 값이라 응답에 싣는다 — 수집 시작일을 프론트에
+    # 박아두면 venues.ts 의 earliestDate 와 두 곳에서 같은 말을 하게 된다.
+    since: str | None = None
+    until: str | None = None
+    # 집계에 들어간 판독 수. 화면이 "판독 n건"으로 적는다 — 표본 수 없는 집계는
+    # 독자가 신뢰도를 가늠할 방법이 없다.
+    samples: int = 0
+    cells: list[WeeklyProfileCell]
+
+
 class DailyLogPoint(BaseModel):
     observed_at: str
     congest_level: str
@@ -38,6 +58,32 @@ class RawLogPoint(BaseModel):
     # list here would mean editing this schema every time 서울시 adds a field,
     # and /congestion/daily/raw exists precisely to show everything we kept.
     fields: dict[str, str | int | float | None]
+
+
+class MmcaWeeklyProfileCell(BaseModel):
+    # 0=월 … 6=일 (datetime.weekday()).
+    weekday: int
+    hour: int
+    # 평균 등급 0.0~3.0 (여유·보통·약간 붐빔·붐빔). 최빈값이 아니라 평균인
+    # 이유는 prediction/mmca.py 의 build_profile 주석에 있다.
+    rank: float
+
+
+class MmcaWeeklyProfileRoom(BaseModel):
+    space_code: str
+    space_nm: str | None
+    cells: list[MmcaWeeklyProfileCell]
+
+
+class MmcaWeeklyProfile(BaseModel):
+    status: str
+    since: str | None = None
+    until: str | None = None
+    samples: int = 0
+    # 관 단위 — 같은 (요일, 시각)에 있는 방들의 평균. 방마다 값이 하나씩이므로
+    # 판독이 많은 방이 가중치를 더 갖지 않는다.
+    cells: list[MmcaWeeklyProfileCell]
+    rooms: list[MmcaWeeklyProfileRoom]
 
 
 class MmcaRoomStatus(BaseModel):

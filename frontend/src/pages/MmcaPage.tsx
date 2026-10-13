@@ -13,10 +13,10 @@ import {
 import { DateTabs } from "../components/DateTabs";
 import { MmcaRoomChartCard } from "../components/MmcaRoomChartCard";
 import { MmcaRoomInactiveCard } from "../components/MmcaRoomInactiveCard";
-import { SiteFooter } from "../components/SiteFooter";
 import { VenueInfoList } from "../components/VenueInfoList";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { usePolledFetch } from "../hooks/usePolledFetch";
+import { fetchComparisonDay } from "../lib/comparisonDay";
 import {
   exhibitionPeriod,
   formatMinutes,
@@ -26,6 +26,12 @@ import {
   WEEKDAY_KO,
 } from "../lib/date";
 import { mmcaBusinessHours, nextOpenDay } from "../lib/mmcaBusinessHours";
+import {
+  VENUE_CHART_HEIGHT,
+  VENUE_CHART_WIDTH,
+  venuePrediction,
+  venueRoomStatus,
+} from "../lib/mmcaVenueCongestion";
 import { VENUES } from "../venues";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -46,7 +52,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const isTodayTab = selectedDate === today;
   // 국중박과 달리 따라갈 서버 목록이 없어 프론트가 날짜를 만든다.
   const tabDates = upcomingDates(today, 7);
-  const lastWeek = shiftDate(today, -7);
 
   // 계속 폴링: 수집기가 새 판독을 쌓는 값 (backend 의 MMCA_POLL_MINUTES 격자).
   const roomsPoll = usePolledFetch(() => fetchMmcaRooms(venue), { intervalMs: POLL_INTERVAL_MS }, [
@@ -63,10 +68,13 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   // 성공하면 정지: 지나간 날의 확정 데이터라 다시 물어볼 이유가 없다. 다만
   // 실패했을 때 재시도가 없으면 회색 비교선이 그 페이지 세션 내내 사라지므로,
   // 값이 도착할 때까지는 다음 tick 에 다시 시도한다.
-  const lastWeekPoll = usePolledFetch(
-    () => fetchMmcaDaily(venue, lastWeek),
+  // D−7 이 통째로 빈 날 — 정기 휴관 요일이 아닌 날의 대체·임시 휴관이 그렇다 —
+  // 에는 D−14 로 물러선다(lib/comparisonDay). 게이트가 휴관일을 아예 수집하지
+  // 않으므로 그 이레 뒤 화면에는 그을 비교선이 없다.
+  const comparisonPoll = usePolledFetch(
+    () => fetchComparisonDay(today, (date) => fetchMmcaDaily(venue, date)),
     { intervalMs: POLL_INTERVAL_MS, stopWhenLoaded: true },
-    [venue, lastWeek]
+    [venue, today]
   );
 
   // 오늘 탭은 곡선이 최근 120분 실측에 매달려 있어 판독마다 바뀌므로 계속
@@ -106,11 +114,12 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
   const daily = dailyPoll.data;
   // 미래 탭에서는 대리값 하나만 보여준다 — D-14 까지 겹치면 무엇이 기준인지
   // 흐려진다.
-  const lastWeekDaily = isTodayTab ? lastWeekPoll.data : null;
+  const lastWeekDaily = isTodayTab ? (comparisonPoll.data?.points ?? null) : null;
+  const lastWeekDate = comparisonPoll.data?.date;
   // 오늘/지난주 로그는 전시실 전체가 공유하는 fetch 한 건이다. 실패하면 방
   // 카드가 빈 차트만 그린 채 조용히 남으므로 안내가 필요하지만, 실패는 관
   // 단위로 한 번 일어난 일이라 카드마다 반복하지 않고 그리드 위에 한 줄 둔다.
-  const trendError = dailyPoll.error || (isTodayTab && lastWeekPoll.error);
+  const trendError = dailyPoll.error || (isTodayTab && comparisonPoll.error);
   // 예측은 없어도 차트가 그려져야 한다 — trendError 에 넣지 않는다. 이력이
   // 모자란 방은 응답에서 빠지므로 조회 실패는 곧 "그 방은 점선 없음"이다.
   const predictionByCode = new Map(
@@ -258,6 +267,34 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
             {trendError && rooms !== null && (
               <p className="mb-4 text-xs text-ink-soft/70">추이를 불러오지 못했습니다. 재시도 중...</p>
             )}
+            {/* 관 전체 — 전시실 곡선들을 하나로 접은 값. 국립중앙박물관 카드와
+                같은 1120x320 좌표계로 한 폭을 쓰고, 그 아래에 전시실 카드가
+                지금 그대로 2열로 깔린다. 각 관의 `when` 페이지가 이미 같은 순서다
+                (관 히트맵이 헤드라인, 전시실별은 그 아래).
+
+                활성 전시실이 둘 이상일 때만 그린다. 하나뿐이면 관 곡선이 그 방
+                곡선과 글자 그대로 같아 같은 그림을 두 번 그리게 되고, 덕수궁관은
+                전시실이 MMCA-SPACE-4001 하나인 데다 그 방이 혼잡도를 주지 않아
+                (venueSummary 의 resultCode 0002 주석) 빈 카드가 한 폭을 차지한다. */}
+            {activeRooms.length > 1 && (
+              <section className="mb-6">
+                <MmcaRoomChartCard
+                  aggregate
+                  width={VENUE_CHART_WIDTH}
+                  height={VENUE_CHART_HEIGHT}
+                  room={venueRoomStatus(rooms, name)}
+                  daily={daily}
+                  lastWeekDaily={lastWeekDaily}
+                  lastWeekDate={lastWeekDate}
+                  prediction={venuePrediction(predictionPoll.data ?? [])}
+                  open={open}
+                  close={close}
+                  nowMinutes={nowMinutes}
+                  now={now}
+                  viewDate={chartDate}
+                />
+              </section>
+            )}
             {activeRooms.length > 0 && (
               <section className={`grid gap-6${activeRooms.length > 1 ? " lg:grid-cols-2" : ""}`}>
                 {activeRooms.map((room) => (
@@ -267,6 +304,7 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
                     exhibitionTitle={exhibitionTitle(room.space_code)}
                     daily={daily}
                     lastWeekDaily={lastWeekDaily}
+                    lastWeekDate={lastWeekDate}
                     prediction={predictionByCode.get(room.space_code) ?? null}
                     open={open}
                     close={close}
@@ -292,7 +330,6 @@ export function MmcaPage({ venue }: { venue: MmcaVenue }) {
           </>
         )}
       </main>
-      <SiteFooter container="max-w-[1400px] px-6 sm:px-10 lg:px-16" />
     </div>
   );
 }

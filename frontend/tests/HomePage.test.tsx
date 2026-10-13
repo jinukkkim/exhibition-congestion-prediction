@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,10 @@ import type { CurrentCongestion } from "../src/api/congestion";
 import * as mmcaApi from "../src/api/mmca";
 import type { MmcaRoomStatus } from "../src/api/mmca";
 import { HomePage } from "../src/pages/HomePage";
+
+function venueCard(name: RegExp) {
+  return within(screen.getByRole("main")).getByRole("link", { name });
+}
 
 function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
   return {
@@ -19,35 +23,6 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 }
 
 describe("HomePage", () => {
-  it("carries the site footer", async () => {
-    // 푸터는 다섯 페이지가 같은 컴포넌트 한 줄로 붙인다 — 링크 자체는
-    // SiteFooter.test.tsx 가 고정하므로, 여기서는 페이지가 실제로 그것을
-    // 렌더한다는 것만 본다.
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
-    );
-
-    expect(await screen.findByRole("link", { name: "GitHub" })).toBeInTheDocument();
-  });
-
-  it("puts the footer outside main so it keeps the contentinfo landmark", () => {
-    // <footer> 는 main·article·aside·nav·section 의 자손이 아닐 때만 암묵적
-    // contentinfo 가 된다. main 안에 넣으면 generic 으로 떨어져 스크린리더의
-    // 랜드마크 이동에서 사라지는데, 컴포넌트를 단독으로 렌더하면 감싸는
-    // main 이 없어 늘 통과한다 — 그래서 이 검사는 페이지 쪽에 있어야 한다.
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
-    );
-
-    const footer = screen.getByRole("contentinfo");
-    expect(footer).toBeInTheDocument();
-    expect(footer.closest("main")).toBeNull();
-  });
-
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     // 카드 내용이 개·폐관 판정에 걸리므로 시각을 고정한다 — 안 하면
@@ -77,19 +52,19 @@ describe("HomePage", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("link", { name: /국립중앙박물관/ })).toHaveAttribute(
+    expect(venueCard(/국립중앙박물관/)).toHaveAttribute(
       "href",
       "/venues/national-museum"
     );
-    expect(screen.getByRole("link", { name: /국립현대미술관 서울관/ })).toHaveAttribute(
+    expect(venueCard(/국립현대미술관 서울관/)).toHaveAttribute(
       "href",
       "/venues/mmca-seoul"
     );
-    expect(screen.getByRole("link", { name: /국립현대미술관 과천관/ })).toHaveAttribute(
+    expect(venueCard(/국립현대미술관 과천관/)).toHaveAttribute(
       "href",
       "/venues/mmca-gwacheon"
     );
-    expect(screen.getByRole("link", { name: /국립현대미술관 덕수궁관/ })).toHaveAttribute(
+    expect(venueCard(/국립현대미술관 덕수궁관/)).toHaveAttribute(
       "href",
       "/venues/mmca-deoksugung"
     );
@@ -125,8 +100,8 @@ describe("HomePage", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("link", { name: /국립중앙박물관/ })).toHaveTextContent("영업 전");
-    expect(screen.getByRole("link", { name: /국립현대미술관 서울관/ })).toHaveTextContent("영업 전");
+    expect(venueCard(/국립중앙박물관/)).toHaveTextContent("영업 전");
+    expect(venueCard(/국립현대미술관 서울관/)).toHaveTextContent("영업 전");
     expect(screen.queryByText("불러오는 중")).not.toBeInTheDocument();
   });
 
@@ -148,7 +123,7 @@ describe("HomePage", () => {
       ["국립현대미술관 과천관", "/venues/mmca-gwacheon"],
       ["국립현대미술관 덕수궁관", "/venues/mmca-deoksugung"],
     ] as const) {
-      const card = screen.getByRole("link", { name: new RegExp(name) });
+      const card = venueCard(new RegExp(name));
       expect(card).toHaveAttribute("href", path);
       expect(card).toHaveTextContent("영업 전");
     }
@@ -162,23 +137,25 @@ describe("HomePage", () => {
     );
 
     // MMCA 카드도 "보통" 레벨을 쓰므로 카드 범위로 좁혀서 본다.
-    const museumCard = screen.getByRole("link", { name: /국립중앙박물관/ });
+    const museumCard = venueCard(/국립중앙박물관/);
     await waitFor(() => expect(museumCard).toHaveTextContent("1,240명"));
     expect(museumCard).toHaveTextContent("보통");
     expect(museumCard).toHaveTextContent("14:20 기준");
   });
 
-  it("shows per-level room counts for an MMCA venue", async () => {
+  it("folds an MMCA venue's rooms into one level, like the National Museum card", async () => {
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
 
-    const seoulCard = screen.getByRole("link", { name: /국립현대미술관 서울관/ });
-    // 여유 2 · 보통 1 — 개수까지 붙은 문자열로 봐야 카운트가 빠져도 잡힌다.
-    await waitFor(() => expect(seoulCard).toHaveTextContent("여유2"));
-    expect(seoulCard).toHaveTextContent("보통1");
+    const seoulCard = venueCard(/국립현대미술관 서울관/);
+    // 여유·여유·보통 = 평균 0.33 -> "여유". 전시실 개수를 세던 자리다.
+    await waitFor(() => expect(seoulCard).toHaveTextContent("여유"));
+    expect(seoulCard).not.toHaveTextContent("여유2");
+    // 인원 추정은 국중박에만 실린다.
+    expect(seoulCard).not.toHaveTextContent("명");
     expect(seoulCard).toHaveTextContent("14:20 기준");
   });
 
@@ -203,7 +180,7 @@ describe("HomePage", () => {
       </MemoryRouter>
     );
 
-    const museumCard = screen.getByRole("link", { name: /국립중앙박물관/ });
+    const museumCard = venueCard(/국립중앙박물관/);
     await vi.advanceTimersByTimeAsync(60_000); // 다음 tick이 먼저 도착
     await waitFor(() => expect(museumCard).toHaveTextContent("붐빔"));
 
@@ -232,7 +209,7 @@ describe("HomePage", () => {
 
     await waitFor(() => expect(screen.getByText("정보 없음")).toBeInTheDocument());
     // 국중박만 실패했으므로 MMCA 카드는 그대로 그려진다
-    const seoulCard = screen.getByRole("link", { name: /국립현대미술관 서울관/ });
+    const seoulCard = venueCard(/국립현대미술관 서울관/);
     expect(seoulCard).toHaveTextContent("여유");
   });
 });

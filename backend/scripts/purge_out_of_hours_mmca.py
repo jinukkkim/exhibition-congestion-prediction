@@ -33,13 +33,45 @@ Not in deploy.sh — a data cleanup, not a schema migration. Idempotent by
 nature: a second run finds nothing left to delete. Previewing is the default;
 deletion happens only with --delete.
 
-Hold the first production run until after 2026-10-05. collector.py's
-_is_closed_day names that date (Monday, 개천절 대체) as the next chance to
-re-verify the holiday-Monday-open rule (rule 2) — non-empty Gwacheon readings
-that day confirm it. This deletion is irreversible and this file is the only
-place that acts on rule 2/3 as settled fact rather than as inferred, so run it
-after that date has had its chance to confirm or contradict the rule, not
-before.
+Run this only where the collector it imports already reads the calendar, and
+treat that as a hard precondition rather than a preference. The gate is
+imported rather than reimplemented, so pre-calendar code does not judge less
+than the calendar — it judges *differently*. Its _VENUE_CLOSED_DAYS was
+{"gwacheon": {0}, "deoksugung": {0}}: every Monday closed, no exception. So it
+keeps 2026-08-18's 219 genuinely-closed rows and condemns 2026-08-17's 219
+instead — the holiday Monday the museum actually opened, 185 of those readings
+non-여유. That is the irreversible deletion of real visitor data, not a preview
+count that comes up short.
+
+The preview total does not catch the swap. Against production as it stood for
+the run below, both gates condemn exactly 297 rows: the same 78 from
+2026-08-15 either way, plus 219 from whichever day the gate believes in. The
+figure a reader would check against is the figure that coincides, and main()
+prints the total and a per-venue split but never the dates. Verify the
+deployed collector, not the count.
+
+**Already run in production on 2026-09-11**, right after the calendar
+deployed: 297 rows deleted (Gwacheon 219 on 2026-08-18, the substitute
+closure, plus 78 after closing time on Saturday 2026-08-15), and a re-run
+previews 0. The hold this file used to carry — no first run until after
+2026-10-05, on the grounds that rule 3 rested on a single inferred pair of
+days — was lifted first: 2026-08-18's closure was confirmed from the museum's
+own notice, and it is the only rule-3 day in the collected data. Its 219 rows
+were 192 여유 readings and 27 empty ones, against 59~157 non-여유 on every
+other Tuesday of those rooms — the same range the calendar spec measures over
+all of Gwacheon (docs/superpowers/specs/2026-09-08-museum-holiday-calendar-design.md),
+since the seven rooms that made up those 219 carry the whole spread.
+
+Seoul's own ad-hoc closure (2026-09-08, 1,928 rows) is not in that count: it
+had already been deleted from production by then, before this file could see
+it. So a future run starts from zero out-of-hours rows, and any figure it
+reports is new drift — most plausibly a calendar entry added for a date
+already collected, since the gate now refuses to collect a closed day at all.
+
+2026-10-05 still matters, but to the gate's future rulings rather than to
+anything deleted here: rule 2 rests on 2026-08-17's 185 non-여유 readings, and
+no deletion in this file depends on it — that day is judged open, so its rows
+are kept either way.
 """
 
 import argparse
@@ -83,10 +115,13 @@ def out_of_hours(rows: Sequence[Row]) -> list[Row]:
 def main(session_factory=SessionLocal) -> None:
     parser = argparse.ArgumentParser()
     # 미리보기가 기본값이고 삭제는 --delete 로만 일어난다. 뒤집혀 있었을 때는
-    # 플래그를 잊는 것이 곧 프로덕션 행 삭제였고, 이 스크립트가 지우는 근거
-    # 일부(대체 휴관)는 실측 한 쌍에서 나온 추론이라 되돌릴 수도 없다. 위
-    # docstring 이 "10-05 재검증 전에는 돌리지 말라" 고 적고 있지만, 문단을
-    # 놓친 사람을 막아 주는 것은 문단이 아니라 기본값이다.
+    # 플래그를 잊는 것이 곧 프로덕션 행 삭제였다.
+    #
+    # 다만 이 기본값이 순서까지 지켜 주지는 않는다. 달력을 읽지 않는 배포에서
+    # 돌려도 미리보기는 297 을 찍었을 것이고, 달력을 읽는 배포에서 실제로 찍은
+    # 수도 297 이다 — 숫자가 같고 지워질 행이 다르다(위 docstring). 아래 출력은
+    # 합계와 관별 내역뿐이라 그 차이가 드러나지도 않는다. 순서는 이 숫자가
+    # 아니라 배포된 collector 를 보고 확인해야 한다.
     parser.add_argument(
         "--delete", action="store_true", help="actually delete; without it this only previews"
     )

@@ -94,7 +94,8 @@ function makeRoom(overrides: Partial<MmcaRoomStatus> = {}): MmcaRoomStatus {
 const MMCA_MIDDAY = new Date("2026-08-20T14:20:00");
 
 describe("mmcaSummary", () => {
-  it("counts rooms per level, least crowded first", () => {
+  it("folds the rooms into one level, the same shape the National Museum card uses", () => {
+    // 여유·여유·보통·붐빔 = 평균 1.0 -> "보통". 개수를 세던 자리다.
     const rooms = [
       makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "붐빔" }),
       makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "여유" }),
@@ -103,47 +104,62 @@ describe("mmcaSummary", () => {
     ];
 
     expect(mmcaSummary("seoul", rooms, MMCA_MIDDAY)).toEqual({
-      kind: "counts",
-      counts: [
-        { level: "여유", count: 2 },
-        { level: "보통", count: 1 },
-        { level: "붐빔", count: 1 },
-      ],
+      kind: "level",
+      level: "보통",
       observedAt: "2026-08-20T14:20:00",
     });
   });
 
-  it("appends unknown levels after the known ones", () => {
+  it("rounds the mean to the nearest level", () => {
+    // 여유·보통·붐빔 = 평균 1.33 -> "보통" (1.5 미만이라 내려간다).
     const rooms = [
-      makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "매우 붐빔" }),
-      makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: "보통" }),
+      makeRoom({ space_code: "MMCA-SPACE-1003", congestion_nm: "붐빔" }),
     ];
 
-    const summary = mmcaSummary("seoul", rooms, MMCA_MIDDAY);
-    expect(summary.kind === "counts" && summary.counts).toEqual([
-      { level: "여유", count: 1 },
-      { level: "매우 붐빔", count: 1 },
-    ]);
+    expect(mmcaSummary("seoul", rooms, MMCA_MIDDAY)).toEqual({
+      kind: "level",
+      level: "보통",
+      observedAt: "2026-08-20T14:20:00",
+    });
   });
 
-  it("uses the newest observed_at among counted rooms", () => {
+  it("carries no population — MMCA reports levels, not head counts", () => {
+    const rooms = [makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "여유" })];
+
+    const summary = mmcaSummary("seoul", rooms, MMCA_MIDDAY);
+    expect(summary.kind === "level" && summary.population).toBeUndefined();
+  });
+
+  it("reports no reading when every level is off the four-level scale", () => {
+    const rooms = [makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "매우 붐빔" })];
+
+    expect(mmcaSummary("seoul", rooms, MMCA_MIDDAY)).toEqual({
+      kind: "inactive",
+      label: "정보 없음",
+    });
+  });
+
+  it("uses the newest observed_at among the rooms it read", () => {
     const rooms = [
       makeRoom({ space_code: "MMCA-SPACE-1001", observed_at: "2026-08-20T14:10:00" }),
       makeRoom({ space_code: "MMCA-SPACE-1002", observed_at: "2026-08-20T14:20:00" }),
     ];
 
     const summary = mmcaSummary("seoul", rooms, MMCA_MIDDAY);
-    expect(summary.kind === "counts" && summary.observedAt).toBe("2026-08-20T14:20:00");
+    expect(summary.kind === "level" && summary.observedAt).toBe("2026-08-20T14:20:00");
   });
 
-  it("excludes rooms with no reading from the counts", () => {
+  it("excludes rooms with no reading from the mean", () => {
+    // 판독 없는 방이 0(여유)으로 섞이면 평균이 통째로 내려간다.
     const rooms = [
-      makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "여유" }),
+      makeRoom({ space_code: "MMCA-SPACE-1001", congestion_nm: "붐빔" }),
       makeRoom({ space_code: "MMCA-SPACE-1002", congestion_nm: null, observed_at: null }),
     ];
 
     const summary = mmcaSummary("seoul", rooms, MMCA_MIDDAY);
-    expect(summary.kind === "counts" && summary.counts).toEqual([{ level: "여유", count: 1 }]);
+    expect(summary.kind === "level" && summary.level).toBe("붐빔");
   });
 
   it("reports loading while there is no data yet", () => {
@@ -153,14 +169,14 @@ describe("mmcaSummary", () => {
     });
   });
 
-  it("counts the Deoksugung room like any other venue's", () => {
+  it("folds the Deoksugung room like any other venue's", () => {
     // 이 관은 전시실이 MMCA-SPACE-4001 하나뿐이라, 그 한 칸이 빠지면 카드가
     // 통째로 빈다 — 수집 대상이 아닌 동안 실제로 "서비스 예정"만 떴다.
     const rooms = [makeRoom({ space_code: "MMCA-SPACE-4001", congestion_nm: "여유" })];
 
     expect(mmcaSummary("deoksugung", rooms, MMCA_MIDDAY)).toEqual({
-      kind: "counts",
-      counts: [{ level: "여유", count: 1 }],
+      kind: "level",
+      level: "여유",
       observedAt: "2026-08-20T14:20:00",
     });
   });

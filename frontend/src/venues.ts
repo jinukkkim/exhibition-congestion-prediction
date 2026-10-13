@@ -32,6 +32,10 @@ export interface Venue {
   // MMCA관이면 /mmca/rooms 파라미터. 없으면 국립중앙박물관
   // (/congestion/current) — 관 종류가 둘뿐이라 판별 유니온까지 갈 이유가 없다.
   mmcaVenue?: MmcaVenue;
+  // 이 관에 요일 × 시각 기록 페이지(`${path}/when`)가 있는가. 덕수궁관만 없다 —
+  // 판독에 혼잡도가 실리지 않아 격자가 통째로 비어서 페이지를 만들지 않았다.
+  // 관 정보 표가 이 값을 보고 링크 줄을 낼지 정한다.
+  hasQuietHours?: boolean;
   info: VenueInfo;
 }
 
@@ -42,6 +46,7 @@ const MMCA_EARLIEST_DATE = "2026-07-26";
 export const VENUES: Venue[] = [
   {
     id: "national-museum",
+    hasQuietHours: true,
     name: "국립중앙박물관",
     path: "/venues/national-museum",
     earliestDate: "2026-07-16",
@@ -56,6 +61,7 @@ export const VENUES: Venue[] = [
   },
   {
     id: "mmca-seoul",
+    hasQuietHours: true,
     name: "국립현대미술관 서울관",
     path: "/venues/mmca-seoul",
     earliestDate: MMCA_EARLIEST_DATE,
@@ -72,6 +78,7 @@ export const VENUES: Venue[] = [
   },
   {
     id: "mmca-gwacheon",
+    hasQuietHours: true,
     name: "국립현대미술관 과천관",
     path: "/venues/mmca-gwacheon",
     earliestDate: MMCA_EARLIEST_DATE,

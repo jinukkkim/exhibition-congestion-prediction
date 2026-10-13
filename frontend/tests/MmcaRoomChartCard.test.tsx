@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BUCKET_MINUTES, MMCA_WINDOW_MINUTES } from "../src/lib/resample";
 import { MmcaRoomChartCard } from "../src/components/MmcaRoomChartCard";
@@ -536,7 +536,7 @@ describe("MmcaRoomChartCard past-day view", () => {
     // 곡선 옆에 "실시간"이나 현재 등급을 놓으면 무엇을 보는지 알 수 없다.
     renderPastDay();
 
-    expect(screen.getAllByText(/7\/11\(토\)/).length).toBeGreaterThan(0);
+    expect(screen.getByText("지난주")).toBeInTheDocument();
     expect(screen.queryByText("실시간")).not.toBeInTheDocument();
     expect(screen.queryByText("갱신 지연")).not.toBeInTheDocument();
     expect(screen.queryByText("약간 붐빔")).not.toBeInTheDocument();
@@ -549,12 +549,14 @@ describe("MmcaRoomChartCard past-day view", () => {
     expect(screen.getByTestId("mmca-room-chart-line")).toHaveAttribute("stroke", "#D1D1D1");
   });
 
-  it("labels the legend by the drawn date, not by today", () => {
+  it("calls a proxy day's curve 지난주, never 오늘", () => {
+    // 미래 탭의 실선은 그 날짜의 실제가 아니라 지난주 같은 요일의 대리값이다.
     renderPastDay();
 
-    expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
-    expect(screen.getByTestId("mmca-room-chart")).toBeInTheDocument();
+    expect(screen.getByText("지난주")).toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+    // 범례에 날짜는 더 이상 없다 — 어느 하루인지는 날짜 탭이 말한다.
+    expect(screen.queryByText(/\d+\/\d+\(/)).not.toBeInTheDocument();
   });
 });
 
@@ -768,7 +770,7 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     expect((dashedD.match(/C/g) ?? []).length).toBe(1);
   });
 
-  it("labels the prediction in the legend, noting when today anchors it", () => {
+  it("labels the prediction 예측, whether or not today anchors it", () => {
     const { rerender } = render(
       <MmcaRoomChartCard
         room={makeRoom()}
@@ -784,7 +786,9 @@ describe("MmcaRoomChartCard 예측 점선", () => {
       />
     );
 
-    expect(screen.getByText("예측 (오늘 반영)")).toBeInTheDocument();
+    // 오늘 판독 고정 여부(anchored)는 범례가 답할 질문이 아니다 — 곡선이
+    // 무엇인지가 아니라 어떻게 만들어졌는지다.
+    expect(screen.getByText("예측")).toBeInTheDocument();
 
     rerender(
       <MmcaRoomChartCard
@@ -805,7 +809,7 @@ describe("MmcaRoomChartCard 예측 점선", () => {
     );
 
     expect(screen.getByText("예측")).toBeInTheDocument();
-    expect(screen.queryByText("예측 (오늘 반영)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/오늘 반영/)).not.toBeInTheDocument();
   });
 
   it("keeps the whole future-tab curve — the D−7 proxy line must not re-anchor it", () => {
@@ -1151,7 +1155,7 @@ describe("mark grid", () => {
 });
 
 describe("tier gridlines", () => {
-  it("draws one line per congestion level, at the level's own height", () => {
+  it("draws a line at each boundary between levels, not at the levels themselves", () => {
     render(
       <MmcaRoomChartCard
         room={makeRoom()}
@@ -1166,16 +1170,24 @@ describe("tier gridlines", () => {
       />
     );
 
-    // 곡선이 마크 평균이라 값이 소수다 — 등급 위에 앉지 않는 높이가 무슨 뜻인지
-    // 읽으려면 눈금이 있어야 한다. 네 줄이 등간격이라는 것이 "4단계"를 말한다.
+    // 선은 등급 위(0·1·2·3)가 아니라 등급 사이(0.5·1.5·2.5)에 있다 — 곡선이
+    // 그 선을 넘는 자리가 곧 등급 이름이 바뀌는 자리다(labelOf 의 반올림 임계값).
+    // 네 등급 사이의 경계는 셋이다.
     const lines = screen.getAllByTestId("mmca-room-chart-tier-line");
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(3);
 
     const ys = lines.map((l) => Number(l.getAttribute("y1")));
     // yOf 는 tier 가 클수록 위(작은 y)로 간다.
-    expect(ys[0]).toBeGreaterThan(ys[3]);
+    expect(ys[0]).toBeGreaterThan(ys[2]);
     const gaps = ys.slice(0, -1).map((y, i) => y - ys[i + 1]);
     for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0], 6);
+
+    // 기본 치수(480x200)에서 yOf(t) = 176 − t/3 × 152 이므로 경계는
+    // 150.67 · 100 · 49.33 이고, 가운데 줄이 정확히 도면의 세로 중앙이다.
+    // 여백을 바꾸면 이 값이 깨지고, 그때 다시 볼 값이 맞다.
+    expect(ys[0]).toBeCloseTo(150.67, 1);
+    expect(ys[1]).toBeCloseTo(100, 6);
+    expect(ys[2]).toBeCloseTo(49.33, 1);
   });
 
   it("does not draw them on a card with nothing to plot", () => {
@@ -1192,5 +1204,68 @@ describe("tier gridlines", () => {
 
     // 빈 차트에 눈금만 남으면 값이 있는 것처럼 보인다.
     expect(screen.queryAllByTestId("mmca-room-chart-tier-line")).toHaveLength(0);
+  });
+});
+
+describe("MmcaRoomChartCard 비교선 라벨", () => {
+  // 라벨은 "오늘로부터 몇 주 전인가" 라서 시계에 매달려 있다.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T14:30:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("labels the comparison line by the day it actually holds", () => {
+    // MMCA 가 이 갈래가 실제로 도는 곳이다 — 정기 휴관 요일이 아닌 날 문을 닫으면
+    // 게이트가 그날을 수집하지 않아 D−7 이 통째로 비고, 페이지가 D−14 를 보낸다
+    // (lib/comparisonDay). 카드가 날짜를 스스로 shiftDate(-7) 로 만들면 그린 것과
+    // 적은 것이 어긋난다.
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-01T10:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-01T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        lastWeekDate="2026-07-01"
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+      />
+    );
+
+    expect(screen.getByText("2주 전")).toBeInTheDocument();
+    expect(screen.queryByText("지난주")).not.toBeInTheDocument();
+  });
+
+  it("still says 지난주 when the comparison line really is last week", () => {
+    render(
+      <MmcaRoomChartCard
+        room={makeRoom()}
+        daily={[
+          dailyPoint("2026-07-15T10:00:00", { "MMCA-SPACE-2001": "여유" }),
+          dailyPoint("2026-07-15T11:00:00", { "MMCA-SPACE-2001": "보통" }),
+        ]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", { "MMCA-SPACE-2001": "보통" }),
+          dailyPoint("2026-07-08T11:00:00", { "MMCA-SPACE-2001": "붐빔" }),
+        ]}
+        lastWeekDate="2026-07-08"
+        open={OPEN}
+        close={CLOSE}
+        nowMinutes={WITHIN_HOURS}
+        now={NOW}
+      />
+    );
+
+    expect(screen.getByText("지난주")).toBeInTheDocument();
   });
 });

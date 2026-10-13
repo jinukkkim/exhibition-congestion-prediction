@@ -2,7 +2,7 @@ import { useRef, useState, type MouseEvent } from "react";
 
 import type { CurrentCongestion, DailyLogPoint, PredictionCurvePoint } from "../api/congestion";
 import { CHART_BLUE, CHART_SKY, LAST_WEEK_FILL, LAST_WEEK_STROKE } from "../lib/chartColors";
-import { formatMinutes, monthDayWeekday, shiftDate, todayString } from "../lib/date";
+import { formatMinutes, shiftDate, todayString, weeksBefore } from "../lib/date";
 import { SEOUL_STALE_MINUTES, freshnessDotColor, isStale } from "../lib/freshness";
 import { nationalMuseumBusinessHours } from "../lib/nationalMuseumBusinessHours";
 import { BUCKET_MINUTES, resample } from "../lib/resample";
@@ -256,6 +256,7 @@ export function CongestionCard({
   data,
   daily = null,
   lastWeekDaily = null,
+  lastWeekDate,
   prediction = null,
   error = false,
   chartError = false,
@@ -264,6 +265,9 @@ export function CongestionCard({
   data: CurrentCongestion | null;
   daily: DailyLogPoint[] | null;
   lastWeekDaily?: DailyLogPoint[] | null;
+  // lastWeekDaily 가 실제로 어느 날짜인지. 이름과 달리 D−14 일 수 있다 —
+  // 그 하루가 비어 페이지가 물러섰을 때다(lib/comparisonDay).
+  lastWeekDate?: string;
   // 그리는 날짜의 예측 곡선(정시 24점). 배치가 아직 못 돌았거나 조회가 실패하면
   // null 이고, 그때는 점선만 없다 — 실측 곡선은 예측 없이도 온전히 읽힌다.
   prediction?: PredictionCurvePoint[] | null;
@@ -454,6 +458,14 @@ export function CongestionCard({
   // 두고 D−7 실측을 daily 로 내려보내기 때문이다.
   const comparePoints = isTodayView ? lastWeekPoints.filter((p) => !p.isRaw) : hoverablePoints;
 
+  // 비교선의 날짜는 페이지가 정해 보낸다. D−7 에 기록이 없으면 D−14 가 오므로
+  // (lib/comparisonDay) 여기서 shiftDate 로 만들면 라벨이 실제로 그린 하루와
+  // 어긋난다. 미래 탭의 비교 계열은 chartDate 자신(D−7 대리 기록)이라 언제나
+  // 지난주다.
+  const compareDate = (isTodayView && lastWeekDate) || shiftDate(chartDate, -7);
+  const compareWeeks = weeksBefore(compareDate, chartDate);
+  const compareLabel = compareWeeks === 1 ? "지난주" : `${compareWeeks}주 전`;
+
   // 오늘의 실측은 오늘 탭에만 있다: 미래 탭의 `points` 는 D−7 대리 기록(= 비교
   // 계열)이므로 오늘의 실측인 척하며 예측값을 온종일 가리면 안 된다.
   const hoverActual =
@@ -480,7 +492,7 @@ export function CongestionCard({
   // 주값은 예측 > 실측 > 비교 순(앞의 둘은 서로 배타적이다). 주값이 비교 계열
   // 자신일 때만 괄호를 생략한다.
   const hoverPrimary = hoverPrediction ?? hoverActual ?? hoverCompare;
-  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : "지난주 ";
+  const hoverPrefix = hoverPrediction ? "예측 " : hoverActual ? "" : `${compareLabel} `;
   const hoverSuffix = hoverPrediction || hoverActual ? hoverCompare : undefined;
 
   return (
@@ -555,17 +567,27 @@ export function CongestionCard({
               <div className="mb-2 flex justify-end gap-3 text-[11px] text-ink-soft">
                 {/* 그리는 날짜의 곡선이 실제로 있을 때만 — 예측 점선만 있는 개관
                     전 시각에는 그을 실선이 없어 범례가 없는 선을 가리킨다. */}
+                {/* 범례는 계열이 무엇인지만 말한다 — 날짜는 적지 않는다.
+                    어느 하루인지는 날짜 탭이 이미 말하고, 곡선마다 날짜를
+                    되풀이하면 세 항목이 길어져 정작 무엇이 무엇인지가 늦게
+                    읽힌다. 호버 툴팁은 짚은 시각과 값을 그대로 적으므로 구체적인
+                    값이 필요한 자리는 그쪽이다.
+
+                    오늘 탭이 아니면 실선은 그 날짜의 실제가 아니라 선택한 날의
+                    지난주 같은 요일 기록(대리값)이다 — 그래서 "오늘"이 아니라
+                    "지난주"라고 적는다. 색도 이미 회색 비교선과 같다. */}
                 {xy.length > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: lineStroke }} />
-                    {monthDayWeekday(chartDate)}
-                    {isTodayView ? " 오늘" : ""}
+                    {isTodayView ? "오늘" : "지난주"}
                   </span>
                 )}
                 {lastWeekXy.length > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="h-0.5 w-3 rounded-full" style={{ backgroundColor: LAST_WEEK_STROKE }} />
-                    {monthDayWeekday(shiftDate(chartDate, -7))} 지난주
+                    {/* D−7 이 비어 D−14 로 물러선 날은 "2주 전"이다 —
+                        그리는 것과 적는 것이 어긋나면 안 된다. */}
+                    {compareLabel}
                   </span>
                 )}
                 {predictionPath && (
@@ -728,7 +750,7 @@ export function CongestionCard({
                 <span className="text-ink-soft">명</span>
                 {hoverSuffix && (
                   <span className="ml-1 text-ink-soft">
-                    (지난주 <span className="font-mono tabular-nums">{Math.round(hoverSuffix.value).toLocaleString()}</span>명)
+                    ({compareLabel} <span className="font-mono tabular-nums">{Math.round(hoverSuffix.value).toLocaleString()}</span>명)
                   </span>
                 )}
               </div>

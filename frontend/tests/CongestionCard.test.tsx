@@ -237,9 +237,55 @@ describe("CongestionCard", () => {
     expect(screen.getByTestId("history-sparkline")).toBeInTheDocument();
   });
 
-  it("labels the legend by the drawn date, not by today", () => {
-    // 범례가 todayString() 에 하드코딩되어 있으면 8/22 곡선 옆에 "8/23(일) 오늘"
-    // 이라고 적힌다. 그리는 것과 적는 것이 어긋나면 안 된다.
+  it("labels the comparison line by the day it actually holds", () => {
+    // D−7 이 통째로 빈 날에는 페이지가 D−14 를 보낸다(lib/comparisonDay). 카드가
+    // 날짜를 스스로 shiftDate(-7) 로 만들면, 그린 것은 2주 전인데 범례는 지난주
+    // 날짜를 적는다 — 그리는 것과 적는 것이 어긋나는 자리다.
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-01T10:00:00", 700),
+          dailyPoint("2026-07-01T11:00:00", 800),
+        ]}
+        lastWeekDate="2026-07-01"
+        viewDate="2026-07-15"
+      />
+    );
+
+    expect(screen.getByText("2주 전")).toBeInTheDocument();
+    expect(screen.queryByText("지난주")).not.toBeInTheDocument();
+  });
+
+  it("still says 지난주 when the comparison line really is last week", () => {
+    render(
+      <CongestionCard
+        data={{
+          observed_at: "2026-07-15T14:30:00",
+          congest_level: "보통",
+          population_avg: 1500,
+        }}
+        daily={[dailyPoint("2026-07-15T10:00:00", 900), dailyPoint("2026-07-15T11:00:00", 1100)]}
+        lastWeekDaily={[
+          dailyPoint("2026-07-08T10:00:00", 700),
+          dailyPoint("2026-07-08T11:00:00", 800),
+        ]}
+        lastWeekDate="2026-07-08"
+        viewDate="2026-07-15"
+      />
+    );
+
+    expect(screen.getByText("지난주")).toBeInTheDocument();
+  });
+
+  it("calls a proxy day's curve 지난주, never 오늘", () => {
+    // 미래 탭의 실선은 그 날짜의 실제가 아니라 지난주 같은 요일의 대리값이다.
+    // 범례가 todayString() 에 하드코딩되어 있으면 여기서 "오늘"이라고 적힌다.
     render(
       <CongestionCard
         data={{
@@ -253,11 +299,10 @@ describe("CongestionCard", () => {
       />
     );
 
-    // 날짜를 적는 곳은 범례뿐이다
-    expect(screen.getAllByText(/7\/11\(토\)/).length).toBe(1);
-    expect(screen.queryByText(/오늘$/)).not.toBeInTheDocument();
-    // 비교 데이터를 주지 않았으므로 지난주 범례도 없어야 한다
-    expect(screen.queryByText(/지난주/)).not.toBeInTheDocument();
+    expect(screen.getByText("지난주")).toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+    // 범례에 날짜는 더 이상 없다 — 어느 하루인지는 날짜 탭이 말한다.
+    expect(screen.queryByText(/\d+\/\d+\(/)).not.toBeInTheDocument();
   });
 
   it("draws a past-day curve in the last-week grey, not the today blue", () => {
