@@ -3,53 +3,61 @@ import { BrowserRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsApi from "../src/api/analytics";
-import type { VisitStats } from "../src/api/analytics";
+import type { Pageview, VisitStats } from "../src/api/analytics";
 import { VisitorsPage } from "../src/pages/VisitorsPage";
 
+function pv(overrides: Partial<Pageview>): Pageview {
+  return {
+    at: "2026-09-07T14:20:00+09:00",
+    path: "/",
+    visitor: "aaaaaa",
+    device: "desktop",
+    browser: "Chrome",
+    os: "macOS",
+    referrer: "www.google.com",
+    utm: {},
+    ...overrides,
+  };
+}
+
 const STATS: VisitStats = {
-  daily: [
-    { date: "2026-09-06", views: 4, visitors: 3, unconfirmed: 7, bots: 12 },
-    { date: "2026-09-07", views: 10, visitors: 6, unconfirmed: 2, bots: 9 },
-  ],
-  referrers: [
-    { source: "www.google.com", views: 8 },
-    { source: "직접 방문", views: 6 },
-  ],
-  devices: { mobile: 9, desktop: 5 },
-  visits: [
-    {
-      at: "2026-09-07T14:20:00",
-      path: "/logs",
-      kind: "human",
-      visitor: "93345f",
-      device: "desktop",
-      referrer: "직접 방문",
-    },
-    {
-      at: "2026-09-07T03:11:00",
-      path: "/",
-      kind: "unconfirmed",
-      visitor: "57a58d",
+  start: "2026-09-01T00:00:00+09:00",
+  previous_start: "2026-08-25T00:00:00+09:00",
+  coverage_start: "2026-08-20T08:00:00+09:00",
+  pageviews: [
+    // 직전 기간: 방문자 2, 페이지뷰 2
+    pv({ at: "2026-08-26T10:00:00+09:00", visitor: "p1" }),
+    pv({ at: "2026-08-27T10:00:00+09:00", visitor: "p2" }),
+    // 이번 기간: 방문자 3, 페이지뷰 4
+    pv({ visitor: "93345f" }),
+    pv({ visitor: "93345f", path: "/logs", referrer: null }),
+    pv({
+      visitor: "b2b2b2",
+      path: "/venues/mmca-seoul",
       device: "mobile",
-      referrer: null,
+      browser: "Safari",
+      os: "iOS",
+      referrer: "직접 방문",
+      utm: { source: "instagram" },
+    }),
+    pv({ visitor: "c3c3c3", device: "mobile", browser: "Safari", os: "iOS" }),
+  ],
+  recent: [
+    { ...pv({ visitor: "93345f", path: "/logs", referrer: null }), kind: "human" },
+    {
+      ...pv({ at: "2026-09-07T03:11:00+09:00", visitor: "57a58d", device: "mobile" }),
+      kind: "unconfirmed",
     },
   ],
+  excluded: { bots: 21, unconfirmed: 9 },
 };
 
-// 카드와 표의 숫자는 화면 곳곳에서 겹친다 (봇 9 와 모바일 9). 라벨이 있는
-// 줄 안에서만 찾는다.
-function metric(label: string): string {
-  return screen.getByText(label).parentElement?.textContent ?? "";
+function tile(label: string): string {
+  return screen.getByRole("button", { name: new RegExp(label) }).textContent ?? "";
 }
 
-function row(label: string): string {
-  return screen.getByText(label).closest("tr")?.textContent ?? "";
-}
-
-// 표가 넷이라 "모바일" 같은 말은 두 표에 함께 나온다. 표 이름으로 좁힌다.
-function rowIn(table: string, label: string): string {
-  const scope = within(screen.getByRole("table", { name: table }));
-  return scope.getByText(label).closest("tr")?.textContent ?? "";
+function panel(name: string) {
+  return within(screen.getByRole("region", { name }));
 }
 
 function visit(search = "") {
@@ -63,76 +71,114 @@ function visit(search = "") {
 
 describe("VisitorsPage", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-07T15:00:00+09:00"));
     vi.spyOn(analyticsApi, "fetchVisits").mockResolvedValue(STATS);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     window.history.pushState({}, "", "/");
   });
 
-  it("asks for 30 days when the URL says nothing", async () => {
+  it("asks for 7 days when the URL says nothing", async () => {
     visit();
-
-    await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(30));
-  });
-
-  it("takes the range from the URL and follows the buttons", async () => {
-    visit("?days=7");
 
     await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(7));
-
-    fireEvent.click(screen.getByRole("button", { name: "90일" }));
-
-    await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(90));
   });
 
-  it("falls back to 30 days for a range it does not offer", async () => {
-    visit("?days=9999");
+  it("takes the range from the URL and follows the picker", async () => {
+    visit("?days=30");
 
     await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(30));
+
+    fireEvent.change(screen.getByLabelText("기간"), { target: { value: "1" } });
+
+    await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(1));
   });
 
-  it("totals views over the window but reports visitors as a daily peak", async () => {
-    visit();
+  it("falls back to 7 days for a range it does not offer", async () => {
+    visit("?days=9999");
 
-    await waitFor(() => expect(metric("기간 방문")).toContain("14"));
-    // 순방문자는 날짜별 집합이라 기간 합계가 의미가 없다 — 3 + 6 = 9 가 아니라
-    // 하루 최다인 6 이 실려야 한다.
-    expect(metric("하루 최다 순방문자")).toContain("6");
-    expect(metric("봇 요청")).toContain("21");
+    await waitFor(() => expect(analyticsApi.fetchVisits).toHaveBeenCalledWith(7));
   });
 
-  it("lists each day, its referrers and the device split", async () => {
+  it("totals the period's visitors and views against the period before", async () => {
     visit();
 
-    await waitFor(() => expect(row("2026-09-07")).toContain("10"));
-    expect(row("2026-09-07")).toContain("6");
-    expect(row("2026-09-06")).toContain("4");
-    expect(row("www.google.com")).toContain("8");
-    expect(rowIn("기기", "모바일")).toContain("9");
-    expect(rowIn("기기", "데스크톱")).toContain("5");
+    await waitFor(() => expect(tile("방문자")).toContain("3"));
+    expect(tile("방문자")).toContain("50%");
+    expect(tile("페이지뷰")).toContain("4");
+    expect(tile("페이지뷰")).toContain("100%");
   });
 
-  it("lists each visit newest-first with what it was", async () => {
+  it("does not compare against a period the log no longer reaches", async () => {
+    vi.spyOn(analyticsApi, "fetchVisits").mockResolvedValue({
+      ...STATS,
+      coverage_start: "2026-08-30T00:00:00+09:00",
+    });
+
     visit();
 
-    await waitFor(() => expect(screen.getByText("93345f")).toBeInTheDocument());
-    expect(row("93345f")).toContain("사람");
-    expect(row("93345f")).toContain("/logs");
-    expect(row("93345f")).toContain("09-07 14:20");
-    // 앱이 뜨지 않은 요청은 방문과 같은 표에 있되 다른 이름을 단다.
-    expect(row("57a58d")).toContain("미확인");
-    expect(rowIn("방문 목록", "57a58d")).toContain("모바일");
-    // referrer 가 없는 줄도 칸을 비우지 않는다.
-    expect(row("57a58d")).toContain("—");
+    await waitFor(() => expect(tile("방문자")).toContain("3"));
+    expect(tile("방문자")).not.toContain("%");
   });
 
-  it("shows the unconfirmed count next to the day's visits", async () => {
+  it("breaks pages down by visitors and switches tabs", async () => {
     visit();
 
-    await waitFor(() => expect(row("2026-09-07")).toContain("10"));
-    expect(row("2026-09-07")).toContain("2");
+    await waitFor(() => expect(panel("페이지").getByText("/")).toBeInTheDocument());
+    expect(panel("페이지").getByText("/").closest("button")?.textContent).toContain("2");
+
+    fireEvent.click(panel("페이지").getByRole("tab", { name: "라우트" }));
+
+    expect(panel("페이지").getByText("/venues/[venue]")).toBeInTheDocument();
+  });
+
+  it("leaves our own pages out of the referrers", async () => {
+    visit();
+
+    await waitFor(() => expect(panel("유입 경로").getByText("www.google.com")).toBeInTheDocument());
+    expect(panel("유입 경로").getByText("www.google.com").closest("button")?.textContent).toContain(
+      "2"
+    );
+  });
+
+  it("filters everything by a clicked row and puts the filter in the URL", async () => {
+    visit();
+
+    await waitFor(() => expect(panel("기기").getByText("모바일")).toBeInTheDocument());
+    fireEvent.click(panel("기기").getByText("모바일"));
+
+    expect(window.location.search).toContain("device=mobile");
+    expect(tile("방문자")).toContain("2");
+    expect(tile("페이지뷰")).toContain("2");
+    expect(panel("페이지").queryByText("/logs")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "기기 필터 해제" }));
+
+    expect(window.location.search).not.toContain("device");
+    expect(tile("페이지뷰")).toContain("4");
+  });
+
+  it("reads filters off the URL", async () => {
+    visit("?utm_source=instagram");
+
+    await waitFor(() => expect(tile("페이지뷰")).toContain("1"));
+    expect(screen.getByText("instagram")).toBeInTheDocument();
+  });
+
+  it("lists recent visits with what each one was, and what was left out", async () => {
+    visit();
+
+    await waitFor(() => expect(screen.getByText("57a58d")).toBeInTheDocument());
+    const table = within(screen.getByRole("table", { name: "최근 방문" }));
+    expect(table.getByText("93345f").closest("tr")?.textContent).toContain("사람");
+    expect(table.getByText("57a58d").closest("tr")?.textContent).toContain("미확인");
+    expect(table.getByText("57a58d").closest("tr")?.textContent).toContain("09-07 03:11");
+    expect(screen.getByText(/봇 21/)).toBeInTheDocument();
+    expect(screen.getByText(/미확인 9/)).toBeInTheDocument();
   });
 
   it("says so when nothing could be fetched", async () => {
